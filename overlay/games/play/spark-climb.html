@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Spark Climb</title>
+<style>
+html,body{margin:0;height:100%;background:#070b16;color:#f4f1ff;font-family:system-ui,sans-serif;overflow:hidden}
+canvas{width:100%;height:100%;display:block;touch-action:none;background:#070b16}
+#hud{position:absolute;top:14px;left:16px;right:16px;display:flex;justify-content:space-between;font-weight:800;pointer-events:none;text-shadow:0 2px 8px #000}
+#over{position:absolute;inset:0;display:none;place-items:center;background:rgba(4,8,18,.7)}
+.card{background:#14182c;border:1px solid rgba(196,166,255,.4);border-radius:16px;padding:1.2rem;text-align:center}
+.card button{font:inherit;background:linear-gradient(135deg,#c4a6ff,#8ee9ff);color:#0c1520;border:0;border-radius:999px;padding:.65rem 1.1rem;font-weight:800;min-height:44px;cursor:pointer;margin-top:.5rem}
+#hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:#a8a3c0;font-size:.85rem;pointer-events:none}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="hud"><span id="sc">0</span><span>climb</span></div>
+<div id="hint">← → move · Space / ↑ jump · tap sides + jump button</div>
+<div id="over"><div class="card"><h1>Fell</h1><p id="os"></p><button id="again" type="button">Climb again</button></div></div>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script>
+(() => {
+  const c=document.getElementById("c"), g=c.getContext("2d");
+  let w,h,dpr, running, last, player, plats, camY, maxH, keys, score;
+
+  function resize(){
+    dpr=Math.min(2,devicePixelRatio||1);
+    w=c.clientWidth||innerWidth; h=c.clientHeight||innerHeight;
+    c.width=Math.floor(w*dpr); c.height=Math.floor(h*dpr);
+    g.setTransform(dpr,0,0,dpr,0,0);
+  }
+  function mkPlat(y){
+    const ww=70+Math.random()*70;
+    return {x:20+Math.random()*(w-ww-40), y, ww, hh:12};
+  }
+  function reset(){
+    running=true; last=0; camY=0; maxH=0; score=0; keys={};
+    plats=[];
+    let y=h-80;
+    for(let i=0;i<12;i++){ plats.push(mkPlat(y)); y-=70+Math.random()*50; }
+    player={x:plats[0].x+plats[0].ww/2, y:plats[0].y-16, vx:0, vy:0, on:false, r:12};
+    document.getElementById("over").style.display="none";
+    hud();
+  }
+  function hud(){ document.getElementById("sc").textContent=String(score); }
+  function end(){
+    running=false;
+    document.getElementById("os").textContent=score+" height";
+    document.getElementById("over").style.display="grid";
+    psReport("spark-climb", score);
+  }
+  function jump(){ if(running && player.on){ player.vy=-620; player.on=false; } }
+  function frame(ts){
+    requestAnimationFrame(frame);
+    if(!last) last=ts;
+    const dt=Math.min(0.033,(ts-last)/1000); last=ts;
+    if(!running){ draw(); return; }
+
+    const left=keys.ArrowLeft||keys.a||keys.A;
+    const right=keys.ArrowRight||keys.d||keys.D;
+    player.vx = left ? -260 : right ? 260 : player.vx*0.82;
+    player.vy += 1500*dt;
+    player.x += player.vx*dt;
+    player.y += player.vy*dt;
+    if(player.x<12) player.x=12;
+    if(player.x>w-12) player.x=w-12;
+
+    player.on=false;
+    if(player.vy>=0){
+      for(const p of plats){
+        const py=p.y;
+        if(player.x>p.x && player.x<p.x+p.ww && player.y+player.r>=py && player.y+player.r<=py+16 && player.y-player.vy*dt+player.r<=py+2){
+          player.y=py-player.r; player.vy=0; player.on=true;
+        }
+      }
+    }
+
+    const height=Math.max(0, Math.floor((h-80-player.y)/10));
+    if(height>maxH){ maxH=height; score=maxH; hud(); }
+
+    const targetCam=player.y-h*0.55;
+    if(targetCam<camY) camY=targetCam;
+
+    // recycle platforms above
+    let top=Math.min(...plats.map(p=>p.y));
+    while(top>camY-40){
+      top -= 70+Math.random()*55;
+      plats.push(mkPlat(top));
+    }
+    plats=plats.filter(p=>p.y<camY+h+80);
+
+    if(player.y>camY+h+40) end();
+    draw();
+  }
+  function draw(){
+    g.fillStyle="#070b16"; g.fillRect(0,0,w,h);
+    // stars
+    g.fillStyle="rgba(244,241,255,.35)";
+    for(let i=0;i<40;i++){
+      const sx=(i*97)%w, sy=((i*53)+(-camY*0.2))%h;
+      g.fillRect(sx, sy<0?sy+h:sy, 2, 2);
+    }
+    plats.forEach(p=>{
+      const y=p.y-camY;
+      if(y<-20||y>h+20) return;
+      g.fillStyle="#c4a6ff"; g.shadowColor="#c4a6ff"; g.shadowBlur=10;
+      g.fillRect(p.x,y,p.ww,p.hh); g.shadowBlur=0;
+      g.fillStyle="rgba(142,233,255,.5)"; g.fillRect(p.x,y,p.ww,3);
+    });
+    const py=player.y-camY;
+    g.fillStyle="#8ee9ff"; g.shadowColor="#8ee9ff"; g.shadowBlur=16;
+    g.beginPath(); g.arc(player.x, py, player.r, 0, Math.PI*2); g.fill(); g.shadowBlur=0;
+  }
+  addEventListener("resize", resize);
+  addEventListener("keydown", e=>{
+    keys[e.key]=true;
+    if(e.key===" "||e.key==="ArrowUp"||e.key==="w"||e.key==="W"){ e.preventDefault(); jump(); }
+  });
+  addEventListener("keyup", e=>{ keys[e.key]=false; });
+  c.addEventListener("pointerdown", e=>{
+    const x=e.clientX;
+    if(x<w/3) keys.ArrowLeft=true;
+    else if(x>2*w/3) keys.ArrowRight=true;
+    else jump();
+  });
+  c.addEventListener("pointerup", ()=>{ keys.ArrowLeft=false; keys.ArrowRight=false; });
+  document.getElementById("again").onclick=()=>reset();
+  window.psBeginGame=function(){ resize(); reset(); };
+  resize();
+  requestAnimationFrame(frame);
+  draw();
+})();
+</script>
+</body></html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Vault Dash</title>
+<style>
+html,body{margin:0;height:100%;background:#070b16;color:#f4f1ff;font-family:system-ui,sans-serif;overflow:hidden}
+canvas{width:100%;height:100%;display:block;touch-action:manipulation;background:#070b16}
+#hud{position:absolute;top:14px;left:16px;right:16px;display:flex;justify-content:space-between;font-weight:800;pointer-events:none;text-shadow:0 2px 8px #000}
+#over{position:absolute;inset:0;display:none;place-items:center;background:rgba(4,8,18,.7)}
+.card{background:#14182c;border:1px solid rgba(142,233,255,.35);border-radius:16px;padding:1.2rem;text-align:center}
+.card button{font:inherit;background:linear-gradient(135deg,#8ee9ff,#c4a6ff);color:#0c1520;border:0;border-radius:999px;padding:.65rem 1.1rem;font-weight:800;min-height:44px;cursor:pointer;margin-top:.5rem}
+#hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:#a8a3c0;font-size:.85rem;pointer-events:none}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="hud"><span id="sc">0</span><span id="spd">speed 1</span></div>
+<div id="hint">Space / tap · jump · hold ↓ or swipe down to slide</div>
+<div id="over"><div class="card"><h1>Run over</h1><p id="os"></p><button id="again" type="button">Dash again</button></div></div>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script>
+(() => {
+  const c=document.getElementById("c"), g=c.getContext("2d");
+  let w,h,dpr, running, last, t, speed, score, player, obstacles, orbs, slideT, groundY;
+
+  function resize(){
+    dpr=Math.min(2,devicePixelRatio||1);
+    w=c.clientWidth||innerWidth; h=c.clientHeight||innerHeight;
+    c.width=Math.floor(w*dpr); c.height=Math.floor(h*dpr);
+    g.setTransform(dpr,0,0,dpr,0,0);
+    groundY=h*0.72;
+  }
+  function reset(){
+    running=true; t=0; speed=280; score=0; slideT=0; last=0;
+    player={x:w*0.22, y:groundY-28, vy:0, on:true, slide:false, r:14};
+    obstacles=[]; orbs=[];
+    document.getElementById("over").style.display="none";
+    hud();
+  }
+  function hud(){
+    document.getElementById("sc").textContent=String(Math.floor(score));
+    document.getElementById("spd").textContent="speed "+(speed/280).toFixed(1);
+  }
+  function jump(){
+    if(!running) return;
+    if(player.on && slideT<=0){ player.vy=-520; player.on=false; }
+  }
+  function startSlide(){
+    if(!running||!player.on) return;
+    slideT=0.55; player.slide=true;
+  }
+  function spawn(){
+    const kind=Math.random()<0.55?"crate":"laser";
+    const x=w+40;
+    if(kind==="crate") obstacles.push({kind, x, y:groundY-26, ww:36, hh:26});
+    else obstacles.push({kind, x, y:groundY-78, ww:18, hh:54});
+    if(Math.random()<0.45) orbs.push({x:x+80, y:groundY-70-Math.random()*50, r:8, got:false});
+  }
+  function hit(a,b){
+    return a.x < b.x+b.ww && a.x+a.ww > b.x && a.y < b.y+b.hh && a.y+a.hh > b.y;
+  }
+  function end(){
+    running=false;
+    const s=Math.floor(score);
+    document.getElementById("os").textContent=s+" points";
+    document.getElementById("over").style.display="grid";
+    psReport("vault-dash", s);
+  }
+  function frame(ts){
+    requestAnimationFrame(frame);
+    if(!last) last=ts;
+    const dt=Math.min(0.033,(ts-last)/1000); last=ts;
+    if(!running){ draw(); return; }
+    t+=dt; speed=280+t*14; score+=dt*speed*0.12;
+    if(Math.random()<dt*(0.7+t*0.04)) spawn();
+
+    player.vy+=1600*dt;
+    player.y+=player.vy*dt;
+    const standH=player.slide?16:28;
+    if(player.y>=groundY-standH){ player.y=groundY-standH; player.vy=0; player.on=true; }
+    if(slideT>0){ slideT-=dt; if(slideT<=0) player.slide=false; }
+
+    const dx=speed*dt;
+    obstacles.forEach(o=>o.x-=dx);
+    orbs.forEach(o=>o.x-=dx);
+    obstacles=obstacles.filter(o=>o.x>-60);
+    orbs=orbs.filter(o=>o.x>-40);
+
+    const pb={x:player.x-12, y:player.y, ww:24, hh:standH};
+    for(const o of obstacles){
+      if(hit(pb,o)){ end(); break; }
+    }
+    orbs.forEach(o=>{
+      if(o.got) return;
+      if(Math.hypot(o.x-player.x, o.y-(player.y+standH/2))<20){ o.got=true; score+=50; }
+    });
+    hud(); draw();
+  }
+  function draw(){
+    const grd=g.createLinearGradient(0,0,0,h);
+    grd.addColorStop(0,"#0a1230"); grd.addColorStop(1,"#070b16");
+    g.fillStyle=grd; g.fillRect(0,0,w,h);
+    // corridor lines
+    g.strokeStyle="rgba(142,233,255,.12)"; g.lineWidth=2;
+    for(let i=0;i<8;i++){
+      const y=groundY-40-i*28;
+      g.beginPath(); g.moveTo(0,y); g.lineTo(w,y); g.stroke();
+    }
+    g.fillStyle="#12182c"; g.fillRect(0,groundY,w,h-groundY);
+    g.fillStyle="rgba(142,233,255,.35)"; g.fillRect(0,groundY,w,3);
+    // neon dashes
+    g.strokeStyle="rgba(196,166,255,.35)"; g.setLineDash([18,22]);
+    g.beginPath(); g.moveTo(0,groundY+18); g.lineTo(w,groundY+18); g.stroke(); g.setLineDash([]);
+
+    obstacles.forEach(o=>{
+      if(o.kind==="crate"){
+        g.fillStyle="#c4a6ff"; g.fillRect(o.x,o.y,o.ww,o.hh);
+        g.fillStyle="rgba(255,255,255,.2)"; g.fillRect(o.x+4,o.y+4,o.ww-8,6);
+      } else {
+        g.fillStyle="#ff7eb6"; g.shadowColor="#ff7eb6"; g.shadowBlur=12;
+        g.fillRect(o.x,o.y,o.ww,o.hh); g.shadowBlur=0;
+      }
+    });
+    orbs.forEach(o=>{
+      if(o.got) return;
+      g.fillStyle="#8ee9ff"; g.shadowColor="#8ee9ff"; g.shadowBlur=10;
+      g.beginPath(); g.arc(o.x,o.y,o.r,0,Math.PI*2); g.fill(); g.shadowBlur=0;
+    });
+    const standH=player.slide?16:28;
+    g.fillStyle="#8ee9ff"; g.shadowColor="#8ee9ff"; g.shadowBlur=14;
+    g.beginPath();
+    if(player.slide) g.ellipse(player.x, player.y+standH/2, 18, 9, 0, 0, Math.PI*2);
+    else {
+      const x=player.x-12,y=player.y,rw=24,rh=standH,r=8;
+      g.moveTo(x+r,y); g.arcTo(x+rw,y,x+rw,y+rh,r); g.arcTo(x+rw,y+rh,x,y+rh,r);
+      g.arcTo(x,y+rh,x,y,r); g.arcTo(x,y,x+rw,y,r); g.closePath();
+    }
+    g.fill(); g.shadowBlur=0;
+  }
+  addEventListener("resize", ()=>{ resize(); if(player) player.y=Math.min(player.y, groundY-28); });
+  addEventListener("keydown", e=>{
+    if(e.key===" "||e.key==="ArrowUp"||e.key==="w"||e.key==="W"){ e.preventDefault(); jump(); }
+    if(e.key==="ArrowDown"||e.key==="s"||e.key==="S"){ e.preventDefault(); startSlide(); }
+  });
+  let touchY=null;
+  c.addEventListener("pointerdown", e=>{ touchY=e.clientY; jump(); });
+  c.addEventListener("pointerup", e=>{
+    if(touchY!=null && e.clientY-touchY>36) startSlide();
+    touchY=null;
+  });
+  document.getElementById("again").onclick=()=>reset();
+  window.psBeginGame=function(){ resize(); reset(); };
+  resize();
+  requestAnimationFrame(frame);
+  draw();
+})();
+</script>
+</body></html>
