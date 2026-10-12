@@ -7,7 +7,7 @@ const isNew = (g, now) => (now - new Date(g.added)) / 864e5 <= 21;
 const featured = () => GAMES.filter((g) => g.featured).sort((a, b) => a.featured - b.featured);
 const byOrder = () => [...featured(), ...GAMES.filter((g) => !g.featured)];
 const genres = () => [...new Set(GAMES.map((g) => g.genre))];
-const playUrl = (g) => `/games/play/${g.slug}.html`;
+const playUrl = (g) => `/games/play/${g.slug}`;
 
 export function home(ctx) {
   const now = ctx.now;

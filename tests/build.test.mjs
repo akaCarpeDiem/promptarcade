@@ -42,6 +42,8 @@ test("all internal links and assets resolve", () => {
       if (u.startsWith("/api/") || u.startsWith("//")) continue;
       let p = out(u);
       if (u.endsWith("/")) p = path.join(p, "index.html");
+      // Pages serves /x from x.html (pretty URL), so an extensionless link to an .html file resolves.
+      if (!fs.existsSync(p) && !path.extname(u) && fs.existsSync(p + ".html")) p += ".html";
       if (!fs.existsSync(p)) missing.push(path.relative(OUT, f) + " → " + u);
     }
   }
