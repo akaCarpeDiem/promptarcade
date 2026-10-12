@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Nebula Drop — PromptArcade</title>
+<style>
+html,body{margin:0;height:100%;background:#03040b;color:#eef0ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#c{display:block;position:fixed;inset:0;cursor:none}
+#nd-side{position:fixed;z-index:30;pointer-events:none;display:flex;flex-direction:column;gap:8px}
+.nd-box{background:rgba(10,12,32,.6);border:1px solid rgba(160,170,255,.18);border-radius:16px;padding:.6rem .8rem;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.nd-box small{display:block;font:700 9px 'JetBrains Mono',monospace;letter-spacing:.18em;text-transform:uppercase;color:#a9b4ff}
+.nd-box b{font:800 22px 'JetBrains Mono',monospace;color:#fff}
+#nd-next canvas{display:block;margin-top:4px}
+#nd-ladder{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:6px}
+#nd-ladder canvas{width:28px;height:28px}
+#nd-ladder canvas.got{filter:drop-shadow(0 0 6px #fff)}
+#nd-ladder canvas:not(.got){opacity:.28}
+</style></head><body>
+<canvas id="c" aria-label="Nebula Drop playfield"></canvas>
+<div id="nd-side">
+  <div class="nd-box"><small>Score</small><b id="nd-score">0</b></div>
+  <div class="nd-box"><small>Best</small><b id="nd-best">0</b></div>
+  <div class="nd-box" id="nd-next"><small>Next</small><canvas id="nd-next-c" width="120" height="120" style="width:60px;height:60px"></canvas></div>
+  <div class="nd-box"><small>Cosmic ladder</small><div id="nd-ladder"></div></div>
+</div>
+<script>
+window.paConfig = {
+  slug: "nebula-drop", title: "Nebula Drop", native: true, music: "space", unit: "points",
+  controls: [["Mouse / touch", "Aim the drop"], ["Click / tap / Space", "Drop"], ["← →", "Aim with keys"]]
+};
+</script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script>
+(() => {
+"use strict";
+const TAU = Math.PI * 2;
+const $ = (id) => document.getElementById(id);
+let view = null, ctx = null;
+const fx = new PA.Particles(1200), texts = new PA.Texts();
+
+/* jar in logical units */
+const JW = 420, JH = 640, TOP_LINE = 92, GRAV = 1650;
+const TIERS = [
+  { name: "Stardust", r: 15, c: ["#fff7c2", "#ffd36b"] },
+  { name: "Pebble", r: 20, c: ["#b9c2d8", "#59627a"] },
+  { name: "Moon", r: 26, c: ["#eceff7", "#8d93a8"] },
+  { name: "Comet", r: 33, c: ["#bff4ff", "#2a9ec2"] },
+  { name: "Ember World", r: 41, c: ["#ffb08a", "#b8402a"] },
+  { name: "Ice Giant", r: 50, c: ["#c8f7ff", "#3b7fd6"] },
+  { name: "Ringed Giant", r: 60, c: ["#ffe2a8", "#c48a3a"] },
+  { name: "Jovian", r: 72, c: ["#ffd4b3", "#a5532e"] },
+  { name: "Sun", r: 86, c: ["#fff9d6", "#ff9d1a"] },
+  { name: "Pulsar", r: 100, c: ["#e5d6ff", "#7b3dff"] },
+  { name: "Black Hole", r: 116, c: ["#000000", "#ff6bd5"] }
+];
+const POINTS = TIERS.map((_, i) => ((i + 1) * (i + 2)) / 2 * 2);
+
+/* ---------- sprites per tier ---------- */
+function seeded(n) { let s = n * 9301 + 49297; return () => ((s = (s * 9301 + 49297) % 233280) / 233280); }
+function makeSprite(i, size) {
+  const T = TIERS[i], c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d"), R = size / 2 - 2, rnd = seeded(i + 3);
+  g.translate(size / 2, size / 2);
+  if (i === 10) {
+    const acc = g.createRadialGradient(0, 0, R * .3, 0, 0, R);
+    acc.addColorStop(0, "#000"); acc.addColorStop(.55, "#000"); acc.addColorStop(.62, "#ffb8f0"); acc.addColorStop(.75, "#ff3dc8"); acc.addColorStop(1, "rgba(120,0,255,0)");
+    g.fillStyle = acc; g.beginPath(); g.arc(0, 0, R, 0, TAU); g.fill();
+    return c;
+  }
+  const gr = g.createRadialGradient(-R * .35, -R * .4, R * .1, 0, 0, R);
+  gr.addColorStop(0, T.c[0]); gr.addColorStop(1, T.c[1]);
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, R, 0, TAU); g.fill();
+  g.save(); g.beginPath(); g.arc(0, 0, R, 0, TAU); g.clip();
+  if (i === 0) { g.fillStyle = "rgba(255,255,255,.8)"; for (let k = 0; k < 8; k++) { g.beginPath(); g.arc((rnd() - .5) * R * 1.4, (rnd() - .5) * R * 1.4, R * .12, 0, TAU); g.fill(); } }
+  if (i === 1 || i === 2) { for (let k = 0; k < (i === 1 ? 5 : 7); k++) { const x = (rnd() - .5) * R * 1.5, y = (rnd() - .5) * R * 1.5, r = R * (.1 + rnd() * .22); g.fillStyle = "rgba(0,0,0,.22)"; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); g.strokeStyle = "rgba(255,255,255,.25)"; g.lineWidth = 1.5; g.beginPath(); g.arc(x - 1, y - 1, r, Math.PI, Math.PI * 1.6); g.stroke(); } }
+  if (i === 3) { g.fillStyle = "rgba(255,255,255,.45)"; for (let k = 0; k < 6; k++) { g.beginPath(); g.ellipse((rnd() - .5) * R, (rnd() - .5) * R, R * .5, R * .12, rnd() * 3, 0, TAU); g.fill(); } }
+  if (i === 4) { g.strokeStyle = "rgba(255,230,120,.7)"; g.lineWidth = 2.5; for (let k = 0; k < 6; k++) { g.beginPath(); let x = (rnd() - .5) * R * 1.6, y = (rnd() - .5) * R * 1.6; g.moveTo(x, y); for (let q = 0; q < 4; q++) { x += (rnd() - .5) * R * .7; y += (rnd() - .5) * R * .7; g.lineTo(x, y); } g.stroke(); } }
+  if (i === 5 || i === 7 || i === 6) {
+    for (let k = -4; k <= 4; k++) { g.fillStyle = k % 2 ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.12)"; g.fillRect(-R, k * R * .22 - R * .08, R * 2, R * (.1 + rnd() * .12)); }
+    if (i === 7) { g.fillStyle = "rgba(200,60,40,.65)"; g.beginPath(); g.ellipse(R * .3, R * .25, R * .26, R * .14, 0, 0, TAU); g.fill(); }
+  }
+  if (i === 8) { for (let k = 0; k < 40; k++) { g.fillStyle = `rgba(255,${180 + rnd() * 70 | 0},60,${rnd() * .5})`; g.beginPath(); g.arc((rnd() - .5) * R * 1.8, (rnd() - .5) * R * 1.8, R * rnd() * .2, 0, TAU); g.fill(); } }
+  if (i === 9) { g.strokeStyle = "rgba(255,255,255,.35)"; g.lineWidth = 2; for (let k = 1; k < 5; k++) { g.beginPath(); g.arc(0, 0, R * k / 5, 0, TAU); g.stroke(); } }
+  // terminator shading
+  const sh = g.createRadialGradient(-R * .4, -R * .45, R * .2, 0, 0, R * 1.05);
+  sh.addColorStop(0, "rgba(255,255,255,.15)"); sh.addColorStop(.7, "rgba(0,0,0,0)"); sh.addColorStop(1, "rgba(0,0,10,.5)");
+  g.fillStyle = sh; g.fillRect(-R, -R, R * 2, R * 2);
+  g.restore();
+  return c;
+}
+const SPR = TIERS.map((T, i) => makeSprite(i, Math.ceil(T.r * 2 * 2) + 4));
+const glow = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"); const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, "rgba(255,255,255,.9)"); gr.addColorStop(.3, "rgba(255,255,255,.25)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return c; })();
+
+/* ---------- starfield ---------- */
+const stars = Array.from({ length: 220 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random(), tw: Math.random() * TAU }));
+const nebula = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 512; const g = c.getContext("2d");
+  const blobs = [["#3b1d8a", .55], ["#0c4f8a", .45], ["#8a1d6b", .35], ["#1d8a7a", .25]];
+  for (let k = 0; k < 18; k++) { const [col, a] = blobs[k % 4]; const x = Math.random() * 512, y = Math.random() * 512, r = 80 + Math.random() * 160; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, col); gr.addColorStop(1, "rgba(0,0,0,0)"); g.globalAlpha = a * .5; g.fillStyle = gr; g.fillRect(0, 0, 512, 512); }
+  return c;
+})();
+
+/* ---------- state ---------- */
+let S = 1, ox = 0, oy = 0;
+let bodies = [], nextId = 1, aimX = JW / 2, curTier = 0, nextTier = 0, dropCd = 0, score = 0, best = 0, combo = 0, comboT = 0;
+let dangerT = 0, over = false, biggest = 0, merges = 0, waves = [], running = false, keyAim = 0, startT = 0;
+try { best = +localStorage.getItem("nd_best") || 0; } catch (e) {}
+$("nd-best").textContent = best.toLocaleString();
+
+function layout(v) {
+  v = v || view;
+  const w = v.w, h = v.h;
+  const sideW = w > h * 0.9 ? 190 : 0;
+  S = Math.min((w - sideW - 30) / (JW + 40), (h - 30) / (JH + 120));
+  ox = (w - sideW - JW * S) / 2 + (sideW ? 0 : 0);
+  oy = (h - JH * S) / 2 + 40 * S;
+  const side = $("nd-side");
+  if (sideW) { side.style.left = (ox + JW * S + 24) + "px"; side.style.top = (oy) + "px"; side.style.right = ""; side.style.flexDirection = "column"; side.style.transform = ""; }
+  else { side.style.left = "8px"; side.style.top = "56px"; side.style.flexDirection = "column"; side.style.transform = "scale(.8)"; side.style.transformOrigin = "top left"; }
+}
+view = PA.canvas($("c"), { onResize: layout });
+ctx = view.ctx;
+
+function randTier() { const r = Math.random(); return r < .32 ? 0 : r < .58 ? 1 : r < .8 ? 2 : r < .94 ? 3 : 4; }
+function reset() {
+  bodies = []; score = 0; combo = 0; dangerT = 0; over = false; biggest = 0; merges = 0; waves = [];
+  curTier = randTier(); nextTier = randTier(); dropCd = 0.2; running = true; startT = performance.now();
+  fx.clear(); texts.clear();
+  paintScore(); paintNext(); paintLadder();
+}
+function paintScore() { PA.stat($("nd-score").parentElement, score.toLocaleString()); $("nd-score").textContent = score.toLocaleString(); }
+function paintNext() {
+  const c = $("nd-next-c").getContext("2d"); c.clearRect(0, 0, 120, 120);
+  const r = TIERS[nextTier].r; const k = Math.min(1, 50 / r);
+  c.drawImage(SPR[nextTier], 60 - r * k, 60 - r * k, r * 2 * k, r * 2 * k);
+}
+function paintLadder() {
+  const el = $("nd-ladder");
+  if (!el.children.length) TIERS.forEach((T, i) => { const c = document.createElement("canvas"); c.width = c.height = 56; c.title = T.name; c.getContext("2d").drawImage(SPR[i], 2, 2, 52, 52); el.appendChild(c); });
+  [...el.children].forEach((c, i) => c.classList.toggle("got", i <= biggest));
+}
+
+function addBody(t, x, y, vx, vy) {
+  const b = { id: nextId++, t, r: TIERS[t].r, x, y, vx: vx || 0, vy: vy || 0, rot: Math.random() * TAU, w: 0, born: performance.now(), settled: 0, m: TIERS[t].r * TIERS[t].r };
+  bodies.push(b); return b;
+}
+function drop() {
+  if (!running || dropCd > 0 || over) return;
+  const r = TIERS[curTier].r;
+  const x = Math.max(r, Math.min(JW - r, aimX));
+  addBody(curTier, x, TOP_LINE - 50, 0, 120).dropped = true;
+  PA.sfx("whoosh", { pitch: 1.6 - curTier * .08, vol: .5 });
+  curTier = nextTier; nextTier = randTier(); dropCd = 0.48;
+  paintNext();
+}
+
+/* ---------- physics ---------- */
+function step(dt) {
+  const SUB = 8, h = dt / SUB;
+  for (let s = 0; s < SUB; s++) {
+    for (const b of bodies) { b.vy += GRAV * h; b.x += b.vx * h; b.y += b.vy * h; }
+    // pairwise contacts
+    for (let i = 0; i < bodies.length; i++) {
+      const a = bodies[i]; if (a.dead) continue;
+      for (let j = i + 1; j < bodies.length; j++) {
+        const b = bodies[j]; if (b.dead) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, rr = a.r + b.r;
+        if (dx * dx + dy * dy >= rr * rr) continue;
+        const d = Math.sqrt(dx * dx + dy * dy) || 0.001, nx = dx / d, ny = dy / d, pen = rr - d;
+        if (a.t === b.t && a.t < TIERS.length && !a.dead && !b.dead) { merge(a, b); continue; }
+        const ia = 1 / a.m, ib = 1 / b.m, sum = ia + ib;
+        const corr = Math.min(pen, 6) * 0.8 / sum;
+        a.x -= nx * corr * ia; a.y -= ny * corr * ia; b.x += nx * corr * ib; b.y += ny * corr * ib;
+        const rvx = b.vx - a.vx, rvy = b.vy - a.vy, vn = rvx * nx + rvy * ny;
+        if (vn < 0) {
+          const jn = -(1 + 0.12) * vn / sum;
+          a.vx -= jn * nx * ia; a.vy -= jn * ny * ia; b.vx += jn * nx * ib; b.vy += jn * ny * ib;
+          // friction along the tangent, also spins the bodies
+          const tx = -ny, ty = nx, vt = rvx * tx + rvy * ty;
+          const jt = Math.max(-jn * 0.25, Math.min(jn * 0.25, -vt / sum));
+          a.vx -= jt * tx * ia; a.vy -= jt * ty * ia; b.vx += jt * tx * ib; b.vy += jt * ty * ib;
+          a.w += vt * 0.002; b.w -= vt * 0.002;
+        }
+      }
+    }
+    // jar walls
+    for (const b of bodies) {
+      if (b.x < b.r) { b.x = b.r; if (b.vx < 0) b.vx *= -0.2; }
+      if (b.x > JW - b.r) { b.x = JW - b.r; if (b.vx > 0) b.vx *= -0.2; }
+      if (b.y > JH - b.r) { b.y = JH - b.r; if (b.vy > 0) b.vy *= -0.15; b.vx *= 0.985; b.w = b.vx / b.r; }
+    }
+    bodies = bodies.filter((b) => !b.dead);
+  }
+  for (const b of bodies) {
+    b.vx *= 0.999; b.rot += (b.w + b.vx / (b.r * 6)) * dt;
+    const sp = Math.hypot(b.vx, b.vy);
+    b.settled = sp < 40 ? b.settled + dt : 0;
+  }
+}
+function merge(a, b) {
+  a.dead = b.dead = true;
+  const t = a.t + 1;
+  const x = (a.x * a.m + b.x * b.m) / (a.m + b.m), y = (a.y * a.m + b.y * b.m) / (a.m + b.m);
+  merges++;
+  combo = comboT > 0 ? combo + 1 : 1; comboT = 1.1;
+  const mult = Math.min(5, 1 + (combo - 1) * 0.5);
+  if (t >= TIERS.length) {
+    // two black holes collapse into a big bang
+    const pts = 2000;
+    score += pts; texts.add(x, y, "BIG BANG +" + pts, { color: "#ff9cf0", size: 34, life: 2.2, vy: -30 });
+    fx.burst(x, y, { n: 180, colors: ["#ff6bd5", "#fff", "#7b3dff", "#5ef2ff"], speed: 700, life: 1.6, size: 6 });
+    PA.sfx("boom"); PA.flash("#ffffff", 600); PA.shake(18, 1);
+    waves.push({ x, y, t: 0, r: 260, c: "#ff6bd5" });
+    paintScore(); return;
+  }
+  const nb = addBody(t, x, y, (a.vx + b.vx) / 2, (a.vy + b.vy) / 2 - 80);
+  nb.pop = 1;
+  const pts = Math.round(POINTS[t] * mult);
+  score += pts;
+  if (t > biggest) {
+    biggest = t; paintLadder();
+    if (t >= 5) { texts.add(x, y - nb.r - 20, TIERS[t].name.toUpperCase() + "!", { color: TIERS[t].c[0], size: 22 + t, life: 1.8, vy: -40 }); PA.flash(TIERS[t].c[1], 260); }
+  }
+  texts.add(x, y, "+" + pts + (combo > 1 ? " ×" + mult.toFixed(1) : ""), { color: combo > 1 ? "#ffe08a" : "#fff", size: 16 + Math.min(14, t * 1.5), life: .9 });
+  fx.burst(x, y, { n: 14 + t * 6, colors: [TIERS[t].c[0], TIERS[t].c[1], "#fff"], speed: 180 + t * 40, life: .6 + t * .05, size: 2 + t * .4 });
+  waves.push({ x, y, t: 0, r: nb.r * 2.2, c: TIERS[t].c[0] });
+  PA.sfx(t >= 7 ? "explode" : "pop", { pitch: 1.5 - t * 0.09 + combo * 0.05, vol: .7 });
+  if (t >= 6) PA.shake(3 + t, .3);
+  paintScore();
+}
+
+/* ---------- input ---------- */
+let pointerIn = false;
+function toJarX(cx) { return (cx - ox) / S; }
+addEventListener("pointermove", (e) => { aimX = toJarX(e.clientX); pointerIn = true; keyAim = 0; });
+addEventListener("pointerdown", (e) => {
+  if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,.pa-tb")) return;
+  aimX = toJarX(e.clientX);
+  if (e.pointerType !== "mouse") { pointerIn = true; } else drop();
+});
+addEventListener("pointerup", (e) => {
+  if (e.pointerType === "mouse") return;
+  if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,.pa-tb")) return;
+  drop();
+});
+PA.onKey((e) => { if (e.code === "Space" || e.code === "Enter" || e.code === "ArrowDown" || e.code === "KeyS") { e.preventDefault(); drop(); } });
+
+/* ---------- loop ---------- */
+function update(dt) {
+  if (PA.state !== "play" || !running) return;
+  const k = (PA.down("ArrowRight", "KeyD") ? 1 : 0) - (PA.down("ArrowLeft", "KeyA") ? 1 : 0);
+  if (k) { aimX += k * 420 * dt; keyAim = 1; }
+  aimX = Math.max(0, Math.min(JW, aimX));
+  dropCd -= dt; comboT -= dt;
+  step(dt);
+  for (const w of waves) w.t += dt;
+  waves = waves.filter((w) => w.t < .6);
+  // danger: a resting body sticking above the line
+  let danger = false;
+  for (const b of bodies) if (!b.dropped || performance.now() - b.born > 1200) { if (b.y - b.r < TOP_LINE && b.settled > 0.25) danger = true; }
+  for (const b of bodies) if (b.dropped && b.y > TOP_LINE + b.r) b.dropped = false;
+  dangerT = danger ? dangerT + dt : Math.max(0, dangerT - dt * 2);
+  if (dangerT > 2.2 && !over) finish();
+  fx.update(dt); texts.update(dt);
+}
+function finish() {
+  over = true; running = false;
+  PA.sfx("gameover"); PA.shake(10, .6);
+  for (const b of bodies) fx.burst(ox + b.x * S, oy + b.y * S, { n: 1, color: TIERS[b.t].c[0] });
+  if (score > best) { best = score; try { localStorage.setItem("nd_best", best); } catch (e) {} $("nd-best").textContent = best.toLocaleString(); }
+  PA.gameOver(score, {
+    kicker: "The nebula overflowed", title: biggest >= 10 ? "Singularity!" : biggest >= 8 ? "Stellar!" : "Run complete",
+    stats: [["Biggest", TIERS[biggest].name], ["Merges", merges], ["Time", Math.round((performance.now() - startT) / 1000) + "s"]]
+  });
+  if (window.paXP) window.paXP.award("nebula-drop", { score, tier: biggest });
+}
+
+function render(t) {
+  const w = view.w, h = view.h;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.fillStyle = "#03040b"; ctx.fillRect(0, 0, w, h);
+  ctx.globalAlpha = .9; ctx.drawImage(nebula, 0, 0, w, h); ctx.globalAlpha = 1;
+  for (const s of stars) { const a = .3 + Math.sin(t * 2 + s.tw) * .3 + s.z * .4; ctx.fillStyle = `rgba(220,230,255,${a})`; ctx.fillRect(s.x * w, ((s.y + t * 0.004 * (s.z + .2)) % 1) * h, 1 + s.z * 1.5, 1 + s.z * 1.5); }
+  const sh = PA.shakeOffset();
+  ctx.save();
+  ctx.translate(ox + sh.x, oy + sh.y); ctx.scale(S, S);
+  // jar
+  const jg = ctx.createLinearGradient(0, 0, 0, JH);
+  jg.addColorStop(0, "rgba(120,130,255,.03)"); jg.addColorStop(1, "rgba(120,130,255,.12)");
+  ctx.fillStyle = jg; roundRect(-6, 0, JW + 12, JH + 6, 18); ctx.fill();
+  ctx.strokeStyle = "rgba(170,180,255,.45)"; ctx.lineWidth = 3; ctx.shadowColor = "#7b8cff"; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.moveTo(-6, -10); ctx.lineTo(-6, JH - 12); ctx.quadraticCurveTo(-6, JH + 6, 12, JH + 6); ctx.lineTo(JW - 12, JH + 6); ctx.quadraticCurveTo(JW + 6, JH + 6, JW + 6, JH - 12); ctx.lineTo(JW + 6, -10); ctx.stroke();
+  ctx.shadowBlur = 0;
+  // danger line
+  const dk = Math.min(1, dangerT / 2.2);
+  ctx.setLineDash([10, 10]); ctx.lineDashOffset = -t * 30;
+  ctx.strokeStyle = dk > 0 ? `rgba(255,${120 - dk * 100},${140 - dk * 120},${.5 + dk * .5 * (Math.sin(t * 20) * .5 + .5)})` : "rgba(255,120,160,.28)";
+  ctx.lineWidth = 2 + dk * 2; ctx.beginPath(); ctx.moveTo(0, TOP_LINE); ctx.lineTo(JW, TOP_LINE); ctx.stroke(); ctx.setLineDash([]);
+
+  // aim guide + held body
+  if (running && PA.state === "play") {
+    const r = TIERS[curTier].r, x = Math.max(r, Math.min(JW - r, aimX));
+    const gy = TOP_LINE - 50;
+    const lg = ctx.createLinearGradient(0, gy, 0, JH);
+    lg.addColorStop(0, "rgba(255,255,255,.22)"); lg.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = lg; ctx.fillRect(x - 1, gy, 2, JH - gy);
+    const ready = dropCd <= 0 ? 1 : .45;
+    ctx.globalAlpha = ready;
+    ctx.save(); ctx.translate(x, gy); ctx.rotate(t * .4); ctx.drawImage(SPR[curTier], -r, -r, r * 2, r * 2); ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+  // bodies
+  ctx.globalCompositeOperation = "lighter";
+  for (const b of bodies) if (b.t >= 8) { const s = b.r * (2.6 + Math.sin(t * 3 + b.id) * .2); ctx.globalAlpha = b.t === 10 ? .55 : .4; ctx.drawImage(glow, b.x - s, b.y - s, s * 2, s * 2); }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  for (const b of bodies) {
+    const age = (performance.now() - b.born) / 1000;
+    const pop = b.pop ? 1 + Math.max(0, .25 - age) * 1.2 * Math.sin(age * 30) : 1;
+    ctx.save(); ctx.translate(b.x, b.y);
+    const r = b.r * pop;
+    if (b.t === 6) { ctx.strokeStyle = "rgba(255,226,168,.75)"; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(0, 0, r * 1.45, r * .38, -.35, Math.PI, TAU); ctx.stroke(); }
+    ctx.rotate(b.t === 10 ? t * 2 : b.rot);
+    ctx.drawImage(SPR[b.t], -r - 1, -r - 1, r * 2 + 2, r * 2 + 2);
+    ctx.rotate(b.t === 10 ? -t * 2 : -b.rot);
+    if (b.t === 6) { ctx.strokeStyle = "rgba(255,226,168,.85)"; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(0, 0, r * 1.45, r * .38, -.35, 0, Math.PI); ctx.stroke(); }
+    if (b.t === 8) { ctx.strokeStyle = `rgba(255,200,80,${.4 + Math.sin(t * 5) * .2})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, r + 4 + Math.sin(t * 4) * 2, 0, TAU); ctx.stroke(); }
+    ctx.restore();
+  }
+  for (const wv of waves) { const k = wv.t / .6; ctx.strokeStyle = wv.c; ctx.globalAlpha = 1 - k; ctx.lineWidth = 6 * (1 - k) + 1; ctx.beginPath(); ctx.arc(wv.x, wv.y, wv.r * (.3 + k), 0, TAU); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+  fx.draw(ctx); texts.draw(ctx);
+  ctx.restore();
+  // danger vignette
+  if (dk > 0) { ctx.fillStyle = `rgba(255,40,90,${dk * .18})`; ctx.fillRect(0, 0, w, h); }
+  // custom cursor dot
+}
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+PA.onStart(reset);
+PA.loop(update, render);
+paintLadder(); paintNext();
+window.__nd = { get bodies() { return bodies; }, drop, set aim(v) { aimX = v; }, get score() { return score; } };
+})();
+</script>
+</body></html>

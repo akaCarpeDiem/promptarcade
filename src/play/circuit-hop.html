@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Circuit Hop — PromptArcade</title>
+<style>
+html,body{margin:0;height:100%;background:#05070f;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;position:fixed;inset:0}
+#ch-hud{opacity:0;transition:opacity .45s ease}
+#ch-hud.on{opacity:1}
+#ch-hud .pa-stat b{color:#7ee7a8}
+#s-chips b{color:#ffd27a}
+</style></head><body>
+<canvas id="c" aria-label="Circuit Hop playfield"></canvas>
+<div class="pa-hud" id="ch-hud">
+  <div class="pa-stat" id="s-score"><small>Score</small><b>0</b></div>
+  <div class="pa-stat" id="s-chips"><small>Chips</small><b>0 / 0</b></div>
+  <div class="pa-stat" id="s-level"><small>Sector</small><b>1</b></div>
+</div>
+<script>
+window.paConfig = {
+  slug: "circuit-hop",
+  title: "Circuit Hop",
+  native: true,
+  music: "platform",
+  unit: "points",
+  controls: [
+    ["← → / A D", "Run"],
+    ["Space / ↑ / W", "Jump"],
+    ["Air + wall + jump", "Wall jump"],
+    ["Touch pads", "Move & jump"]
+  ]
+};
+</script>
+<script src="/games/play/pa-score.js?v=e650da0b4c"></script>
+<script src="/games/play/pa-gate.js?v=e650da0b4c"></script>
+<script src="/games/play/pa-kit.js?v=e650da0b4c"></script>
+<script>
+(() => {
+  const TAU = Math.PI * 2;
+  const { clamp, rand } = PA;
+  const TILE = 32;
+  const COL = {
+    bg: "#05070f",
+    wall: "#1a2244",
+    wallEdge: "#8ee9ff",
+    chip: "#ffd27a",
+    chipCore: "#fff3c4",
+    player: "#8ee9ff",
+    playerCore: "#e8fbff",
+    enemy: "#ff7eb6",
+    laser: "#ff4d6d",
+    laserCore: "#ffb3c1",
+    portal: "#c4a6ff",
+    portalCore: "#8ee9ff"
+  };
+
+  const GRAV = 2400;
+  const MOVE = 340;
+  const JUMP_V = -560;
+  const WALL_JUMP_X = 420;
+  const WALL_JUMP_Y = -540;
+  const MAX_FALL = 980;
+  const COYOTE = 0.095;
+  const JUMP_BUF = 0.12;
+  const PW = 20;
+  const PH = 28;
+
+  /* Handcrafted sectors — # solid · @ spawn · C chip · E exit · M patrol · H/V laser emitters */
+  const LEVELS = [
+    {
+      name: "Relay Lane",
+      rows: [
+        "##########################################",
+        "#........................................#",
+        "#..C..................................C..#",
+        "#..###..............................#####.",
+        "#.....##...M..........C................#E#",
+        "#.......####...........................#.#",
+        "#...........##.........................#.#",
+        "#.@...........####....######...........#.#",
+        "#......................................#.#",
+        "#......................................#.#",
+        "#......................................#.#",
+        "##########################################"
+      ]
+    },
+    {
+      name: "Phase Lock",
+      rows: [
+        "##########################################",
+        "#E.......................................#",
+        "#.##...##...##...##...##...##...##...##..#",
+        "#........................................#",
+        "#..C..............H....................C.#",
+        "#####.......#######.......#######.......##",
+        "#...#.......#.....#.......#.....#.......#.",
+        "#...#...@...#..V..#.......#..V..#.......#.",
+        "#...#########.....#########.....#########.",
+        "#.............####..M....M...............#.",
+        "#........................................#.",
+        "##########################################"
+      ]
+    },
+    {
+      name: "Core Dump",
+      rows: [
+        "##########################################",
+        "#..C...C...C...C...C...C...C...C...C....#",
+        "#.###.###.###.###.###.###.###.###.###..#",
+        "#....................................M..#",
+        "#.@..........H.........H.........H......E#",
+        "#####.......#####.......#####.......#####",
+        "#...#.......#...#.......#...#.......#...#",
+        "#...#...C...#...#...C...#...#...C...#...#",
+        "#...#########...#########...#########...#",
+        "#.........M............M...............#.",
+        "#......................................#.",
+        "##########################################"
+      ]
+    }
+  ];
+
+  let W = 0, H = 0, S = 1, DPR = 1;
+  let levelIdx = 0, levelW = 0, levelH = 0, solids = [];
+  let spawn = { x: 0, y: 0 };
+  let chips = [], enemies = [], lasers = [], exit = null;
+  let player = null, camX = 0, camY = 0;
+  let score = 0, chipsGot = 0, chipsInLevel = 0, simT = 0;
+  let coyote = 0, jumpBuf = 0, wallDir = 0, invuln = 0, banner = null, overSent = false;
+  let totalChipsAll = 0;
+
+  const view = PA.canvas(document.getElementById("c"), { onResize: layout });
+  const ctx = view.ctx;
+  const fx = new PA.Particles(700);
+  const texts = new PA.Texts();
+  const hud = document.getElementById("ch-hud");
+
+  function layout(v) {
+    W = v.w; H = v.h; DPR = v.dpr;
+    S = clamp(Math.sqrt(W * H) / 820, 0.72, 1.35);
+  }
+
+  function paintHud() {
+    PA.stat("s-score", score.toLocaleString());
+    PA.stat("s-chips", chipsGot + " / " + totalChipsAll);
+    PA.stat("s-level", (levelIdx + 1) + " · " + (LEVELS[levelIdx] ? LEVELS[levelIdx].name : "—"));
+  }
+
+  function parseLevel(idx) {
+    const def = LEVELS[idx];
+    const rows = def.rows;
+    levelH = rows.length * TILE;
+    levelW = rows[0].length * TILE;
+    solids = [];
+    chips = [];
+    enemies = [];
+    lasers = [];
+    exit = null;
+    chipsInLevel = 0;
+    for (let y = 0; y < rows.length; y++) {
+      const row = rows[y];
+      for (let x = 0; x < row.length; x++) {
+        const ch = row[x];
+        const wx = x * TILE;
+        const wy = y * TILE;
+        if (ch === "#") solids.push({ x: wx, y: wy, w: TILE, h: TILE });
+        else if (ch === "@") spawn = { x: wx + TILE / 2 - PW / 2, y: wy + TILE - PH - 2 };
+        else if (ch === "C") {
+          chips.push({ x: wx + TILE / 2, y: wy + TILE / 2, r: 10 * S, got: false, ph: rand(TAU) });
+          chipsInLevel++;
+        } else if (ch === "E") exit = { x: wx + 4, y: wy + 4, w: TILE - 8, h: TILE - 8, ph: rand(TAU) };
+        else if (ch === "M") {
+          let standY = wy + TILE - 12 * S;
+          for (let sy = y + 1; sy < rows.length; sy++) {
+            if (rows[sy][x] === "#") {
+              standY = sy * TILE - 12 * S;
+              break;
+            }
+          }
+          enemies.push({
+            x: wx + TILE / 2, y: standY, r: 11 * S,
+            vx: 70 * S, minX: wx + 6, maxX: wx + TILE - 6, dir: 1, ph: rand(TAU)
+          });
+        } else if (ch === "H") {
+          lasers.push({ x: wx + TILE / 2, y: wy + TILE / 2, axis: "h", phase: rand(TAU), len: 0 });
+        } else if (ch === "V") {
+          lasers.push({ x: wx + TILE / 2, y: wy + TILE / 2, axis: "v", phase: rand(TAU), len: 0 });
+        }
+      }
+    }
+    lasers.forEach(buildLaserBeam);
+  }
+
+  function countAllChips() {
+    let n = 0;
+    LEVELS.forEach((L) => {
+      L.rows.forEach((row) => {
+        for (let i = 0; i < row.length; i++) if (row[i] === "C") n++;
+      });
+    });
+    return n;
+  }
+
+  function buildLaserBeam(L) {
+    if (L.axis === "h") {
+      let l = L.x, r = L.x;
+      while (l - TILE >= 0 && !tileSolid(l - TILE, L.y)) l -= TILE;
+      while (r + TILE < levelW && !tileSolid(r + TILE, L.y)) r += TILE;
+      L.x1 = l; L.x2 = r; L.y1 = L.y2 = L.y;
+    } else {
+      let t = L.y, b = L.y;
+      while (t - TILE >= 0 && !tileSolid(L.x, t - TILE)) t -= TILE;
+      while (b + TILE < levelH && !tileSolid(L.x, b + TILE)) b += TILE;
+      L.x1 = L.x2 = L.x; L.y1 = t; L.y2 = b;
+    }
+  }
+
+  function tileSolid(px, py) {
+    const tx = Math.floor(px / TILE) * TILE;
+    const ty = Math.floor(py / TILE) * TILE;
+    return solids.some((s) => s.x === tx && s.y === ty);
+  }
+
+  function resetPlayer() {
+    player = {
+      x: spawn.x, y: spawn.y, vx: 0, vy: 0,
+      w: PW * S, h: PH * S,
+      onGround: false, dead: false
+    };
+    coyote = 0; jumpBuf = 0; wallDir = 0; invuln = 0.6;
+  }
+
+  function loadLevel(idx, keepScore) {
+    levelIdx = idx;
+    parseLevel(idx);
+    resetPlayer();
+    camX = clamp(player.x + player.w / 2 - W / 2, 0, Math.max(0, levelW - W));
+    camY = clamp(player.y + player.h / 2 - H / 2, 0, Math.max(0, levelH - H));
+    if (!keepScore) {
+      score = 0; chipsGot = 0;
+      chips.forEach((c) => { c.got = false; });
+    }
+    banner = { text: "Sector " + (idx + 1), sub: LEVELS[idx].name, t: 0, max: 2.2 };
+    paintHud();
+  }
+
+  function reset() {
+    simT = 0; overSent = false;
+    totalChipsAll = countAllChips();
+    loadLevel(0, false);
+    hud.classList.add("on");
+    PA.music.intensity(0.15);
+  }
+
+  PA.onStart(reset);
+
+  PA.touchControls({
+    left: [{ label: "◀", key: "ArrowLeft", code: "ArrowLeft", aria: "Move left" }],
+    right: [{ label: "▶", key: "ArrowRight", code: "ArrowRight", aria: "Move right" }],
+    center: [{ label: "JUMP", key: " ", code: "Space", wide: true, aria: "Jump" }]
+  });
+
+  function requestJump() {
+    jumpBuf = JUMP_BUF;
+  }
+
+  PA.onKey((e) => {
+    if (e.repeat) return;
+    const k = e.key, c = e.code;
+    if (k === " " || c === "Space" || k === "ArrowUp" || c === "KeyW" || k === "w" || k === "W") {
+      e.preventDefault();
+      requestJump();
+    }
+  });
+
+  function tryJump() {
+    if (!player || player.dead) return;
+    if (jumpBuf <= 0) return;
+    const wall = wallDir;
+    if (player.onGround || coyote > 0) {
+      player.vy = JUMP_V * S;
+      player.onGround = false;
+      coyote = 0;
+      jumpBuf = 0;
+      PA.sfx("whoosh", { pitch: 1.05, vol: 0.55 });
+      PA.tone({ freq: 420, to: 620, type: "triangle", dur: 0.06, vol: 0.05 });
+      fx.burst(player.x + player.w / 2, player.y + player.h, { n: 5, color: COL.player, speed: 60, life: 0.25, size: 2, vy: -20 });
+    } else if (wall) {
+      player.vy = WALL_JUMP_Y * S;
+      player.vx = WALL_JUMP_X * S * -wall;
+      jumpBuf = 0;
+      coyote = 0;
+      wallDir = 0;
+      PA.sfx("whoosh", { pitch: 1.18, vol: 0.6 });
+      PA.tone({ freq: 520, to: 780, type: "square", dur: 0.05, vol: 0.045 });
+      fx.burst(wall > 0 ? player.x + player.w : player.x, player.y + player.h * 0.5, {
+        n: 8, color: COL.wallEdge, speed: 90, life: 0.3, size: 2.2
+      });
+    }
+  }
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  function playerBox(p) {
+    return { x: p.x, y: p.y, w: p.w, h: p.h };
+  }
+
+  function moveAxis(p, dx, dy) {
+    p.x += dx;
+    for (const s of solids) {
+      if (!rectsOverlap(playerBox(p), s)) continue;
+      if (dx > 0) p.x = s.x - p.w - 0.01;
+      else if (dx < 0) p.x = s.x + s.w + 0.01;
+    }
+    p.y += dy;
+    p.onGround = false;
+    for (const s of solids) {
+      if (!rectsOverlap(playerBox(p), s)) continue;
+      if (dy > 0) {
+        p.y = s.y - p.h - 0.01;
+        p.vy = 0;
+        p.onGround = true;
+      } else if (dy < 0) {
+        p.y = s.y + s.h + 0.01;
+        p.vy = 0;
+      }
+    }
+  }
+
+  function senseWalls(p) {
+    wallDir = 0;
+    const pad = 2 * S;
+    const left = { x: p.x - pad, y: p.y + 4 * S, w: pad, h: p.h - 8 * S };
+    const right = { x: p.x + p.w, y: p.y + 4 * S, w: pad, h: p.h - 8 * S };
+    for (const s of solids) {
+      if (rectsOverlap(left, s) && !p.onGround) wallDir = -1;
+      if (rectsOverlap(right, s) && !p.onGround) wallDir = 1;
+    }
+    if (p.onGround) wallDir = 0;
+  }
+
+  function killPlayer() {
+    if (invuln > 0 || player.dead) return;
+    player.dead = true;
+    PA.shake(12 * S, 0.45);
+    PA.hitstop(90);
+    PA.flash("rgba(255,77,109,.35)", 280);
+    PA.sfx("explode", { pitch: 0.85, vol: 0.65 });
+    fx.burst(player.x + player.w / 2, player.y + player.h / 2, {
+      n: 36, colors: [COL.player, COL.enemy, COL.laser, "#fff"], speed: 220, life: 0.65, size: 3, shape: "spark"
+    });
+    texts.add(player.x + player.w / 2, player.y, "FRIED", { color: COL.laser, size: 22 * S, life: 0.75, vy: -40 });
+    setTimeout(() => {
+      if (PA.state !== "play") return;
+      resetPlayer();
+      player.dead = false;
+    }, 420);
+  }
+
+  function collectChip(c) {
+    if (c.got) return;
+    c.got = true;
+    chipsGot++;
+    const pts = 400;
+    score += pts;
+    PA.sfx("coin", { pitch: 1 + (chipsGot % 8) * 0.04 });
+    PA.tone({ freq: 880, to: 1320, type: "sine", dur: 0.08, vol: 0.05 });
+    fx.burst(c.x, c.y, { n: 14, color: COL.chip, speed: 120, life: 0.45, size: 2.5 });
+    texts.add(c.x, c.y - 8, "+" + pts, { color: COL.chip, size: 16 * S, life: 0.65, vy: -50 });
+    paintHud();
+    PA.music.intensity(clamp(0.15 + chipsGot / Math.max(1, totalChipsAll) * 0.55, 0.15, 0.85));
+  }
+
+  function laserActive(L, t) {
+    const cycle = 2.4;
+    const u = ((t + L.phase) % cycle) / cycle;
+    return u < 0.62;
+  }
+
+  function hitLaser(p, t) {
+    const cx = p.x + p.w / 2;
+    const cy = p.y + p.h / 2;
+    for (const L of lasers) {
+      if (!laserActive(L, t)) continue;
+      const thick = 6 * S;
+      if (L.axis === "h") {
+        if (Math.abs(cy - L.y) < thick + p.h * 0.35 && cx >= L.x1 - 4 && cx <= L.x2 + 4) return true;
+      } else if (Math.abs(cx - L.x) < thick + p.w * 0.35 && cy >= L.y1 - 4 && cy <= L.y2 + 4) return true;
+    }
+    return false;
+  }
+
+  function completeLevel() {
+    const bonus = 1800 + chips.filter((c) => c.got).length * 120;
+    score += bonus;
+    paintHud();
+    PA.sfx("levelup");
+    PA.flash("rgba(142,233,255,.22)", 320);
+    texts.add(player.x, player.y - 20, "SECTOR CLEAR", { color: COL.portal, size: 20 * S, life: 1.1, vy: -35 });
+    if (levelIdx + 1 >= LEVELS.length) {
+      if (overSent) return;
+      overSent = true;
+      hud.classList.remove("on");
+      PA.gameOver(score, {
+        title: "Circuit synced",
+        stats: [
+          ["Chips", chipsGot + " / " + totalChipsAll],
+          ["Sectors", LEVELS.length],
+          ["Final score", score]
+        ]
+      });
+      return;
+    }
+    loadLevel(levelIdx + 1, true);
+  }
+
+  function onExit() {
+    completeLevel();
+  }
+
+  function update(dt, t) {
+    simT = t;
+    fx.update(dt);
+    texts.update(dt);
+    if (banner) banner.t += dt;
+
+    if (PA.state !== "play" || !player || player.dead) return;
+
+    if (invuln > 0) invuln -= dt;
+
+    const left = PA.down("ArrowLeft", "KeyA", "a");
+    const right = PA.down("ArrowRight", "KeyD", "d");
+    const targetVx = (right ? 1 : 0) - (left ? 1 : 0);
+    player.vx = targetVx * MOVE * S;
+    if (targetVx && player.onGround) {
+      player.vx += targetVx * 40 * S;
+    }
+
+    player.vy = clamp(player.vy + GRAV * S * dt, -9999, MAX_FALL * S);
+    if (jumpBuf > 0) jumpBuf -= dt;
+    tryJump();
+
+    moveAxis(player, player.vx * dt, player.vy * dt);
+    if (player.onGround) coyote = COYOTE;
+    else coyote = Math.max(0, coyote - dt);
+
+    senseWalls(player);
+
+    for (const e of enemies) {
+      e.x += e.vx * dt * e.dir;
+      if (e.x <= e.minX) { e.x = e.minX; e.dir = 1; }
+      if (e.x >= e.maxX) { e.x = e.maxX; e.dir = -1; }
+      e.ph += dt * 4;
+      const dx = (player.x + player.w / 2) - e.x;
+      const dy = (player.y + player.h / 2) - e.y;
+      if (dx * dx + dy * dy < (e.r + Math.min(player.w, player.h) * 0.45) ** 2) killPlayer();
+    }
+
+    for (const c of chips) {
+      if (c.got) continue;
+      c.ph += dt * 3;
+      const dx = (player.x + player.w / 2) - c.x;
+      const dy = (player.y + player.h / 2) - c.y;
+      if (dx * dx + dy * dy < (c.r + 12 * S) ** 2) collectChip(c);
+    }
+
+    if (exit && rectsOverlap(playerBox(player), exit)) onExit();
+
+    if (hitLaser(player, t)) killPlayer();
+
+    const cx = player.x + player.w / 2;
+    camX += (clamp(cx - W / 2, 0, Math.max(0, levelW - W)) - camX) * clamp(dt * 9, 0, 1);
+    const cy = player.y + player.h / 2;
+    camY += (clamp(cy - H / 2, 0, Math.max(0, levelH - H)) - camY) * clamp(dt * 7, 0, 1);
+
+    if (player.y > levelH + 80) killPlayer();
+  }
+
+  function drawTile(s) {
+    const x = s.x - camX, y = s.y - camY;
+    if (x + s.w < -8 || x > W + 8 || y + s.h < -8 || y > H + 8) return;
+    ctx.fillStyle = COL.wall;
+    ctx.fillRect(x, y, s.w, s.h);
+    ctx.fillStyle = "rgba(142,233,255,.22)";
+    ctx.fillRect(x, y, s.w, 3);
+    ctx.strokeStyle = "rgba(196,166,255,.35)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, s.w - 1, s.h - 1);
+  }
+
+  function drawChip(c, t) {
+    if (c.got) return;
+    const x = c.x - camX, y = c.y - camY + Math.sin(c.ph) * 3 * S;
+    if (x < -20 || x > W + 20 || y < -20 || y > H + 20) return;
+    const r = c.r + Math.sin(t * 4 + c.ph) * 1.2 * S;
+    ctx.save();
+    ctx.shadowColor = COL.chip;
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = COL.chip;
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r * 0.85, y);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r * 0.85, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = COL.chipCore;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.35, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawEnemy(e, t) {
+    const x = e.x - camX, y = e.y - camY;
+    ctx.save();
+    ctx.shadowColor = COL.enemy;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = COL.enemy;
+    ctx.beginPath();
+    ctx.arc(x, y, e.r, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(x - 4 * S, y - 2 * S, 3 * S, 3 * S);
+    ctx.fillRect(x + 1 * S, y - 2 * S, 3 * S, 3 * S);
+    ctx.restore();
+  }
+
+  function drawLaser(L, t) {
+    const on = laserActive(L, t);
+    const pulse = 0.55 + 0.45 * Math.sin(t * 8 + L.phase);
+    const x1 = L.x1 - camX, x2 = L.x2 - camX;
+    const y1 = L.y1 - camY, y2 = L.y2 - camY;
+    ctx.save();
+    ctx.globalAlpha = on ? 0.85 : 0.18;
+    ctx.strokeStyle = on ? COL.laser : "rgba(255,77,109,.35)";
+    ctx.lineWidth = (on ? 5 : 2) * S;
+    ctx.shadowColor = COL.laser;
+    ctx.shadowBlur = on ? 18 * pulse : 4;
+    ctx.beginPath();
+    if (L.axis === "h") {
+      ctx.moveTo(x1, L.y - camY);
+      ctx.lineTo(x2, L.y - camY);
+    } else {
+      ctx.moveTo(L.x - camX, y1);
+      ctx.lineTo(L.x - camX, y2);
+    }
+    ctx.stroke();
+    ctx.fillStyle = COL.laserCore;
+    ctx.beginPath();
+    ctx.arc(L.x - camX, L.y - camY, 4 * S, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawExit(e, t) {
+    const x = e.x - camX, y = e.y - camY;
+    const cx = x + e.w / 2, cy = y + e.h / 2;
+    const r = e.w * 0.42 + Math.sin(t * 3 + e.ph) * 2 * S;
+    ctx.save();
+    ctx.shadowColor = COL.portal;
+    ctx.shadowBlur = 20;
+    const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+    g.addColorStop(0, COL.portalCore);
+    g.addColorStop(0.55, COL.portal);
+    g.addColorStop(1, "rgba(196,166,255,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.55)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.65, t * 2, t * 2 + TAU * 0.7);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPlayer(p, t) {
+    const x = p.x - camX, y = p.y - camY;
+    if (invuln > 0 && Math.floor(t * 20) % 2 === 0) ctx.globalAlpha = 0.45;
+    ctx.save();
+    ctx.shadowColor = COL.player;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = COL.player;
+    roundRect(x, y, p.w, p.h, 6 * S);
+    ctx.fill();
+    ctx.fillStyle = COL.playerCore;
+    ctx.fillRect(x + 4 * S, y + 6 * S, p.w - 8 * S, 5 * S);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0a0e22");
+    g.addColorStop(0.55, "#0c1230");
+    g.addColorStop(1, "#140a1c");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(244,241,255,.25)";
+    for (let i = 0; i < 55; i++) {
+      const sx = (i * 173 + camX * 0.08) % W;
+      const sy = (i * 97 + camY * 0.05) % (H * 0.85);
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+  }
+
+  function drawBanner(t) {
+    if (!banner || banner.t > banner.max) return;
+    const k = banner.t / banner.max;
+    const a = k < 0.12 ? k / 0.12 : k > 0.78 ? (1 - k) / 0.22 : 1;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.textAlign = "center";
+    ctx.font = "600 " + Math.round(26 * S) + "px Manrope, system-ui, sans-serif";
+    ctx.fillStyle = "#8ee9ff";
+    ctx.shadowColor = "#c4a6ff";
+    ctx.shadowBlur = 16;
+    ctx.fillText(banner.text, W / 2, H * 0.28);
+    ctx.font = "500 " + Math.round(13 * S) + "px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "#c4a6ff";
+    ctx.fillText(banner.sub.toUpperCase().split("").join(" "), W / 2, H * 0.28 + 28 * S);
+    ctx.restore();
+  }
+
+  function render(t) {
+    const sh = PA.shakeOffset();
+    ctx.setTransform(DPR, 0, 0, DPR, DPR * sh.x, DPR * sh.y);
+    drawBackground();
+    solids.forEach(drawTile);
+    lasers.forEach((L) => drawLaser(L, t));
+    if (exit) drawExit(exit, t);
+    chips.forEach((c) => drawChip(c, t));
+    enemies.forEach((e) => drawEnemy(e, t));
+    if (player) drawPlayer(player, t);
+    fx.draw(ctx);
+    texts.draw(ctx);
+    drawBanner(t);
+    if (PA.state === "play" && player && !player.dead && banner && banner.t > 0.5) {
+      ctx.fillStyle = "rgba(168,163,192,.75)";
+      ctx.font = "500 " + Math.round(12 * S) + "px Manrope, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Collect data chips · reach the portal", W / 2, H - 24 * S);
+    }
+  }
+
+  window.__chop = () => ({
+    score,
+    level: levelIdx + 1,
+    levelName: LEVELS[levelIdx] ? LEVELS[levelIdx].name : null,
+    chips: chipsGot,
+    chipsTotal: totalChipsAll,
+    chipsLevel: chips.filter((c) => c.got).length,
+    chipsLevelTotal: chipsInLevel,
+    x: player ? player.x : 0,
+    y: player ? player.y : 0,
+    vx: player ? player.vx : 0,
+    vy: player ? player.vy : 0,
+    onGround: !!(player && player.onGround),
+    coyote,
+    jumpBuf,
+    wallDir,
+    invuln,
+    camX,
+    camY,
+    alive: !!(player && !player.dead),
+    enemies: enemies.length,
+    lasers: lasers.length,
+    overSent,
+    simT
+  });
+
+  PA.loop(update, render);
+})();
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"a350f886e6974df098681db56e5946d2","r":1,"spa":2}' crossorigin="anonymous"></script>
+</body></html>

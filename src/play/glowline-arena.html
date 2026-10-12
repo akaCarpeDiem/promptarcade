@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Glowline Arena — PromptArcade</title>
+<style>
+html,body{margin:0;height:100%;background:#04050c;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none;cursor:crosshair}
+canvas{display:block}
+#c{position:fixed;inset:0}
+.ga-panel{position:fixed;z-index:31;pointer-events:none;font:600 12px/1.35 Manrope,system-ui,sans-serif;color:#dfe6ff;background:rgba(6,9,22,.55);border:1px solid rgba(142,233,255,.16);border-radius:14px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#ga-lb{top:58px;right:10px;width:196px;padding:.55rem .7rem .6rem}
+#ga-lb h3{margin:0 0 .35rem;font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.18em;text-transform:uppercase;color:#8ee9ff;display:flex;justify-content:space-between}
+#ga-lb ol{margin:0;padding:0;list-style:none;counter-reset:r}
+#ga-lb li{display:flex;gap:.45rem;align-items:center;padding:1px 0;white-space:nowrap;overflow:hidden}
+#ga-lb li i{font-style:normal;width:16px;color:#8b93b8;font:600 11px 'JetBrains Mono',monospace}
+#ga-lb li span{flex:1;overflow:hidden;text-overflow:ellipsis}
+#ga-lb li b{font:600 11px 'JetBrains Mono',monospace;color:#fff}
+#ga-lb li.me{color:#ffe08a}#ga-lb li.me b{color:#ffe08a}
+#ga-lb li u{width:8px;height:8px;border-radius:50%;flex:none;text-decoration:none}
+#ga-mode{top:10px;left:10px;padding:.42rem .7rem;display:flex;align-items:center;gap:.5rem}
+#ga-mode .dot{width:8px;height:8px;border-radius:50%;background:#ffb86b;box-shadow:0 0 10px #ffb86b}
+#ga-mode.online .dot{background:#5dffb0;box-shadow:0 0 10px #5dffb0;animation:gap 1.6s infinite}
+@keyframes gap{50%{opacity:.4}}
+#ga-me{left:10px;bottom:12px;padding:.5rem .8rem;display:flex;gap:1rem;opacity:0;transition:opacity .4s}
+#ga-me.on{opacity:1}
+#ga-me div small{display:block;font:600 9px 'JetBrains Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:#8ee9ff}
+#ga-me div b{font:700 17px 'JetBrains Mono',monospace;color:#fff}
+#ga-feed{position:fixed;left:10px;top:52px;z-index:31;pointer-events:none;display:flex;flex-direction:column;gap:4px;max-width:60vw}
+#ga-feed div{font:600 12px Manrope,sans-serif;color:#c9d2f5;background:rgba(6,9,22,.5);padding:.25rem .6rem;border-radius:999px;width:max-content;max-width:100%;animation:gf 4.5s forwards}
+#ga-feed div.me{color:#ffe08a;border:1px solid rgba(255,224,138,.35)}
+@keyframes gf{0%{opacity:0;transform:translateX(-12px)}8%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
+#ga-mini{position:fixed;right:12px;bottom:12px;z-index:31;width:130px;height:130px;pointer-events:none;border-radius:50%;background:rgba(6,9,22,.55);border:1px solid rgba(142,233,255,.18)}
+#ga-skin{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:.6rem;background:rgba(6,9,22,.78);border:1px solid rgba(142,233,255,.25);border-radius:999px;padding:.35rem .5rem;transition:opacity .3s}
+#ga-skin.off{opacity:0;pointer-events:none}
+#ga-skin button{width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;font-size:15px;cursor:pointer}
+#ga-skin canvas{position:static;width:120px;height:34px}
+#ga-skin small{font:600 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:#8ee9ff;text-transform:uppercase;padding-right:.4rem}
+#ga-boost{position:fixed;right:150px;bottom:24px;z-index:42;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,224,138,.55);background:rgba(255,224,138,.12);color:#ffe08a;font:800 12px Manrope,sans-serif;letter-spacing:.08em;display:none;touch-action:none}
+#ga-boost.on{background:rgba(255,224,138,.35)}
+@media (pointer:coarse){#ga-boost{display:block}#ga-lb{width:150px;font-size:11px}#ga-mini{width:100px;height:100px}#ga-boost{right:122px}}
+@media (max-width:560px){#ga-lb li:nth-child(n+6){display:none}}
+</style></head><body>
+<canvas id="c" aria-label="Glowline Arena playfield"></canvas>
+<div class="ga-panel" id="ga-mode"><span class="dot"></span><span id="ga-mode-t">Connecting…</span></div>
+<div id="ga-feed" aria-live="polite"></div>
+<div class="ga-panel" id="ga-lb"><h3><span>Leaderboard</span><span id="ga-count"></span></h3><ol id="ga-lb-list"></ol></div>
+<div class="ga-panel" id="ga-me"><div><small>Length</small><b id="ga-len">0</b></div><div><small>Rank</small><b id="ga-rank">–</b></div><div><small>Kills</small><b id="ga-kills">0</b></div></div>
+<canvas id="ga-mini" width="260" height="260"></canvas>
+<div id="ga-skin"><button type="button" id="ga-skin-prev" aria-label="Previous skin">◀</button><canvas id="ga-skin-c" width="240" height="68"></canvas><button type="button" id="ga-skin-next" aria-label="Next skin">▶</button><small id="ga-skin-n">Skin 1</small></div>
+<button type="button" id="ga-boost" aria-label="Boost">BOOST</button>
+<script>
+window.paConfig = {
+  slug: "glowline-arena", title: "Glowline Arena", native: true, music: "synth", unit: "length", pauseOnBlur: false,
+  arena: "wss://arena.promptarcade.games/room",
+  controls: [["Mouse", "Steer toward the cursor"], ["Hold click / Space", "Boost (costs length)"], ["← → / A D", "Steer with keys"], ["Touch", "Point to steer · BOOST button"]]
+};
+</script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script type="module">
+import { Sim, TICK_HZ, lengthFor, radiusFor, SKINS } from "/games/play/arena/sim.js";
+import { decodeFrame } from "/games/play/arena/proto.js";
+
+const TAU = Math.PI * 2;
+const FRAME_MS = 1000 / TICK_HZ;
+const cfg = window.paConfig;
+const qs = new URLSearchParams(location.search);
+
+/* ---------------- palettes ---------------- */
+const SKIN = [
+  ["#5ef2ff", "#1b6dff", "#bff9ff"], ["#ff5ca8", "#8a2be2", "#ffc2e0"], ["#ffd84d", "#ff7a1a", "#fff3b8"],
+  ["#5dff9e", "#00a37a", "#c9ffe0"], ["#c77dff", "#3b1dff", "#ead4ff"], ["#ff6b6b", "#7a1030", "#ffd0d0"],
+  ["#ffffff", "#5ef2ff", "#ffffff"], ["#ff9f43", "#2e1a47", "#ffd9b0"], ["#00ffd5", "#ff00a0", "#c9fff5"],
+  ["#a3ff3c", "#1f5f00", "#e6ffc9"], ["#6ea8ff", "#ffffff", "#d6e5ff"], ["#ff3df2", "#00e1ff", "#ffd0fb"]
+];
+const FOODC = ["#5ef2ff", "#ff5ca8", "#ffd84d", "#5dff9e", "#c77dff", "#ff8a5c", "#7aa8ff", "#ffffff"];
+
+/* ---------------- DOM ---------------- */
+const $ = (id) => document.getElementById(id);
+const view = PA.canvas($("c"));
+const ctx = view.ctx;
+const mini = $("ga-mini").getContext("2d");
+const fx = new PA.Particles(1400);
+const texts = new PA.Texts();
+
+/* glow sprites for food, one per colour */
+const sprites = FOODC.map((c) => {
+  const s = document.createElement("canvas"); s.width = s.height = 64;
+  const g = s.getContext("2d");
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, "#ffffff"); gr.addColorStop(0.18, c); gr.addColorStop(0.45, c + "66"); gr.addColorStop(1, c + "00");
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return s;
+});
+/* hex grid tile */
+const hexTile = (() => {
+  const r = 34, w = Math.sqrt(3) * r, h = 3 * r;
+  const s = document.createElement("canvas"); s.width = Math.round(w); s.height = Math.round(h);
+  const g = s.getContext("2d");
+  g.strokeStyle = "rgba(120,150,255,.09)"; g.lineWidth = 1.5;
+  const hex = (cx, cy) => { g.beginPath(); for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } g.closePath(); g.stroke(); };
+  hex(0, 0); hex(w, 0); hex(w / 2, h / 2); hex(0, h); hex(w, h);
+  return s;
+})();
+let hexPattern = null;
+
+/* ---------------- world state (fed by frames) ---------------- */
+const W = { snakes: new Map(), food: new Map(), worldR: 2600, me: 0, lb: [], tick: 0 };
+let mode = "connecting", online = 0, net = null;
+let lastApply = 0, queue = [];
+let myStats = null; // {peak, kills, born, bestRank}
+let skin = 0;
+try { skin = (parseInt(localStorage.getItem("ga_skin") || "", 10) || ((Math.random() * SKINS) | 0)) % SKINS; } catch (e) {}
+
+function applySnapshot(snap) {
+  W.snakes.clear(); W.food.clear(); W.worldR = snap.worldR; W.tick = snap.tick;
+  for (const s of snap.snakes) addSnake(s);
+  for (const f of snap.food) W.food.set(f[0], { x: f[1], y: f[2], v: f[3], c: f[4], born: 0, eat: 0 });
+  queue = [];
+}
+function addSnake(d) {
+  const n = d.pts.length;
+  W.snakes.set(d.id, {
+    id: d.id, name: d.name, skin: d.skin, bot: d.bot, m: d.m, pm: d.m, a: d.a, pa: d.a,
+    pts: d.pts.slice(), x: d.pts[n - 2], y: d.pts[n - 1], px: d.pts[n - 2], py: d.pts[n - 1], boost: 0, born: performance.now()
+  });
+}
+function applyFrame(ev) {
+  W.tick = ev.tick;
+  for (const d of ev.add) if (!W.snakes.has(d.id)) addSnake(d);
+  const seen = new Set();
+  for (const h of ev.heads) {
+    const s = W.snakes.get(h[0]);
+    if (!s) continue;
+    seen.add(h[0]);
+    s.px = s.x; s.py = s.y; s.pa = s.a; s.pm = s.m;
+    s.x = h[1]; s.y = h[2]; s.a = h[3]; s.m = h[4]; s.boost = h[5] & 1;
+    s.pts.push(s.x, s.y);
+    // trim generously; exact length is applied while drawing
+    const L = lengthFor(s.m) + 60;
+    let acc = 0;
+    for (let i = s.pts.length - 2; i >= 2; i -= 2) {
+      acc += Math.hypot(s.pts[i] - s.pts[i - 2], s.pts[i + 1] - s.pts[i - 1]);
+      if (acc > L) { s.pts.splice(0, i - 2); break; }
+    }
+    if (s.id === W.me && myStats) {
+      if (s.m > myStats.peak) myStats.peak = s.m;
+      if (s.boost && Math.random() < 0.5) fx.burst(s.pts[0] + (Math.random() - .5) * 10, s.pts[1] + (Math.random() - .5) * 10, { n: 1, color: SKIN[s.skin][0], speed: 30, life: .5, size: 3 });
+    }
+  }
+  const now = performance.now();
+  for (const e of ev.eat) {
+    const f = W.food.get(e[0]);
+    if (!f) continue;
+    if (e[1]) { f.eat = now; f.by = e[1]; if (e[1] === W.me) { PA.sfx("pop", { pitch: 0.9 + Math.min(1, f.v / 10) + Math.random() * 0.15, vol: 0.5 }); } }
+    else W.food.delete(e[0]);
+  }
+  for (const f of ev.food) W.food.set(f[0], { x: f[1], y: f[2], v: f[3], c: f[4], born: now, eat: 0 });
+  for (const d of ev.del) onDeath(d);
+  if (ev.lb) { W.lb = ev.lb; paintBoard(); }
+}
+
+function onDeath(d) {
+  const [id, killer, cause, peak, kills, ticks] = d;
+  const s = W.snakes.get(id);
+  W.snakes.delete(id);
+  if (!s) return;
+  if (cause !== "retired" && cause !== "left") {
+    const c = SKIN[s.skin];
+    const p = s.pts, step = Math.max(2, Math.floor(p.length / 2 / 40)) * 2;
+    if (onScreen(s.x, s.y, 600)) for (let i = 0; i < p.length; i += step) fx.burst(p[i], p[i + 1], { n: 3, colors: [c[0], c[2]], speed: 160, life: .7, size: 4 });
+  }
+  const k = killer ? W.snakes.get(killer) : null;
+  if (id === W.me) {
+    W.me = 0;
+    PA.sfx("explode"); PA.shake(10, .5); PA.flash("#ff5ca8", 260);
+    camHold = { x: s.x, y: s.y, until: performance.now() + 1500, follow: killer };
+    const alive = (performance.now() - myStats.born) / 1000;
+    const how = cause === "wall" ? "Hit the arena wall" : k ? "Cut off by " + k.name : "Crashed out";
+    setTimeout(() => {
+      PA.gameOver(Math.round(myStats.peak), {
+        kicker: how, title: myStats.peak >= 500 ? "Monster run!" : myStats.peak >= 150 ? "Great run" : "Run over",
+        unit: "length",
+        stats: [["Peak length", Math.round(myStats.peak)], ["Kills", myStats.kills], ["Survived", fmtTime(alive)], ["Best rank", myStats.bestRank === 99 ? "–" : "#" + myStats.bestRank]]
+      });
+      if (window.paXP) window.paXP.award("glowline-arena", { score: Math.round(myStats.peak), kills: myStats.kills });
+    }, 900);
+    $("ga-me").classList.remove("on");
+    feed(how, true);
+  } else if (killer && killer === W.me) {
+    myStats.kills++;
+    $("ga-kills").textContent = myStats.kills;
+    PA.sfx("combo"); PA.shake(4, .2);
+    texts.add(s.x, s.y - 30, "+" + s.name.toUpperCase(), { color: "#ffe08a", size: 20, life: 1.2 });
+    feed("You cut off " + s.name + "!", true);
+  } else if (k && peak > 120 && (cause === "cut")) {
+    feed(k.name + " cut off " + s.name);
+  }
+}
+const fmtTime = (s) => (s >= 60 ? Math.floor(s / 60) + "m " : "") + Math.round(s % 60) + "s";
+function feed(msg, me) {
+  const el = document.createElement("div");
+  el.textContent = msg; if (me) el.className = "me";
+  $("ga-feed").prepend(el);
+  setTimeout(() => el.remove(), 4600);
+  while ($("ga-feed").children.length > 4) $("ga-feed").lastChild.remove();
+}
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function paintBoard() {
+  let html = "", meIn = false, rank = 0;
+  const all = [...W.snakes.values()].sort((a, b) => b.m - a.m);
+  rank = W.me ? all.findIndex((s) => s.id === W.me) + 1 : 0;
+  W.lb.forEach(([id, m], i) => {
+    const s = W.snakes.get(id);
+    if (!s) return;
+    const me = id === W.me; if (me) meIn = true;
+    html += `<li class="${me ? "me" : ""}"><i>${i + 1}</i><u style="background:${SKIN[s.skin][0]}"></u><span>${esc(s.name)}${s.bot ? "" : " ●"}</span><b>${m}</b></li>`;
+  });
+  if (W.me && !meIn && rank) {
+    const s = W.snakes.get(W.me);
+    html += `<li class="me"><i>${rank}</i><u style="background:${SKIN[s.skin][0]}"></u><span>${esc(s.name)}</span><b>${Math.round(s.m)}</b></li>`;
+  }
+  $("ga-lb-list").innerHTML = html;
+  $("ga-count").textContent = W.snakes.size + " snakes";
+  if (W.me && myStats) {
+    $("ga-rank").textContent = "#" + rank;
+    if (rank && rank < myStats.bestRank) myStats.bestRank = rank;
+  }
+}
+
+/* ---------------- networking ---------------- */
+function setMode(m, n) {
+  mode = m;
+  const el = $("ga-mode");
+  el.classList.toggle("online", m === "online");
+  $("ga-mode-t").textContent = m === "online" ? `Online · ${n || 1} playing` : m === "local" ? "Offline match · bots" : "Connecting…";
+}
+function startLocal(reason) {
+  if (net && net.kind === "local") return;
+  if (net && net.close) net.close();
+  const sim = new Sim({ bots: 15 });
+  const n = { kind: "local", sim, timer: 0, paused: false };
+  n.send = (m) => {
+    if (m.t === "join") { const id = sim.addPlayer(m.name, m.skin); setTimeout(() => onYou(id), 0); }
+    else if (m.t === "in" && W.me) sim.setInput(W.me, m.a, m.b);
+  };
+  n.close = () => clearInterval(n.timer);
+  n.timer = setInterval(() => { if (!n.paused) queue.push(sim.step()); }, FRAME_MS);
+  net = n;
+  applySnapshot(sim.snapshot());
+  setMode("local");
+  if (reason) console.info("Glowline Arena: offline mode (" + reason + ")");
+  if (PA.state === "play" && !W.me) join();
+}
+function startOnline(url) {
+  let opened = false, settled = false;
+  let ws;
+  try { ws = new WebSocket(url); } catch (e) { return startLocal("no websocket"); }
+  ws.binaryType = "arraybuffer";
+  const fail = (why) => { if (settled) return; settled = true; try { ws.close(); } catch (e) {} startLocal(why); };
+  const to = setTimeout(() => { if (!opened) fail("timeout"); }, 3500);
+  ws.onopen = () => { opened = true; };
+  ws.onmessage = (e) => {
+    if (typeof e.data === "string") {
+      const m = JSON.parse(e.data);
+      if (m.t === "snap") { settled = true; clearTimeout(to); applySnapshot(m.snap); setMode("online", m.online); online = m.online; if (PA.state === "play" && !W.me) join(); }
+      else if (m.t === "you") onYou(m.id);
+      else if (m.t === "info") { online = m.online; setMode("online", m.online); }
+      else if (m.t === "full") fail("room full");
+      else if (m.t === "pong") net.rtt = performance.now() - m.c;
+    } else {
+      const ev = decodeFrame(e.data);
+      if (ev) queue.push(ev);
+    }
+  };
+  ws.onclose = () => {
+    if (!settled) return fail("closed");
+    if (net && net.ws === ws) {
+      feed("Connection lost — switching to an offline match");
+      W.me = 0;
+      if (PA.state === "play") { myStats = null; }
+      startLocal("dropped");
+    }
+  };
+  ws.onerror = () => { if (!opened) fail("error"); };
+  net = { kind: "online", ws, send: (m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); }, close: () => { try { ws.close(); } catch (e) {} } };
+}
+function onYou(id) {
+  W.me = id;
+  myStats = { peak: 12, kills: 0, born: performance.now(), bestRank: 99 };
+  $("ga-kills").textContent = "0";
+  $("ga-me").classList.add("on");
+  camHold = null;
+  PA.sfx("levelup");
+}
+function join() {
+  if (!net) return;
+  const name = (window.paPlayer && window.paPlayer.getName()) || "Player";
+  net.send({ t: "join", name, skin });
+}
+
+const url = qs.get("arena") || cfg.arena;
+if (qs.get("offline") === "1" || !("WebSocket" in window) || !url) startLocal("forced"); else startOnline(url);
+
+PA.onStart(() => {
+  $("ga-skin").classList.add("off");
+  if (net && (net.kind === "local" || (net.ws && net.ws.readyState === 1))) join();
+});
+PA.onPause((p) => { if (net && net.kind === "local") net.paused = p; });
+
+/* ---------------- input ---------------- */
+let aim = 0, boostKey = false, boostPtr = false, boostBtn = false, mouse = null, keyTurn = 0, lastSent = { a: 99, b: false, t: 0 };
+addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" || e.buttons) mouse = { x: e.clientX, y: e.clientY }; });
+addEventListener("pointerdown", (e) => {
+  if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,#ga-skin")) return;
+  mouse = { x: e.clientX, y: e.clientY };
+  if (e.pointerType === "mouse") boostPtr = true;
+});
+addEventListener("pointerup", (e) => { if (e.pointerType === "mouse") boostPtr = false; });
+addEventListener("blur", () => { boostPtr = boostKey = false; });
+PA.onKey((e) => { if (e.code === "Space") e.preventDefault(); });
+const bb = $("ga-boost");
+bb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); boostBtn = true; bb.classList.add("on"); });
+["pointerup", "pointercancel", "pointerleave"].forEach((t) => bb.addEventListener(t, () => { boostBtn = false; bb.classList.remove("on"); }));
+
+function updateInput(dt) {
+  const me = W.snakes.get(W.me);
+  if (!me || PA.state !== "play") return;
+  boostKey = PA.down("Space", "KeyW", "ArrowUp", "ShiftLeft");
+  const kt = (PA.down("ArrowRight", "KeyD") ? 1 : 0) - (PA.down("ArrowLeft", "KeyA") ? 1 : 0);
+  const head = worldToScreen(lerpHead(me));
+  if (kt) { aim = (keyTurn ? aim : me.a) + kt * dt * 4.2; keyTurn = 1; mouse = null; }
+  else if (mouse) { keyTurn = 0; aim = Math.atan2(mouse.y - head.y, mouse.x - head.x); }
+  else if (!keyTurn) aim = me.a;
+  const b = boostKey || boostPtr || boostBtn;
+  const now = performance.now();
+  if ((Math.abs(aim - lastSent.a) > 0.015 || b !== lastSent.b) && now - lastSent.t > (net && net.kind === "online" ? 60 : 0)) {
+    net.send({ t: "in", a: +aim.toFixed(4), b });
+    lastSent = { a: aim, b, t: now };
+  }
+}
+setInterval(() => { if (net && net.kind === "online") net.send({ t: "ping", c: performance.now() }); }, 5000);
+
+/* ---------------- skin picker ---------------- */
+function paintSkinPicker() {
+  const c = $("ga-skin-c").getContext("2d");
+  c.clearRect(0, 0, 240, 68);
+  const pal = SKIN[skin];
+  c.lineCap = "round"; c.lineJoin = "round";
+  c.beginPath();
+  for (let x = 20; x <= 200; x += 4) c.lineTo(x, 34 + Math.sin(x / 26) * 12);
+  c.strokeStyle = pal[0]; c.lineWidth = 22; c.shadowColor = pal[0]; c.shadowBlur = 14; c.stroke();
+  c.shadowBlur = 0; c.setLineDash([12, 12]); c.strokeStyle = pal[1]; c.lineWidth = 14; c.stroke(); c.setLineDash([]);
+  c.fillStyle = pal[0]; c.beginPath(); c.arc(204, 34 + Math.sin(204 / 26) * 12, 13, 0, TAU); c.fill();
+  c.fillStyle = "#fff"; c.beginPath(); c.arc(208, 28, 4.5, 0, TAU); c.arc(208, 40, 4.5, 0, TAU); c.fill();
+  c.fillStyle = "#000"; c.beginPath(); c.arc(210, 28, 2.2, 0, TAU); c.arc(210, 40, 2.2, 0, TAU); c.fill();
+  $("ga-skin-n").textContent = "Skin " + (skin + 1);
+}
+function setSkin(d) { skin = (skin + d + SKINS) % SKINS; try { localStorage.setItem("ga_skin", skin); } catch (e) {} paintSkinPicker(); PA.sfx("click"); }
+$("ga-skin-prev").onclick = () => setSkin(-1);
+$("ga-skin-next").onclick = () => setSkin(1);
+paintSkinPicker();
+addEventListener("pa:report", () => {});
+setInterval(() => { if (PA.state !== "play") $("ga-skin").classList.remove("off"); }, 500);
+
+/* ---------------- camera ---------------- */
+let cam = { x: 0, y: 0, z: 1 }, camHold = null, alpha = 0, spectate = 0, spectateT = 0;
+function lerpHead(s) { return { x: s.px + (s.x - s.px) * alpha, y: s.py + (s.y - s.py) * alpha }; }
+function worldToScreen(p) { return { x: (p.x - cam.x) * cam.z + view.w / 2, y: (p.y - cam.y) * cam.z + view.h / 2 }; }
+function onScreen(x, y, pad) {
+  const hw = view.w / 2 / cam.z + pad, hh = view.h / 2 / cam.z + pad;
+  return x > cam.x - hw && x < cam.x + hw && y > cam.y - hh && y < cam.y + hh;
+}
+function updateCamera(dt) {
+  let target = null, r = 12;
+  const me = W.snakes.get(W.me);
+  if (me) { target = lerpHead(me); r = radiusFor(me.m); }
+  else if (camHold && performance.now() < camHold.until) target = camHold;
+  else {
+    // spectate: drift between the top snakes
+    spectateT -= dt;
+    if (!W.snakes.has(spectate) || spectateT <= 0) {
+      const top = [...W.snakes.values()].sort((a, b) => b.m - a.m).slice(0, 4);
+      if (top.length) spectate = top[(Math.random() * top.length) | 0].id;
+      spectateT = 9;
+    }
+    const s = W.snakes.get(spectate);
+    if (s) { target = lerpHead(s); r = radiusFor(s.m); }
+  }
+  if (target) {
+    const k = me ? 1 - Math.pow(0.0005, dt) : 1 - Math.pow(0.08, dt);
+    cam.x += (target.x - cam.x) * k; cam.y += (target.y - cam.y) * k;
+  }
+  const base = Math.min(view.w, view.h) / 950;
+  const zt = Math.max(0.42, base * (1.15 - Math.min(0.55, (r - 10) / 70))) * (view.w < 600 ? 0.9 : 1);
+  cam.z += (zt - cam.z) * Math.min(1, dt * 2);
+}
+
+/* ---------------- rendering ---------------- */
+function drawSnake(s, t, isMe) {
+  const pal = SKIN[s.skin];
+  const m = s.pm + (s.m - s.pm) * alpha;
+  const r = radiusFor(m), L = lengthFor(m);
+  const head = lerpHead(s);
+  const p = s.pts;
+  // assemble the visible polyline from the interpolated head back to length L
+  const path = [head.x, head.y];
+  let acc = 0, lx = head.x, ly = head.y;
+  for (let i = p.length - 4; i >= 0; i -= 2) {
+    const x = p[i], y = p[i + 1], d = Math.hypot(x - lx, y - ly);
+    if (acc + d >= L) { const k = (L - acc) / (d || 1); path.push(lx + (x - lx) * k, ly + (y - ly) * k); break; }
+    acc += d; path.push(x, y); lx = x; ly = y;
+  }
+  // cull when no part is on screen
+  let vis = false;
+  for (let i = 0; i < path.length; i += 16) if (onScreen(path[i], path[i + 1], r * 2)) { vis = true; break; }
+  if (!vis && !onScreen(path[path.length - 2], path[path.length - 1], r * 2)) return;
+
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(path[path.length - 2], path[path.length - 1]);
+  for (let i = path.length - 4; i >= 0; i -= 2) ctx.lineTo(path[i], path[i + 1]);
+  // glow
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = pal[0];
+  ctx.globalAlpha = s.boost ? 0.32 + Math.sin(t * 30) * 0.08 : 0.12;
+  ctx.lineWidth = r * (s.boost ? 3.4 : 2.8);
+  ctx.stroke();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  // edge + body
+  ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.lineWidth = r * 2 + 3; ctx.stroke();
+  ctx.strokeStyle = pal[0]; ctx.lineWidth = r * 2; ctx.stroke();
+  // stripes that travel with the body
+  ctx.setLineDash([r * 1.1, r * 1.3]);
+  ctx.lineDashOffset = -acc;
+  ctx.strokeStyle = pal[1]; ctx.globalAlpha = 0.85; ctx.lineWidth = r * 1.35; ctx.stroke();
+  ctx.setLineDash([]);
+  // spine highlight
+  ctx.globalAlpha = 0.5; ctx.strokeStyle = pal[2]; ctx.lineWidth = r * 0.35; ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // head
+  const a = s.pa + angDelta(s.pa, s.a) * alpha;
+  ctx.save();
+  ctx.translate(head.x, head.y); ctx.rotate(a);
+  ctx.fillStyle = pal[0];
+  ctx.beginPath(); ctx.ellipse(r * 0.15, 0, r * 1.12, r * 1.02, 0, 0, TAU); ctx.fill();
+  const look = isMe && PA.state === "play" ? angDelta(a, aim) * 0.5 : 0;
+  for (const side of [-1, 1]) {
+    const ex = r * 0.45, ey = side * r * 0.48;
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, r * 0.38, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#0a0a14"; ctx.beginPath(); ctx.arc(ex + Math.cos(look) * r * 0.16, ey + Math.sin(look) * r * 0.16, r * 0.2, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+  // name tag
+  if (!isMe && cam.z > 0.5) {
+    ctx.font = `700 ${Math.max(11, 12 / cam.z * 0.9)}px Manrope, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(230,236,255,.75)";
+    ctx.fillText(s.name, head.x, head.y - r - 12 / cam.z);
+  }
+}
+const angDelta = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+
+function render(t) {
+  const now = performance.now();
+  // feed queued frames at the server's tick rate (one frame of buffer for smoothness)
+  if (queue.length > 4) { while (queue.length > 1) applyFrame(queue.shift()); lastApply = now; }
+  while (queue.length && now - lastApply >= FRAME_MS) {
+    applyFrame(queue.shift());
+    lastApply = queue.length > 1 ? now : Math.max(lastApply + FRAME_MS, now - FRAME_MS);
+  }
+  alpha = Math.max(0, Math.min(1, (now - lastApply) / FRAME_MS));
+  const dt = Math.min(0.05, (now - (render.last || now)) / 1000); render.last = now;
+  updateInput(dt);
+  updateCamera(dt);
+  fx.update(dt); texts.update(dt);
+
+  const w = view.w, h = view.h;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.fillStyle = "#04050c"; ctx.fillRect(0, 0, w, h);
+  const sh = PA.shakeOffset();
+  ctx.save();
+  ctx.translate(w / 2 + sh.x, h / 2 + sh.y);
+  ctx.scale(cam.z, cam.z);
+  ctx.translate(-cam.x, -cam.y);
+
+  // arena floor + hex grid, clipped to the circle
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, W.worldR, 0, TAU); ctx.clip();
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, W.worldR);
+  g.addColorStop(0, "#0b1030"); g.addColorStop(0.7, "#080a1f"); g.addColorStop(1, "#140820");
+  ctx.fillStyle = g; ctx.fillRect(cam.x - w / cam.z, cam.y - h / cam.z, (w / cam.z) * 2, (h / cam.z) * 2);
+  if (!hexPattern) hexPattern = ctx.createPattern(hexTile, "repeat");
+  ctx.fillStyle = hexPattern; ctx.fillRect(cam.x - w / cam.z, cam.y - h / cam.z, (w / cam.z) * 2, (h / cam.z) * 2);
+  ctx.restore();
+  // border
+  ctx.lineWidth = 14; ctx.strokeStyle = "#ff3d7f"; ctx.shadowColor = "#ff3d7f"; ctx.shadowBlur = 40;
+  ctx.globalAlpha = 0.75 + Math.sin(t * 2) * 0.15;
+  ctx.beginPath(); ctx.arc(0, 0, W.worldR, 0, TAU); ctx.stroke();
+  ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+
+  // food
+  ctx.globalCompositeOperation = "lighter";
+  for (const [id, f] of W.food) {
+    let x = f.x, y = f.y, k = 1;
+    if (f.eat) {
+      const e = W.snakes.get(f.by), q = (now - f.eat) / 160;
+      if (!e || q >= 1) { W.food.delete(id); continue; }
+      const hh = lerpHead(e); x += (hh.x - x) * q; y += (hh.y - y) * q; k = 1 - q;
+    }
+    if (!onScreen(x, y, 30)) continue;
+    const born = f.born ? Math.min(1, (now - f.born) / 400) : 1;
+    const pulse = 1 + Math.sin(t * 3 + id) * 0.15;
+    const s = (8 + f.v * 2.4) * pulse * k * born * (f.v >= 12 ? 1.6 : 1);
+    ctx.drawImage(sprites[f.c & 7], x - s, y - s, s * 2, s * 2);
+  }
+  ctx.globalCompositeOperation = "source-over";
+
+  // snakes: everyone else first, you on top
+  const list = [...W.snakes.values()].sort((a, b) => a.m - b.m);
+  for (const s of list) if (s.id !== W.me) drawSnake(s, t, false);
+  const me = W.snakes.get(W.me);
+  if (me) drawSnake(me, t, true);
+  fx.draw(ctx); texts.draw(ctx);
+  ctx.restore();
+
+  // vignette
+  const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.55)");
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+
+  if (me) {
+    $("ga-len").textContent = Math.round(me.m);
+    PA.music && PA.music.intensity && PA.music.intensity(Math.min(1, me.m / 600));
+  }
+  drawMini();
+}
+let miniT = 0;
+function drawMini() {
+  const now = performance.now();
+  if (now - miniT < 120) return; miniT = now;
+  const c = mini, R = 130, k = (R - 6) / W.worldR;
+  c.clearRect(0, 0, 260, 260);
+  c.save(); c.translate(130, 130);
+  c.strokeStyle = "rgba(255,61,127,.6)"; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, R - 4, 0, TAU); c.stroke();
+  for (const s of W.snakes.values()) {
+    const me = s.id === W.me;
+    c.fillStyle = me ? "#ffe08a" : SKIN[s.skin][0];
+    c.globalAlpha = me ? 1 : 0.6;
+    const sz = me ? 7 : 2 + Math.min(6, Math.sqrt(s.m) / 5);
+    c.beginPath(); c.arc(s.x * k, s.y * k, sz, 0, TAU); c.fill();
+  }
+  c.globalAlpha = 0.9; c.strokeStyle = "rgba(255,255,255,.4)"; c.lineWidth = 1.5;
+  const hw = view.w / 2 / cam.z * k, hh = view.h / 2 / cam.z * k;
+  c.strokeRect(cam.x * k - hw, cam.y * k - hh, hw * 2, hh * 2);
+  c.restore();
+}
+
+PA.loop(null, render);
+window.__ga = { W, get net() { return net; }, get queue() { return queue.length; } };
+setInterval(paintBoard, 1000);
+</script>
+</body></html>

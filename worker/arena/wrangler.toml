@@ -1,0 +1,21 @@
+# Glowline Arena multiplayer server. Deploy from this folder with:  npx wrangler deploy
+name = "promptarcade-arena"
+main = "src/index.js"
+compatibility_date = "2026-09-26"
+
+# Free-plan Durable Objects must be SQLite-backed (the class stores nothing; it only holds the live match).
+[[durable_objects.bindings]]
+name = "ARENA"
+class_name = "ArenaRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ArenaRoom"]
+
+# Serve on its own subdomain so the Pages site and its Functions are untouched.
+[[routes]]
+pattern = "arena.promptarcade.games"
+custom_domain = true
+
+[vars]
+ARENA_BOTS = "14"

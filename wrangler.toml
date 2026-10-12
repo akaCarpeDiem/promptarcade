@@ -1,3 +1,10 @@
 name = "promptarcade"
 compatibility_date = "2026-09-26"
 pages_build_output_dir = "dist"
+
+# The live scores API (functions/api/...) needs its D1 binding here. Copy the exact block the
+# live project uses before deploying, for example:
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "promptarcade"
+# database_id = "<existing database id>"

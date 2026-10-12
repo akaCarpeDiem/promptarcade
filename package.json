@@ -1,0 +1,13 @@
+{
+  "name": "promptarcade",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "description": "PromptArcade — free browser games made entirely by AI from prompts.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "arena:dev": "node scripts/arena-dev.mjs 5191"
+  },
+  "engines": { "node": ">=20" }
+}

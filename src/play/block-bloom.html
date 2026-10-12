@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Block Bloom — PromptArcade</title>
+<style>
+html,body{margin:0;height:100%;background:#0b0718;color:#f6f0ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#c{display:block;position:fixed;inset:0}
+</style></head><body>
+<canvas id="c" aria-label="Block Bloom board"></canvas>
+<script>
+window.paConfig = {
+  slug: "block-bloom", title: "Block Bloom", native: true, music: "chill", unit: "points",
+  controls: [["Drag", "Place a piece on the board"], ["1 · 2 · 3", "Pick a piece (keyboard)"], ["Arrows + Enter", "Move and place"], ["Rows & columns", "Fill one to clear it"]]
+};
+</script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script>
+(() => {
+"use strict";
+const N = 8, TAU = Math.PI * 2;
+let view = null, ctx = null;
+const fx = new PA.Particles(1500), texts = new PA.Texts();
+
+const PAL = [
+  ["#ff7eb6", "#c2367a"], ["#ffd36b", "#d68a1a"], ["#7dffb0", "#1fa56a"], ["#6ec8ff", "#2a6fd6"],
+  ["#c49bff", "#6a3dd6"], ["#ff9b6b", "#d24a2a"], ["#5ef2e0", "#14a59a"]
+];
+const SHAPES = [
+  [[0, 0]], [[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0], [1, 0], [2, 0]], [[0, 0], [0, 1], [0, 2]],
+  [[0, 0], [1, 0], [2, 0], [3, 0]], [[0, 0], [0, 1], [0, 2], [0, 3]], [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]], [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+  [[0, 0], [1, 0], [0, 1], [1, 1]], [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]],
+  [[0, 0], [1, 0], [0, 1]], [[0, 0], [1, 0], [1, 1]], [[0, 0], [0, 1], [1, 1]], [[1, 0], [0, 1], [1, 1]],
+  [[0, 0], [0, 1], [0, 2], [1, 2]], [[1, 0], [1, 1], [1, 2], [0, 2]], [[0, 0], [1, 0], [2, 0], [0, 1]], [[0, 0], [1, 0], [2, 0], [2, 1]],
+  [[0, 0], [1, 0], [1, 1], [1, 2]], [[0, 0], [1, 0], [0, 1], [0, 2]], [[0, 1], [1, 1], [2, 1], [2, 0]], [[0, 0], [0, 1], [1, 1], [2, 1]],
+  [[0, 0], [1, 0], [2, 0], [1, 1]], [[1, 0], [0, 1], [1, 1], [2, 1]], [[0, 0], [0, 1], [0, 2], [1, 1]], [[1, 0], [1, 1], [1, 2], [0, 1]],
+  [[0, 0], [1, 0], [1, 1], [2, 1]], [[1, 0], [2, 0], [0, 1], [1, 1]], [[0, 0], [0, 1], [1, 1], [1, 2]], [[1, 0], [1, 1], [0, 1], [0, 2]],
+  [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]], [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]],
+  [[0, 0], [1, 0], [2, 0], [0, 1], [0, 2]], [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2]], [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]], [[2, 0], [2, 1], [2, 2], [1, 2], [0, 2]]
+];
+const WEIGHT = SHAPES.map((s) => (s.length === 1 ? 2 : s.length === 9 ? 1.2 : s.length >= 5 ? 1.6 : 3));
+
+let board, tray, score, best = 0, combo, comboIdle, placed, linesTotal, over, sel = -1, cursor = { x: 3, y: 3 }, drag = null, clearing = [], bloomT = 0, shownScore = 0;
+try { best = +localStorage.getItem("bb_best") || 0; } catch (e) {}
+
+/* ---------- layout ---------- */
+let L = { cell: 40, bx: 0, by: 0, tray: [] };
+function layout(v) {
+  const w = v.w, h = v.h;
+  const portrait = h > w * 1.05;
+  let cell;
+  if (portrait) cell = Math.min((w - 28) / N, (h - 250) / (N + 3.6));
+  else cell = Math.min((h - 190) / N, (w * 0.6) / N);
+  cell = Math.max(24, Math.floor(cell));
+  const bw = cell * N;
+  if (portrait) {
+    L = { cell, bx: (w - bw) / 2, by: Math.max(96, (h - bw - cell * 3.6 - 30) / 2 + 40), portrait };
+    const ty = L.by + bw + cell * 0.6 + 6, slot = w / 3;
+    L.tray = [0, 1, 2].map((i) => ({ x: slot * i + slot / 2, y: ty + cell * 1.5, r: Math.min(slot, cell * 3.4) / 2 }));
+  } else {
+    L = { cell, bx: (w - bw) / 2 - cell * 2.2, by: (h - bw) / 2 + 55, portrait };
+    const tx = L.bx + bw + cell * 2.6;
+    L.tray = [0, 1, 2].map((i) => ({ x: tx, y: L.by + bw / 6 + i * bw / 3, r: bw / 6.4 }));
+  }
+}
+
+/* ---------- pieces ---------- */
+function bbox(s) { let w = 0, h = 0; for (const [x, y] of s) { w = Math.max(w, x + 1); h = Math.max(h, y + 1); } return { w, h }; }
+function fits(s, gx, gy) {
+  for (const [x, y] of s) { const X = gx + x, Y = gy + y; if (X < 0 || Y < 0 || X >= N || Y >= N || board[Y][X]) return false; }
+  return true;
+}
+function anyFit(s) { for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (fits(s, x, y)) return true; return false; }
+function randShape() {
+  let tot = 0; for (const w of WEIGHT) tot += w;
+  let r = Math.random() * tot;
+  for (let i = 0; i < SHAPES.length; i++) { r -= WEIGHT[i]; if (r <= 0) return i; }
+  return 0;
+}
+function deal() {
+  // try to deal a hand where at least one piece fits; gentler when the board is crowded
+  let hand = null;
+  for (let tries = 0; tries < 30; tries++) {
+    hand = [0, 1, 2].map(() => ({ s: randShape(), c: (Math.random() * PAL.length) | 0, born: performance.now() }));
+    if (hand.some((p) => anyFit(SHAPES[p.s]))) break;
+  }
+  tray = hand;
+  PA.sfx("whoosh", { pitch: 1.4, vol: .4 });
+}
+
+function reset() {
+  board = Array.from({ length: N }, () => Array(N).fill(null));
+  score = 0; shownScore = 0; combo = 0; comboIdle = 0; placed = 0; linesTotal = 0; over = false; sel = -1; drag = null; clearing = [];
+  fx.clear(); texts.clear();
+  deal();
+}
+
+function place(i, gx, gy) {
+  const p = tray[i]; if (!p) return false;
+  const s = SHAPES[p.s];
+  if (!fits(s, gx, gy)) return false;
+  const now = performance.now();
+  for (const [x, y] of s) board[gy + y][gx + x] = { c: p.c, t: now };
+  tray[i] = null;
+  placed++;
+  score += s.length;
+  PA.sfx("thud", { pitch: 1.2 + Math.random() * .2, vol: .6 });
+  // clear full rows and columns
+  const rows = [], cols = [];
+  for (let y = 0; y < N; y++) if (board[y].every(Boolean)) rows.push(y);
+  for (let x = 0; x < N; x++) { let full = true; for (let y = 0; y < N; y++) if (!board[y][x]) { full = false; break; } if (full) cols.push(x); }
+  const lines = rows.length + cols.length;
+  if (lines) {
+    combo++; comboIdle = 0;
+    const cells = new Set();
+    rows.forEach((y) => { for (let x = 0; x < N; x++) cells.add(y * N + x); });
+    cols.forEach((x) => { for (let y = 0; y < N; y++) cells.add(y * N + x); });
+    const gain = Math.round((lines * 10 + (lines - 1) * lines * 10) * (1 + (combo - 1) * 0.5));
+    score += gain; linesTotal += lines;
+    let k = 0;
+    for (const id of cells) {
+      const x = id % N, y = (id / N) | 0, b = board[y][x];
+      clearing.push({ x, y, c: b.c, t: now + k * 12, d: Math.hypot(x - gx, y - gy) });
+      board[y][x] = null; k++;
+    }
+    const cx = L.bx + (gx + 1) * L.cell, cy = L.by + (gy + 1) * L.cell;
+    texts.add(cx, cy - 20, "+" + gain, { color: "#fff", size: 26 + lines * 3, life: 1.1 });
+    if (combo > 1) texts.add(cx, cy + 14, "COMBO ×" + combo, { color: "#ffd36b", size: 18 + Math.min(16, combo * 2), life: 1.3, vy: -40 });
+    if (lines >= 2) texts.add(L.bx + L.cell * N / 2, L.by + L.cell * N / 2, ["", "", "DOUBLE!", "TRIPLE!", "BLOOMING!", "SUPERNOVA!"][Math.min(5, lines)], { color: PAL[(Math.random() * PAL.length) | 0][0], size: 34, life: 1.4, vy: -20 });
+    PA.sfx(lines >= 3 ? "levelup" : "combo", { pitch: 0.9 + Math.min(0.8, combo * 0.08) });
+    PA.shake(2 + lines * 2, .25);
+    if (lines >= 3) PA.flash("#ffffff", 200);
+    bloomT = 1;
+    if (board.every((r) => r.every((c) => !c))) { score += 300; texts.add(L.bx + L.cell * N / 2, L.by + L.cell * N / 2 + 40, "BOARD CLEAR +300", { color: "#7dffb0", size: 26, life: 1.8 }); PA.sfx("power"); }
+  } else {
+    comboIdle++;
+    if (comboIdle >= 3) combo = 0;
+  }
+  if (tray.every((x) => !x)) deal();
+  // game over: nothing in the tray fits anywhere
+  if (!tray.some((p) => p && anyFit(SHAPES[p.s]))) {
+    over = true;
+    setTimeout(endGame, 900);
+  }
+  sel = tray.findIndex(Boolean);
+  return true;
+}
+function endGame() {
+  PA.sfx("gameover");
+  if (score > best) { best = score; try { localStorage.setItem("bb_best", best); } catch (e) {} }
+  PA.gameOver(score, { kicker: "No more room to bloom", title: score > 3000 ? "Garden of light!" : "Board full", stats: [["Lines", linesTotal], ["Pieces", placed]] });
+  if (window.paXP) window.paXP.award("block-bloom", { score, lines: linesTotal });
+}
+
+/* ---------- input: drag & keyboard ---------- */
+function cellAt(px, py, s) {
+  const bb = bbox(s);
+  return { gx: Math.round((px - L.bx) / L.cell - bb.w / 2), gy: Math.round((py - L.by) / L.cell - bb.h / 2) };
+}
+const lift = () => (matchMedia("(pointer:coarse)").matches ? L.cell * 2.2 : 0);
+addEventListener("pointerdown", (e) => {
+  if (PA.state !== "play" || over || PA.isPaused()) return;
+  if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,.pa-tb")) return;
+  for (let i = 0; i < 3; i++) {
+    const t = L.tray[i], p = tray[i];
+    if (!p) continue;
+    if (Math.hypot(e.clientX - t.x, e.clientY - t.y) < t.r * 1.15) {
+      drag = { i, x: e.clientX, y: e.clientY - lift(), id: e.pointerId };
+      sel = i;
+      PA.sfx("click", { pitch: 1.3 });
+      return;
+    }
+  }
+});
+addEventListener("pointermove", (e) => { if (drag && e.pointerId === drag.id) { drag.x = e.clientX; drag.y = e.clientY - lift(); } });
+addEventListener("pointerup", (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const p = tray[drag.i];
+  if (p) {
+    const { gx, gy } = cellAt(drag.x, drag.y, SHAPES[p.s]);
+    if (!place(drag.i, gx, gy)) PA.sfx("blip", { pitch: .6, vol: .4 });
+  }
+  drag = null;
+});
+PA.onKey((e) => {
+  if (over) return;
+  if (/^Digit[1-3]$/.test(e.code)) { const i = +e.code.slice(5) - 1; if (tray[i]) { sel = i; PA.sfx("click"); } return; }
+  if (sel < 0 || !tray[sel]) { sel = tray.findIndex(Boolean); }
+  const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], KeyW: [0, -1], KeyS: [0, 1] }[e.code];
+  if (d) { cursor.x = Math.max(0, Math.min(N - 1, cursor.x + d[0])); cursor.y = Math.max(0, Math.min(N - 1, cursor.y + d[1])); }
+  if (e.code === "Tab") { e.preventDefault(); for (let k = 1; k <= 3; k++) { const j = (sel + k) % 3; if (tray[j]) { sel = j; break; } } }
+  if (e.code === "Enter" || e.code === "Space") { e.preventDefault(); if (sel >= 0 && !place(sel, cursor.x, cursor.y)) PA.sfx("blip", { pitch: .6 }); }
+});
+
+/* ---------- drawing ---------- */
+function gem(x, y, s, c, alpha, glow) {
+  const [a, b] = PAL[c];
+  const r = s * 0.2;
+  ctx.globalAlpha = alpha == null ? 1 : alpha;
+  if (glow) { ctx.shadowColor = a; ctx.shadowBlur = glow; }
+  const g = ctx.createLinearGradient(x, y, x + s, y + s);
+  g.addColorStop(0, a); g.addColorStop(1, b);
+  ctx.fillStyle = g;
+  rr(x + 1.5, y + 1.5, s - 3, s - 3, r); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(255,255,255,.35)"; rr(x + s * .18, y + s * .14, s * .64, s * .2, s * .1); ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,.18)"; rr(x + s * .14, y + s * .72, s * .72, s * .12, s * .06); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+const petals = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), s: Math.random(), r: Math.random() * TAU, c: (Math.random() * PAL.length) | 0 }));
+function render(t) {
+  const w = view.w, h = view.h, C = L.cell, now = performance.now();
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  const bg = ctx.createRadialGradient(w / 2, h * .3, 0, w / 2, h * .3, Math.max(w, h));
+  bg.addColorStop(0, "#24164a"); bg.addColorStop(1, "#0b0718");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  // drifting petals
+  for (const p of petals) {
+    p.y += 0.0004 * (0.5 + p.s); p.r += 0.01; if (p.y > 1.05) { p.y = -0.05; p.x = Math.random(); }
+    ctx.save(); ctx.translate(p.x * w + Math.sin(t + p.s * 9) * 30, p.y * h); ctx.rotate(p.r);
+    ctx.fillStyle = PAL[p.c][0]; ctx.globalAlpha = .12 + p.s * .12;
+    ctx.beginPath(); ctx.ellipse(0, 0, 6 + p.s * 8, 3 + p.s * 3, 0, 0, TAU); ctx.fill(); ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  if (!board) return;
+  const sh = PA.shakeOffset();
+  ctx.save(); ctx.translate(sh.x, sh.y);
+  // score
+  shownScore += (score - shownScore) * 0.2;
+  ctx.textAlign = "center";
+  ctx.font = `800 ${Math.round(Math.min(C * 0.95, 56))}px Unbounded, Manrope, sans-serif`;
+  ctx.fillStyle = "#fff"; ctx.shadowColor = "#c49bff"; ctx.shadowBlur = 24;
+  const sx = L.bx + C * N / 2, sy = L.by - C * 0.75;
+  ctx.fillText(Math.round(shownScore).toLocaleString(), sx, sy); ctx.shadowBlur = 0;
+  ctx.font = `700 ${Math.max(11, C * .28)}px 'JetBrains Mono', monospace`; ctx.fillStyle = "#b9a8ff";
+  ctx.fillText("BEST " + Math.max(best, score).toLocaleString() + (combo > 1 ? "   ·   COMBO ×" + combo : ""), sx, sy + C * 0.45);
+  // board
+  const bx = L.bx, by = L.by;
+  ctx.fillStyle = "rgba(10,6,30,.65)"; rr(bx - 10, by - 10, C * N + 20, C * N + 20, 18); ctx.fill();
+  ctx.strokeStyle = `rgba(196,155,255,${.25 + bloomT * .5})`; ctx.lineWidth = 2; ctx.stroke();
+  bloomT = Math.max(0, bloomT - 0.02);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    ctx.fillStyle = (x + y) % 2 ? "rgba(255,255,255,.035)" : "rgba(255,255,255,.055)";
+    rr(bx + x * C + 2, by + y * C + 2, C - 4, C - 4, C * .18); ctx.fill();
+  }
+  // preview of the dragged / selected piece, plus lines it would clear
+  let ghost = null;
+  if (drag && tray[drag.i]) { const s = SHAPES[tray[drag.i].s]; const { gx, gy } = cellAt(drag.x, drag.y, s); if (fits(s, gx, gy)) ghost = { s, gx, gy, c: tray[drag.i].c }; }
+  else if (!drag && sel >= 0 && tray[sel] && !matchMedia("(pointer:coarse)").matches && keyboardUsed) { const s = SHAPES[tray[sel].s]; ghost = { s, gx: cursor.x, gy: cursor.y, c: tray[sel].c, bad: !fits(s, cursor.x, cursor.y) }; }
+  let hiRows = [], hiCols = [];
+  if (ghost && !ghost.bad) {
+    const tmp = board.map((r) => r.slice());
+    for (const [x, y] of ghost.s) tmp[ghost.gy + y][ghost.gx + x] = 1;
+    for (let y = 0; y < N; y++) if (tmp[y].every(Boolean)) hiRows.push(y);
+    for (let x = 0; x < N; x++) if (tmp.every((r) => r[x])) hiCols.push(x);
+  }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const b = board[y][x];
+    if (!b) continue;
+    const age = (now - b.t) / 1000, pop = age < .18 ? 1 + Math.sin(age / .18 * Math.PI) * .12 : 1;
+    const hl = hiRows.includes(y) || hiCols.includes(x);
+    const s = C * pop, o = (C - s) / 2;
+    gem(bx + x * C + o, by + y * C + o, s, b.c, 1, hl ? 18 + Math.sin(t * 10) * 6 : 0);
+    if (hl) { ctx.fillStyle = `rgba(255,255,255,${.18 + Math.sin(t * 10) * .1})`; rr(bx + x * C + 2, by + y * C + 2, C - 4, C - 4, C * .18); ctx.fill(); }
+  }
+  if (ghost) for (const [x, y] of ghost.s) {
+    const X = ghost.gx + x, Y = ghost.gy + y;
+    if (X < 0 || Y < 0 || X >= N || Y >= N) continue;
+    if (ghost.bad) { ctx.strokeStyle = "rgba(255,90,120,.7)"; ctx.lineWidth = 2; rr(bx + X * C + 3, by + Y * C + 3, C - 6, C - 6, C * .18); ctx.stroke(); }
+    else gem(bx + X * C, by + Y * C, C, ghost.c, .35);
+  }
+  // clearing animation: cells pop into petals outward from where you placed
+  for (const c of clearing) {
+    const k = (now - c.t) / 420;
+    if (k < 0) { gem(bx + c.x * C, by + c.y * C, C, c.c, 1, 20); continue; }
+    if (!c.burst) { c.burst = true; fx.burst(bx + c.x * C + C / 2, by + c.y * C + C / 2, { n: 7, colors: [PAL[c.c][0], "#fff"], speed: 260, life: .7, size: 3.5, gravity: 300 }); }
+    if (k < 1) { const s = C * (1 - k) * (1 + k * .5); gem(bx + c.x * C + (C - s) / 2, by + c.y * C + (C - s) / 2, s, c.c, 1 - k, 30); }
+  }
+  clearing = clearing.filter((c) => now - c.t < 420);
+  // tray
+  for (let i = 0; i < 3; i++) {
+    const p = tray[i], T = L.tray[i];
+    ctx.fillStyle = i === sel && !drag ? "rgba(196,155,255,.12)" : "rgba(255,255,255,.04)";
+    ctx.beginPath(); ctx.arc(T.x, T.y, T.r, 0, TAU); ctx.fill();
+    if (i === sel && !drag) { ctx.strokeStyle = "rgba(196,155,255,.5)"; ctx.lineWidth = 2; ctx.stroke(); }
+    if (!p || (drag && drag.i === i)) continue;
+    const s = SHAPES[p.s], bb = bbox(s), fitsNow = anyFit(s);
+    const cs = Math.min(C * .62, (T.r * 1.6) / Math.max(bb.w, bb.h));
+    const age = Math.min(1, (now - p.born) / 350), e = PA.ease.outBack(age);
+    for (const [x, y] of s) gem(T.x + (x - bb.w / 2) * cs * e, T.y + (y - bb.h / 2) * cs * e, cs * e, p.c, fitsNow ? 1 : .3);
+    ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.fillStyle = "rgba(220,210,255,.4)"; ctx.textAlign = "center";
+    if (!matchMedia("(pointer:coarse)").matches) ctx.fillText(String(i + 1), T.x, T.y + T.r + 12);
+  }
+  if (drag && tray[drag.i]) {
+    const p = tray[drag.i], s = SHAPES[p.s], bb = bbox(s);
+    for (const [x, y] of s) gem(drag.x + (x - bb.w / 2) * C, drag.y + (y - bb.h / 2) * C, C, p.c, .95, 16);
+  }
+  fx.update(1 / 60); texts.update(1 / 60);
+  fx.draw(ctx); texts.draw(ctx);
+  ctx.restore();
+}
+let keyboardUsed = false;
+addEventListener("keydown", (e) => { if (/Arrow|Key[WASD]|Digit/.test(e.code)) keyboardUsed = true; });
+addEventListener("pointerdown", () => { keyboardUsed = false; });
+
+view = PA.canvas(document.getElementById("c"), { onResize: layout });
+ctx = view.ctx;
+PA.onStart(reset);
+PA.loop(null, render);
+window.__bb = { place: (i, x, y) => place(i, x, y), get tray() { return tray; }, get board() { return board; }, fits: (i, x, y) => tray[i] && fits(SHAPES[tray[i].s], x, y) };
+})();
+</script>
+</body></html>

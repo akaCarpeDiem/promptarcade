@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Wordglow — PromptArcade</title>
+<style>
+:root{--hit:#2ee6c5;--near:#b48cff;--miss:#2a2f4a;--bg:#070814;--ink:#eef0ff}
+html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 50% -10%,#1c1748 0%,#070814 60%);color:var(--ink);font-family:Manrope,system-ui,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+#wg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;padding:58px 8px max(10px,env(safe-area-inset-bottom));box-sizing:border-box}
+#wg-head{display:flex;align-items:center;gap:.6rem;font:700 12px 'JetBrains Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:#a9b4ff;margin-bottom:6px}
+#wg-head b{color:#fff}
+.wg-pill{all:unset;cursor:pointer;padding:.3rem .7rem;border-radius:999px;border:1px solid rgba(169,180,255,.25);background:rgba(255,255,255,.04);font:700 11px 'JetBrains Mono',monospace;letter-spacing:.1em;color:#dfe3ff}
+.wg-pill.on{background:rgba(46,230,197,.15);border-color:var(--hit);color:#c8fff3}
+#wg-board{flex:1;display:grid;place-items:center;width:100%;min-height:0}
+#wg-grid{display:grid;grid-template-rows:repeat(6,1fr);gap:7px;height:min(100%,420px);aspect-ratio:5/6;max-width:94vw}
+.wg-row{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.wg-row.shake{animation:wgs .45s}
+@keyframes wgs{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
+.wg-t{display:grid;place-items:center;border-radius:12px;border:2px solid rgba(169,180,255,.16);background:rgba(255,255,255,.025);font:800 clamp(20px,5.2vh,34px) Unbounded,Manrope,sans-serif;text-transform:uppercase;color:#fff;perspective:400px;transition:border-color .15s}
+.wg-t.filled{border-color:rgba(200,210,255,.5);animation:wgp .12s}
+@keyframes wgp{50%{transform:scale(1.08)}}
+.wg-t.rev{animation:wgf .55s both}
+@keyframes wgf{0%{transform:rotateX(0)}49%{transform:rotateX(90deg)}51%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+.wg-t.hit{background:linear-gradient(160deg,#3ff7d6,#16b89c);border-color:transparent;color:#03241e;box-shadow:0 0 22px rgba(46,230,197,.45)}
+.wg-t.near{background:linear-gradient(160deg,#c9a8ff,#8a5cf0);border-color:transparent;color:#1d0b3d;box-shadow:0 0 18px rgba(180,140,255,.35)}
+.wg-t.miss{background:#20243c;border-color:transparent;color:#8d93b8}
+.wg-row.win .wg-t{animation:wgw .6s both}
+@keyframes wgw{40%{transform:translateY(-14px) scale(1.06)}70%{transform:translateY(3px)}}
+#wg-keys{width:min(560px,100%);display:flex;flex-direction:column;gap:7px;margin-top:8px}
+.wg-kr{display:flex;gap:5px;justify-content:center}
+.wg-k{all:unset;cursor:pointer;flex:1;max-width:46px;height:clamp(44px,7vh,56px);border-radius:10px;background:#2b3050;display:grid;place-items:center;font:800 14px Manrope,sans-serif;text-transform:uppercase;color:#fff;transition:background .2s,transform .06s}
+.wg-k:active{transform:scale(.94)}
+.wg-k.wide{max-width:72px;flex:1.5;font-size:11px;letter-spacing:.06em}
+.wg-k.hit{background:#17b89c;color:#02231d}.wg-k.near{background:#8a5cf0}.wg-k.miss{background:#161a2e;color:#5b6185}
+#wg-toast{position:fixed;left:50%;top:96px;transform:translateX(-50%);z-index:60;background:#fff;color:#0a0b18;font:800 14px Manrope,sans-serif;padding:.55rem 1rem;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+#wg-toast.on{opacity:1}
+#wg-res{position:fixed;inset:0;z-index:55;display:grid;place-items:center;background:rgba(5,6,16,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:16px}
+#wg-res[hidden]{display:none}
+.wg-card{width:min(420px,100%);background:linear-gradient(170deg,#161a3a,#0b0d22);border:1px solid rgba(169,180,255,.22);border-radius:22px;padding:22px 20px 18px;text-align:center;animation:wgin .35s}
+@keyframes wgin{from{opacity:0;transform:translateY(18px) scale(.97)}}
+.wg-card h2{margin:.1em 0;font:800 26px Unbounded,Manrope,sans-serif;background:linear-gradient(90deg,var(--hit),var(--near));-webkit-background-clip:text;background-clip:text;color:transparent}
+.wg-card .word{font:800 13px 'JetBrains Mono',monospace;letter-spacing:.3em;color:#cfd5ff;margin:.2em 0 1em}
+.wg-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px}
+.wg-stats div b{display:block;font:800 24px 'JetBrains Mono',monospace}
+.wg-stats div small{font-size:10px;color:#9aa3d6;text-transform:uppercase;letter-spacing:.08em}
+.wg-dist{display:grid;gap:4px;margin:0 0 14px;text-align:left}
+.wg-dist div{display:flex;align-items:center;gap:6px;font:700 11px 'JetBrains Mono',monospace}
+.wg-dist i{display:block;height:18px;min-width:22px;border-radius:5px;background:#2b3050;font-style:normal;text-align:right;padding-right:6px;line-height:18px;box-sizing:border-box}
+.wg-dist i.me{background:linear-gradient(90deg,#16b89c,#3ff7d6);color:#02231d}
+.wg-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.wg-btn{all:unset;cursor:pointer;padding:.7rem 1.2rem;border-radius:999px;font:800 14px Manrope,sans-serif;background:linear-gradient(90deg,var(--hit),var(--near));color:#06101c}
+.wg-btn.ghost{background:rgba(255,255,255,.07);color:#fff;border:1px solid rgba(255,255,255,.16)}
+.wg-next{font:600 12px 'JetBrains Mono',monospace;color:#9aa3d6;margin-top:12px}
+.wg-rank{font-size:12.5px;color:#cfd5ff;margin:-4px 0 12px;min-height:1em}
+@media (max-height:640px){#wg{padding-top:50px}#wg-grid{height:min(100%,330px)}}
+</style></head><body>
+<div id="wg">
+  <div id="wg-head"><span>Daily <b id="wg-num">#1</b></span><button class="wg-pill" id="wg-mode" type="button">Daily</button><button class="wg-pill" id="wg-hard" type="button" title="Hard mode: revealed hints must be used">Hard</button><button class="wg-pill" id="wg-stats-btn" type="button">Stats</button></div>
+  <div id="wg-board"><div id="wg-grid" role="grid" aria-label="Guesses"></div></div>
+  <div id="wg-keys" aria-label="Keyboard"></div>
+</div>
+<div id="wg-toast" role="status" aria-live="polite"></div>
+<div id="wg-res" hidden><div class="wg-card">
+  <h2 id="wg-res-h">Glowing!</h2>
+  <div class="word" id="wg-res-w"></div>
+  <div class="wg-rank" id="wg-res-rank"></div>
+  <div class="wg-stats"><div><b id="st-p">0</b><small>Played</small></div><div><b id="st-w">0</b><small>Win %</small></div><div><b id="st-s">0</b><small>Streak</small></div><div><b id="st-m">0</b><small>Best</small></div></div>
+  <div class="wg-dist" id="wg-dist"></div>
+  <div class="wg-btns"><button class="wg-btn" id="wg-share" type="button">Share result</button><button class="wg-btn ghost" id="wg-practice" type="button">Practice round</button><button class="wg-btn ghost" id="wg-close" type="button">Close</button></div>
+  <div class="wg-next" id="wg-next"></div>
+</div></div>
+<script>
+window.paConfig = {
+  slug: "wordglow", title: "Wordglow", native: true, typing: true, music: "chill", unit: "points",
+  controls: [["Type / tap", "Enter a five-letter word"], ["Enter", "Submit"], ["Backspace", "Delete"]]
+};
+</script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script type="module">
+import { ANSWERS, VALID } from "/games/play/wordglow/words.js";
+const $ = (id) => document.getElementById(id);
+const answers = []; for (let i = 0; i < ANSWERS.length; i += 5) answers.push(ANSWERS.slice(i, i + 5));
+const valid = new Set(); for (let i = 0; i < VALID.length; i += 5) valid.add(VALID.slice(i, i + 5));
+const EPOCH = new Date(2026, 9, 11); // puzzle #1
+function dayIndex(d = new Date()) { const a = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return Math.round((a - EPOCH) / 864e5); }
+const today = dayIndex();
+const dailyNo = today + 1;
+const dailyWord = answers[((today % answers.length) + answers.length) % answers.length];
+
+/* ---------- persistence ---------- */
+const KEY = "wg_v1";
+const store = (() => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } })();
+store.stats = store.stats || { played: 0, wins: 0, streak: 0, best: 0, dist: [0, 0, 0, 0, 0, 0], lastWin: null, lastPlayed: null };
+store.hard = !!store.hard;
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} };
+// streak breaks if you missed yesterday
+if (store.stats.lastWin != null && store.stats.lastWin < today - 1 && store.stats.streak) { store.stats.streak = 0; save(); }
+
+let mode = "daily", word = dailyWord, rows = [], cur = "", done = false, busy = false;
+const state = {}; // letter -> hit/near/miss
+
+/* ---------- build grid + keyboard ---------- */
+const grid = $("wg-grid");
+for (let r = 0; r < 6; r++) {
+  const row = document.createElement("div"); row.className = "wg-row"; row.setAttribute("role", "row");
+  for (let c = 0; c < 5; c++) { const t = document.createElement("div"); t.className = "wg-t"; t.setAttribute("role", "gridcell"); row.appendChild(t); }
+  grid.appendChild(row);
+}
+const KB = ["qwertyuiop", "asdfghjkl", "↵zxcvbnm⌫"];
+KB.forEach((line) => {
+  const r = document.createElement("div"); r.className = "wg-kr";
+  for (const ch of line) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "wg-k" + (ch === "↵" || ch === "⌫" ? " wide" : "");
+    b.textContent = ch === "↵" ? "ENTER" : ch === "⌫" ? "⌫" : ch; b.dataset.k = ch === "↵" ? "Enter" : ch === "⌫" ? "Backspace" : ch;
+    b.setAttribute("aria-label", b.dataset.k);
+    r.appendChild(b);
+  }
+  $("wg-keys").appendChild(r);
+});
+$("wg-keys").addEventListener("click", (e) => { const b = e.target.closest(".wg-k"); if (b) { press(b.dataset.k); b.blur(); } });
+addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (window.paGate && window.paGate.isOpen && window.paGate.isOpen()) return;
+  if (PA.state !== "play" || PA.isPaused()) return;
+  if (!$("wg-res").hidden) { if (e.key === "Escape") $("wg-res").hidden = true; return; }
+  if (e.key === "Enter" || e.key === "Backspace" || /^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); press(e.key.length === 1 ? e.key.toLowerCase() : e.key); }
+});
+
+function toast(msg, ms = 1600) { const t = $("wg-toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), ms); }
+function rowEl(i) { return grid.children[i]; }
+function paintCur() {
+  const r = rowEl(rows.length); if (!r) return;
+  [...r.children].forEach((t, i) => { t.textContent = cur[i] || ""; t.classList.toggle("filled", !!cur[i]); });
+}
+function press(k) {
+  if (done || busy || PA.state !== "play") return;
+  if (k === "Backspace") { cur = cur.slice(0, -1); paintCur(); return; }
+  if (k === "Enter") return submit();
+  if (cur.length < 5 && /^[a-z]$/.test(k)) { cur += k; paintCur(); PA.sfx("click", { pitch: 0.9 + cur.length * 0.08, vol: .4 }); }
+}
+function score(guess, ans) {
+  const res = Array(5).fill("miss"), left = {};
+  for (let i = 0; i < 5; i++) { if (guess[i] === ans[i]) res[i] = "hit"; else left[ans[i]] = (left[ans[i]] || 0) + 1; }
+  for (let i = 0; i < 5; i++) if (res[i] !== "hit" && left[guess[i]]) { res[i] = "near"; left[guess[i]]--; }
+  return res;
+}
+function hardCheck(g) {
+  for (const { guess, res } of rows) {
+    for (let i = 0; i < 5; i++) {
+      if (res[i] === "hit" && g[i] !== guess[i]) return `Letter ${i + 1} must be ${guess[i].toUpperCase()}`;
+      if (res[i] === "near" && !g.includes(guess[i])) return `Guess must contain ${guess[i].toUpperCase()}`;
+    }
+  }
+  return null;
+}
+function submit() {
+  const r = rowEl(rows.length);
+  if (cur.length < 5) { shake(r); toast("Not enough letters"); return; }
+  if (!valid.has(cur)) { shake(r); toast("Not in the word list"); PA.sfx("thud"); return; }
+  if (store.hard) { const h = hardCheck(cur); if (h) { shake(r); toast(h); return; } }
+  const res = score(cur, word);
+  rows.push({ guess: cur, res });
+  reveal(r, cur, res, true);
+  const g = cur; cur = "";
+  if (mode === "daily") { store.daily = { day: today, rows: rows.map((x) => x.guess), hard: store.hard }; save(); }
+  busy = true;
+  setTimeout(() => {
+    busy = false;
+    if (g === word) finish(true);
+    else if (rows.length >= 6) finish(false);
+  }, 5 * 230 + 350);
+}
+function shake(r) { r.classList.remove("shake"); void r.offsetWidth; r.classList.add("shake"); }
+function reveal(r, guess, res, animate) {
+  [...r.children].forEach((t, i) => {
+    t.textContent = guess[i];
+    const go = () => {
+      t.classList.add(res[i]); t.classList.remove("filled");
+      const kb = $("wg-keys").querySelector(`[data-k="${guess[i]}"]`);
+      const rank = { hit: 3, near: 2, miss: 1 };
+      if (!state[guess[i]] || rank[res[i]] > rank[state[guess[i]]]) { state[guess[i]] = res[i]; if (kb) { kb.classList.remove("hit", "near", "miss"); kb.classList.add(res[i]); } }
+      if (animate) PA.sfx(res[i] === "hit" ? "coin" : res[i] === "near" ? "blip" : "click", { pitch: 0.8 + i * 0.1, vol: .45 });
+    };
+    if (animate) { t.style.animationDelay = i * 230 + "ms"; t.classList.add("rev"); setTimeout(go, i * 230 + 270); }
+    else go();
+  });
+}
+function finish(won) {
+  done = true;
+  const n = rows.length;
+  if (won) { const r = rowEl(n - 1); [...r.children].forEach((t, i) => { t.style.animationDelay = i * 90 + "ms"; }); r.classList.add("win"); PA.sfx("levelup"); }
+  else { toast(word.toUpperCase(), 3000); PA.sfx("lose"); }
+  let reportScore = 0;
+  if (mode === "daily") {
+    const s = store.stats;
+    if (s.lastPlayed !== today) {
+      s.played++; s.lastPlayed = today;
+      if (won) { s.wins++; s.streak = s.lastWin === today - 1 ? s.streak + 1 : 1; s.lastWin = today; s.best = Math.max(s.best, s.streak); s.dist[n - 1]++; }
+      else s.streak = 0;
+      store.daily.result = won ? n : 0;
+      save();
+      if (won) reportScore = s.streak * 100 + (7 - n) * 15 + (store.hard ? 25 : 0);
+    }
+  }
+  setTimeout(() => showResults(won, reportScore), won ? 1100 : 1700);
+  if (window.paXP) window.paXP.award("wordglow", { score: reportScore, won, guesses: n, daily: mode === "daily" });
+}
+function showResults(won, reportScore) {
+  const s = store.stats;
+  $("wg-res-h").textContent = mode === "practice" ? (won ? "Nice practice!" : "So close") : won ? ["Genius!", "Brilliant!", "Glowing!", "Sharp!", "Solid!", "Phew!"][rows.length - 1] : "Out of tries";
+  $("wg-res-w").textContent = (won ? "" : "THE WORD WAS ") + word.toUpperCase();
+  $("st-p").textContent = s.played; $("st-w").textContent = s.played ? Math.round(s.wins / s.played * 100) : 0;
+  $("st-s").textContent = s.streak; $("st-m").textContent = s.best;
+  const mx = Math.max(1, ...s.dist);
+  $("wg-dist").innerHTML = s.dist.map((v, i) => `<div>${i + 1}<i class="${mode === "daily" && done && rows.length === i + 1 && won ? "me" : ""}" style="width:${Math.max(8, v / mx * 100)}%">${v}</i></div>`).join("");
+  $("wg-share").style.display = done && (mode === "daily" || won) ? "" : "none";
+  $("wg-practice").style.display = done || store.daily?.result != null ? "" : "none";
+  $("wg-res-rank").textContent = "";
+  $("wg-res").hidden = false;
+  tickNext();
+  if (reportScore && window.paReport) {
+    $("wg-res-rank").textContent = "Saving your streak score…";
+    window.paReport("wordglow", reportScore).then((r) => {
+      if (r && r.rank) $("wg-res-rank").textContent = `Streak score ${reportScore.toLocaleString()} · #${r.rank} ${r.source === "global" ? "on the global board" : "on this device"}`;
+      else $("wg-res-rank").textContent = "";
+    }).catch(() => { $("wg-res-rank").textContent = ""; });
+  }
+}
+function tickNext() {
+  const now = new Date(), next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const s = Math.max(0, Math.floor((next - now) / 1000));
+  $("wg-next").textContent = `Next daily in ${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  if (!$("wg-res").hidden) setTimeout(tickNext, 1000);
+}
+function shareText() {
+  const n = rows.length, won = rows.length && rows[rows.length - 1].guess === word;
+  const em = { hit: "🟦", near: "🟪", miss: "⬛" };
+  const head = mode === "daily" ? `Wordglow #${dailyNo} ${won ? n : "X"}/6${store.hard ? "*" : ""}` : `Wordglow practice ${won ? n : "X"}/6`;
+  const streak = mode === "daily" && store.stats.streak > 1 ? ` · 🔥${store.stats.streak}` : "";
+  return head + streak + "\n" + rows.map((r) => r.res.map((x) => em[x]).join("")).join("\n") + "\npromptarcade.games/games/wordglow/";
+}
+$("wg-share").onclick = async () => {
+  const text = shareText();
+  try { if (navigator.share && matchMedia("(pointer:coarse)").matches) { await navigator.share({ text }); return; } } catch (e) {}
+  try { await navigator.clipboard.writeText(text); toast("Copied — paste it anywhere"); } catch (e) { toast("Couldn't copy"); }
+};
+$("wg-close").onclick = () => { $("wg-res").hidden = true; };
+$("wg-practice").onclick = () => { $("wg-res").hidden = true; startPractice(); };
+$("wg-stats-btn").onclick = () => { showResults(done && rows[rows.length - 1]?.guess === word, 0); };
+$("wg-hard").onclick = () => {
+  if (rows.length && !done) { toast("Hard mode can only change between puzzles"); return; }
+  store.hard = !store.hard; save(); paintHead(); toast(store.hard ? "Hard mode on" : "Hard mode off");
+};
+$("wg-mode").onclick = () => {
+  if (mode === "daily") { if (store.daily?.day === today && store.daily.result != null) startPractice(); else toast("Finish today's daily first"); }
+  else startDaily();
+};
+function paintHead() {
+  $("wg-num").textContent = mode === "daily" ? "#" + dailyNo : "∞";
+  $("wg-mode").textContent = mode === "daily" ? "Daily" : "Practice";
+  $("wg-mode").classList.toggle("on", mode === "practice");
+  $("wg-hard").classList.toggle("on", store.hard);
+}
+function clearBoard() {
+  rows = []; cur = ""; done = false; busy = false;
+  for (const k in state) delete state[k];
+  [...grid.children].forEach((r) => { r.className = "wg-row"; [...r.children].forEach((t) => { t.className = "wg-t"; t.textContent = ""; t.style.animationDelay = ""; }); });
+  $("wg-keys").querySelectorAll(".wg-k").forEach((b) => b.classList.remove("hit", "near", "miss"));
+}
+function startDaily() {
+  mode = "daily"; word = dailyWord; clearBoard(); paintHead();
+  if (store.daily && store.daily.day === today) {
+    // restore today's progress
+    for (const g of store.daily.rows) { const res = score(g, word); rows.push({ guess: g, res }); reveal(rowEl(rows.length - 1), g, res, false); }
+    if (store.daily.result != null) { done = true; setTimeout(() => showResults(store.daily.result > 0, 0), 300); }
+  }
+}
+function startPractice() {
+  mode = "practice"; clearBoard(); paintHead();
+  let w; do { w = answers[(Math.random() * answers.length) | 0]; } while (w === dailyWord);
+  word = w;
+}
+PA.onStart(() => { if (mode === "daily" && done) startPractice(); else if (!rows.length) startDaily(); });
+startDaily();
+window.__wg = { get word() { return word; }, press };
+</script>
+</body></html>

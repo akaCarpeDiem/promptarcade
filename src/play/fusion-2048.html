@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Fusion 2048 — PromptArcade</title>
+<style>
+html,body{margin:0;height:100%;background:#05070f;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;position:fixed;inset:0}
+</style></head><body>
+<canvas id="c" aria-label="Fusion 2048 board"></canvas>
+<script>
+window.paConfig = {
+  slug: "fusion-2048", title: "Fusion 2048", native: true, music: "puzzle", unit: "points",
+  controls: [["← → ↑ ↓ / WASD", "Slide tiles"], ["Touch / mouse", "Swipe to slide"]]
+};
+</script>
+<script src="/games/play/pa-score.js?v=e650da0b4c"></script>
+<script src="/games/play/pa-gate.js?v=e650da0b4c"></script>
+<script src="/games/play/pa-kit.js?v=e650da0b4c"></script>
+<script>
+(() => {
+  const SIZE = 4;
+  const ANIM = 0.11;
+  const { clamp, ease, choice } = PA;
+
+  const TILE = {
+    2: { fill: "#142038", edge: "#8ee9ff", text: "#8ee9ff", glow: "#8ee9ff" },
+    4: { fill: "#1c1848", edge: "#c4a6ff", text: "#e8dcff", glow: "#c4a6ff" },
+    8: { fill: "#2a1840", edge: "#ff9ec4", text: "#fff", glow: "#ff7eb6" },
+    16: { fill: "#321828", edge: "#ff7eb6", text: "#fff", glow: "#ff7eb6" },
+    32: { fill: "#3a1820", edge: "#ffb07a", text: "#fff", glow: "#ffb07a" },
+    64: { fill: "#422010", edge: "#ffd27a", text: "#2a1800", glow: "#ffd27a" },
+    128: { fill: "#3a2810", edge: "#ffe08a", text: "#fff", glow: "#ffd27a" },
+    256: { fill: "#283818", edge: "#7ee7a8", text: "#fff", glow: "#7ee7a8" },
+    512: { fill: "#183830", edge: "#5ef2ff", text: "#fff", glow: "#5ef2ff" },
+    1024: { fill: "#102838", edge: "#8ee9ff", text: "#fff", glow: "#8ee9ff" },
+    2048: { fill: "#201040", edge: "#ffd27a", text: "#fff", glow: "#ffd27a" }
+  };
+
+  let L = {};
+  let grid, score, bestTile, overSent;
+  let animating, animT, pendingGrid, slideAnims, mergePop;
+  let spawnPop = null;
+  let reached2048 = false;
+
+  const view = PA.canvas(document.getElementById("c"), { onResize: layout });
+  const ctx = view.ctx;
+  const fx = new PA.Particles(900), texts = new PA.Texts();
+
+  function emptyGrid() { return Array.from({ length: SIZE }, () => Array(SIZE).fill(0)); }
+
+  function tileStyle(v) {
+    if (TILE[v]) return TILE[v];
+    const log = Math.min(16, Math.log2(v));
+    const t = (log - 11) / 5;
+    return {
+      fill: "#" + [32, 16 + t * 20, 48 + t * 10].map(n => Math.round(n).toString(16).padStart(2, "0")).join(""),
+      edge: "#ffd27a", text: "#fff", glow: log >= 13 ? "#ff7eb6" : "#ffd27a"
+    };
+  }
+
+  function layout(v) {
+    const touch = PA.isTouch;
+    const bottom = touch ? 28 : 0;
+    const w = v.w, h = v.h - bottom;
+    const portrait = w < h * 0.82;
+    const side = portrait ? 0 : clamp(Math.min(220, w * 0.26), 188, 220);
+    const top = portrait ? 88 : 72;
+    const boardCap = Math.min(w - (portrait ? 36 : side + 52), h - top - (portrait ? 120 : 48));
+    const gap = clamp(Math.floor(boardCap * 0.028), 8, 14);
+    const cell = Math.max(14, Math.floor((boardCap - gap * (SIZE + 1)) / SIZE));
+    const bw = cell * SIZE + gap * (SIZE + 1);
+    const bx = Math.round((w - bw - (portrait ? 0 : side + 20)) / 2);
+    const by = Math.round(top + (h - top - (portrait ? 108 : 24) - bw) / 2);
+    L = { w: v.w, h: v.h, cell, gap, bx, by, bw, side, portrait, top };
+  }
+
+  function roundRect(g, x, y, w, h, r) {
+    g.beginPath(); g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  }
+
+  function cellXY(r, c) {
+    const { bx, by, cell, gap } = L;
+    return [bx + gap + c * (cell + gap), by + gap + r * (cell + gap)];
+  }
+
+  function lineSlots(dr, dc, i) {
+    const slots = [];
+    if (dc !== 0) {
+      const r = i;
+      const cols = dc < 0 ? [0, 1, 2, 3] : [3, 2, 1, 0];
+      cols.forEach(c => slots.push({ r, c }));
+    } else {
+      const c = i;
+      const rows = dr < 0 ? [0, 1, 2, 3] : [3, 2, 1, 0];
+      rows.forEach(r => slots.push({ r, c }));
+    }
+    return slots;
+  }
+
+  function simulate(dr, dc) {
+    const newGrid = emptyGrid();
+    let moved = false;
+    let gain = 0;
+    const anims = [];
+
+    for (let i = 0; i < SIZE; i++) {
+      const slots = lineSlots(dr, dc, i);
+      const filled = slots.map(s => ({ ...s, v: grid[s.r][s.c] })).filter(e => e.v);
+      const out = new Array(SIZE).fill(0);
+      let oi = 0;
+      let fi = 0;
+      while (fi < filled.length) {
+        const a = filled[fi];
+        if (fi + 1 < filled.length && a.v === filled[fi + 1].v) {
+          const nv = a.v * 2;
+          const tgt = slots[oi];
+          gain += nv;
+          out[oi] = nv;
+          anims.push({ r: a.r, c: a.c, tr: tgt.r, tc: tgt.c, v: a.v, nv, merge: true });
+          anims.push({ r: filled[fi + 1].r, c: filled[fi + 1].c, tr: tgt.r, tc: tgt.c, v: filled[fi + 1].v, nv, merge: true, vanish: true });
+          if (a.r !== tgt.r || a.c !== tgt.c) moved = true;
+          fi += 2;
+          oi++;
+        } else {
+          const tgt = slots[oi];
+          out[oi] = a.v;
+          if (a.r !== tgt.r || a.c !== tgt.c) {
+            moved = true;
+            anims.push({ r: a.r, c: a.c, tr: tgt.r, tc: tgt.c, v: a.v });
+          }
+          fi++;
+          oi++;
+        }
+      }
+      slots.forEach((s, k) => { newGrid[s.r][s.c] = out[k]; });
+    }
+
+    if (!moved) {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          if (grid[r][c] !== newGrid[r][c]) { moved = true; break; }
+        }
+        if (moved) break;
+      }
+    }
+    return { moved, grid: newGrid, gain, anims };
+  }
+
+  function canMove(g) {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const v = g[r][c];
+        if (!v) return true;
+        if (c + 1 < SIZE && g[r][c + 1] === v) return true;
+        if (r + 1 < SIZE && g[r + 1][c] === v) return true;
+      }
+    }
+    return false;
+  }
+
+  function spawnRandom(g) {
+    const empty = [];
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (!g[r][c]) empty.push([r, c]);
+    if (!empty.length) return null;
+    const [r, c] = choice(empty);
+    const v = Math.random() < 0.9 ? 2 : 4;
+    g[r][c] = v;
+    return { r, c, v };
+  }
+
+  function mergeFx(tr, tc, nv) {
+    const [x, y] = cellXY(tr, tc);
+    const cx = x + L.cell / 2, cy = y + L.cell / 2;
+    const col = tileStyle(nv).glow;
+    fx.burst(cx, cy, { n: 14 + Math.min(20, Math.log2(nv)), color: col, speed: 140, life: 0.45, size: 3.2, shape: "square" });
+    texts.add(cx, cy - 8, "+" + nv, { color: col, size: Math.min(22, 14 + Math.log2(nv)), life: 0.75, vy: -48 });
+    const pitch = 0.85 + Math.min(1.1, Math.log2(nv) * 0.06);
+    PA.sfx("coin", { pitch });
+    if (nv >= 128) PA.shake(Math.min(10, 2 + Math.log2(nv) * 0.5), 0.12);
+    if (nv >= 2048 && !reached2048) {
+      reached2048 = true;
+      PA.sfx("levelup");
+      PA.flash("rgba(255,210,122,.22)", 320);
+    }
+  }
+
+  function finishAnim() {
+    grid = pendingGrid;
+    pendingGrid = null;
+    animating = false;
+    slideAnims = [];
+    bestTile = Math.max(bestTile, ...grid.flat());
+    PA.music.intensity(clamp(Math.log2(Math.max(2, bestTile)) / 12, 0, 1));
+    const sp = spawnRandom(grid);
+    if (sp) spawnPop = { ...sp, t: 0 };
+    if (!canMove(grid)) {
+      if (overSent) return;
+      overSent = true;
+      PA.sfx("gameover");
+      const title = bestTile >= 2048 ? "Fusion peak reached" : "No moves left";
+      PA.gameOver(score, {
+        title,
+        stats: [["Best tile", bestTile], ["Merges score", score], ["Peak tile", bestTile]]
+      });
+    }
+  }
+
+  function tryMove(dr, dc) {
+    if (animating || PA.state !== "play" || overSent || !grid) return;
+    const res = simulate(dr, dc);
+    if (!res.moved) { PA.sfx("click", { pitch: 0.7, vol: 0.35 }); return; }
+    score += res.gain;
+    pendingGrid = res.grid;
+    slideAnims = res.anims;
+    mergePop = res.anims.filter(a => a.merge && !a.vanish).map(a => ({ tr: a.tr, tc: a.tc, nv: a.nv }));
+    animating = true;
+    animT = 0;
+    PA.sfx("whoosh", { pitch: 0.95, vol: 0.45 });
+  }
+
+  function reset() {
+    grid = emptyGrid();
+    score = 0;
+    bestTile = 2;
+    overSent = false;
+    animating = false;
+    animT = 0;
+    pendingGrid = null;
+    slideAnims = [];
+    mergePop = [];
+    spawnPop = null;
+    reached2048 = false;
+    fx.clear();
+    texts.clear();
+    PA.music.intensity(0);
+    spawnRandom(grid);
+    spawnRandom(grid);
+    bestTile = Math.max(...grid.flat());
+  }
+
+  function drawTile(value, px, py, scale, alpha) {
+    if (!value) return;
+    const { cell } = L;
+    const st = tileStyle(value);
+    const s = cell * (scale || 1);
+    const x = px + (cell - s) / 2;
+    const y = py + (cell - s) / 2;
+    const r = Math.max(4, s * 0.16);
+    ctx.save();
+    if (alpha != null) ctx.globalAlpha = alpha;
+    ctx.shadowColor = st.glow;
+    ctx.shadowBlur = s * 0.35;
+    roundRect(ctx, x, y, s, s, r);
+    const grd = ctx.createLinearGradient(x, y, x + s, y + s);
+    grd.addColorStop(0, st.fill);
+    grd.addColorStop(1, "#080c18");
+    ctx.fillStyle = grd;
+    ctx.fill();
+    ctx.shadowBlur = s * 0.18;
+    ctx.strokeStyle = st.edge;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    roundRect(ctx, x + s * 0.12, y + s * 0.1, s * 0.76, s * 0.22, r * 0.5);
+    ctx.fillStyle = "rgba(255,255,255,.22)";
+    ctx.fill();
+    const label = String(value);
+    let fs = s * (label.length > 3 ? 0.28 : label.length > 2 ? 0.36 : 0.44);
+    ctx.font = "700 " + fs + "px 'JetBrains Mono', ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = st.text;
+    ctx.shadowColor = st.glow;
+    ctx.shadowBlur = 10;
+    ctx.fillText(label, x + s / 2, y + s / 2 + s * 0.02);
+    ctx.restore();
+  }
+
+  function panel(x, y, w, h, title) {
+    roundRect(ctx, x, y, w, h, 14);
+    ctx.fillStyle = "rgba(10,14,32,.78)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(142,233,255,.24)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (title) {
+      ctx.fillStyle = "#8ee9ff";
+      ctx.font = "500 " + Math.max(9, L.cell * 0.34) + "px 'JetBrains Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(title.toUpperCase().split("").join(" "), x + 12, y + 10);
+    }
+  }
+
+  function statBlock(x, y, w, label, value, accent) {
+    const labelH = 12;
+    const gap = 4;
+    ctx.save();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#8ee9ff";
+    ctx.font = "500 10px 'JetBrains Mono', ui-monospace, monospace";
+    ctx.fillText(label, x, y);
+    ctx.fillStyle = "#fff";
+    ctx.shadowColor = accent || "#ffd27a";
+    ctx.shadowBlur = 10;
+    let fs = Math.max(16, Math.min(L.cell * 0.62, 22));
+    ctx.font = "600 " + fs + "px 'JetBrains Mono', ui-monospace, monospace";
+    const str = typeof value === "number" ? value.toLocaleString() : String(value);
+    while (ctx.measureText(str).width > w && fs > 12) {
+      fs -= 1;
+      ctx.font = "600 " + fs + "px 'JetBrains Mono', ui-monospace, monospace";
+    }
+    ctx.fillText(str, x, y + labelH + gap);
+    ctx.restore();
+    return labelH + gap + fs + 6;
+  }
+
+  function renderBackdrop(t, W, H) {
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#0b0f22");
+    bg.addColorStop(0.55, "#070a18");
+    bg.addColorStop(1, "#05070f");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    const pulse = 0.14 + 0.04 * Math.sin(t * 1.4);
+    const orb = ctx.createRadialGradient(W * 0.5, H * 0.42, 20, W * 0.5, H * 0.42, Math.max(W, H) * 0.65);
+    orb.addColorStop(0, "rgba(255,210,122," + pulse + ")");
+    orb.addColorStop(0.45, "rgba(196,166,255," + (pulse * 0.45) + ")");
+    orb.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = orb;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(142,233,255,.05)";
+    ctx.lineWidth = 1;
+    for (let i = -8; i <= 8; i++) {
+      ctx.beginPath();
+      ctx.moveTo(W / 2 + i * 36, H * 0.08);
+      ctx.lineTo(W / 2 + i * 120, H);
+      ctx.stroke();
+    }
+  }
+
+  function renderBoard(t) {
+    if (!grid || !L.cell) return;
+    const { bx, by, bw, cell, gap } = L;
+    const prog = animating ? ease.outCubic(clamp(animT / ANIM, 0, 1)) : 1;
+
+    roundRect(ctx, bx - 10, by - 10, bw + 20, bw + 20, 18);
+    ctx.fillStyle = "rgba(6,8,20,.92)";
+    ctx.fill();
+    ctx.shadowColor = "#ffd27a";
+    ctx.shadowBlur = 22;
+    ctx.strokeStyle = "rgba(255,210,122," + (0.28 + 0.08 * Math.sin(t * 2)) + ")";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const [x, y] = cellXY(r, c);
+        roundRect(ctx, x, y, cell, cell, Math.max(4, cell * 0.14));
+        ctx.fillStyle = "rgba(255,255,255,.035)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(142,233,255,.06)";
+        ctx.stroke();
+      }
+    }
+
+    const movingFrom = new Set();
+    if (animating) slideAnims.forEach(a => movingFrom.add(a.r + "," + a.c));
+
+    if (!animating) {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const v = grid[r][c];
+          if (!v) continue;
+          let scale = 1;
+          if (spawnPop && spawnPop.r === r && spawnPop.c === c) {
+            scale = 0.82 + 0.18 * ease.outBack(clamp(spawnPop.t / 0.16, 0, 1));
+          }
+          const [x, y] = cellXY(r, c);
+          drawTile(v, x, y, scale, 1);
+        }
+      }
+    } else {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const v = grid[r][c];
+          if (!v || movingFrom.has(r + "," + c)) continue;
+          const [x, y] = cellXY(r, c);
+          drawTile(v, x, y, 1, 1);
+        }
+      }
+      slideAnims.forEach(a => {
+        if (a.vanish && prog > 0.55) return;
+        const fx0 = a.c, fy0 = a.r, fx1 = a.tc, fy1 = a.tr;
+        const cx = fx0 + (fx1 - fx0) * prog;
+        const cy = fy0 + (fy1 - fy0) * prog;
+        const [px, py] = cellXY(cy, cx);
+        let scale = 1;
+        let val = a.v;
+        if (a.merge && !a.vanish && prog > 0.92) {
+          val = a.nv;
+          scale = 1 + 0.12 * (1 - (prog - 0.92) / 0.08);
+        }
+        drawTile(val, px, py, scale, a.vanish ? 1 - prog * 0.85 : 1);
+      });
+    }
+  }
+
+  function renderHud(t) {
+    const W = view.w, H = view.h;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#f4f1ff";
+    ctx.font = "600 " + Math.max(18, L.cell * 0.55) + "px Manrope, system-ui, sans-serif";
+    ctx.shadowColor = "#ffd27a";
+    ctx.shadowBlur = 16;
+    ctx.fillText("Fusion 2048", W / 2, L.portrait ? 34 : 48);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    const pw = L.portrait ? Math.min(W - 32, 420) : L.side;
+    const px = L.portrait ? (W - pw) / 2 : L.bx + L.bw + 24;
+    const py = L.portrait ? L.by + L.bw + 18 : L.by;
+    const pad = 16;
+    const rowH = L.portrait ? 56 : 54;
+    if (L.portrait) {
+      panel(px, py, pw, rowH + pad, "");
+      statBlock(px + pad, py + 12, pw / 2 - pad - 8, "Score", score || 0, "#8ee9ff");
+      statBlock(px + pw / 2 + 4, py + 12, pw / 2 - pad - 8, "Best tile", bestTile || 2, "#ffd27a");
+    } else {
+      const rows = [
+        ["Score", score || 0, "#8ee9ff"],
+        ["Best tile", bestTile || 2, "#ffd27a"],
+        ["Session best", Math.max(PA.best || 0, score || 0), "#c4a6ff"]
+      ];
+      const ph = pad + rows.length * rowH + 8;
+      panel(px, py, pw, ph, "");
+      let iy = py + 12;
+      rows.forEach((r) => {
+        statBlock(px + pad, iy, pw - pad * 2, r[0], r[1], r[2]);
+        iy += rowH;
+      });
+    }
+    if (L.portrait) {
+      ctx.fillStyle = "#7a7694";
+      ctx.font = "500 11px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("SWIPE TO SLIDE · SUM OF MERGES = SCORE", W / 2, H - 16);
+    }
+  }
+
+  function update(dt) {
+    fx.update(dt);
+    texts.update(dt);
+    if (spawnPop) {
+      spawnPop.t += dt;
+      if (spawnPop.t > 0.2) spawnPop = null;
+    }
+    if (PA.state !== "play" || !grid) return;
+    if (animating) {
+      animT += dt;
+      if (animT >= ANIM) {
+        mergePop.forEach(m => mergeFx(m.tr, m.tc, m.nv));
+        finishAnim();
+      }
+      return;
+    }
+  }
+
+  function render(t) {
+    const W = view.w, H = view.h;
+    renderBackdrop(t, W, H);
+    renderHud(t);
+    renderBoard(t);
+    fx.draw(ctx);
+    texts.draw(ctx);
+  }
+
+  PA.onKey((e) => {
+    if (e.repeat) return;
+    const k = e.key, c = e.code;
+    if (k === "ArrowLeft" || c === "KeyA") tryMove(0, -1);
+    else if (k === "ArrowRight" || c === "KeyD") tryMove(0, 1);
+    else if (k === "ArrowUp" || c === "KeyW") tryMove(-1, 0);
+    else if (k === "ArrowDown" || c === "KeyS") tryMove(1, 0);
+  });
+
+  PA.swipe(view.canvas, (dir) => {
+    if (dir === "left") tryMove(0, -1);
+    else if (dir === "right") tryMove(0, 1);
+    else if (dir === "up") tryMove(-1, 0);
+    else if (dir === "down") tryMove(1, 0);
+  });
+
+  window.__f2048 = () => ({
+    score,
+    best: bestTile,
+    grid: grid ? grid.map(row => row.slice()) : []
+  });
+
+  PA.best = window.paScores ? window.paScores.best("fusion-2048", window.paScores.cleanName(window.paScores.getName())) : 0;
+  PA.onStart(() => {
+    PA.best = window.paScores ? window.paScores.best("fusion-2048", window.paScores.cleanName(window.paScores.getName())) : 0;
+    reset();
+  });
+
+  grid = emptyGrid();
+  score = 0;
+  bestTile = 2;
+  mergePop = [];
+  PA.loop(update, render);
+})();
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"a350f886e6974df098681db56e5946d2","r":1,"spa":2}' crossorigin="anonymous"></script>
+</body></html>

@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Deepdelve — PromptArcade</title>
+<style>
+html,body{margin:0;height:100%;background:#07060a;color:#efe6d8;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#c{display:block;position:fixed;inset:0}
+#dd-side{position:fixed;top:10px;left:10px;z-index:30;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none;right:100px}
+#dd-hp b{color:#ff8a8a}
+#dd-log{position:fixed;left:10px;bottom:10px;z-index:30;max-width:min(560px,70vw);pointer-events:none;font:600 13px/1.45 Manrope,sans-serif;color:#e8dccb;text-shadow:0 1px 3px #000}
+#dd-log div{opacity:.55}#dd-log div:last-child{opacity:1}
+#dd-inv{position:fixed;right:10px;bottom:10px;z-index:31;display:flex;gap:6px}
+#dd-inv button{all:unset;cursor:pointer;width:46px;height:46px;border-radius:12px;background:rgba(30,22,16,.8);border:1px solid rgba(255,210,150,.25);display:grid;place-items:center;font-size:22px;position:relative}
+#dd-inv button b{position:absolute;right:3px;bottom:1px;font:800 10px 'JetBrains Mono',monospace;color:#ffd27a}
+#dd-inv button i{position:absolute;left:4px;top:2px;font:700 9px 'JetBrains Mono',monospace;color:#a89880;font-style:normal}
+#dd-inv button:disabled{opacity:.3;cursor:default}
+#dd-pad{position:fixed;right:10px;bottom:66px;z-index:31;display:none;grid-template-columns:repeat(3,48px);gap:4px}
+#dd-pad button{all:unset;width:48px;height:48px;border-radius:12px;background:rgba(30,22,16,.7);border:1px solid rgba(255,210,150,.2);display:grid;place-items:center;font:800 16px Manrope;color:#ffe6c0}
+@media (pointer:coarse){#dd-pad{display:grid}#dd-log{font-size:11.5px;max-width:52vw}}
+#dd-mode{position:fixed;inset:0;z-index:55;display:grid;place-items:center;background:rgba(6,4,8,.75);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+#dd-mode[hidden]{display:none}
+#dd-mode .card{width:min(460px,92vw);text-align:center;background:linear-gradient(170deg,#2a1d14,#120c0a);border:1px solid rgba(255,200,130,.25);border-radius:22px;padding:24px}
+#dd-mode h2{margin:0 0 .2em;font:800 28px Unbounded,Manrope,sans-serif;color:#ffd9a0}
+#dd-mode p{color:#d9c6ae;font-size:14px;margin:.3em 0 1.2em}
+#dd-mode button{all:unset;cursor:pointer;display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:14px;border-radius:14px;background:rgba(255,200,130,.08);border:1px solid rgba(255,200,130,.3);text-align:left}
+#dd-mode button:hover,#dd-mode button:focus-visible{background:rgba(255,200,130,.18)}
+#dd-mode button b{display:block;font:800 16px Manrope;color:#fff}
+#dd-mode button span{font-size:12.5px;color:#d0bba2}
+</style></head><body>
+<canvas id="c" aria-label="Deepdelve dungeon"></canvas>
+<div id="dd-side" class="pa-hud">
+  <div class="pa-stat" id="dd-hp"><small>Health</small><b>20/20</b></div>
+  <div class="pa-stat" id="dd-depth"><small>Depth</small><b>1</b></div>
+  <div class="pa-stat" id="dd-lvl"><small>Level</small><b>1</b></div>
+  <div class="pa-stat" id="dd-gold"><small>Gold</small><b>0</b></div>
+  <div class="pa-stat" id="dd-gear"><small>Gear</small><b>🗡️1 🛡️0</b></div>
+</div>
+<div id="dd-log" aria-live="polite"></div>
+<div id="dd-pad"><button data-d="-1,-1">↖</button><button data-d="0,-1">↑</button><button data-d="1,-1">↗</button><button data-d="-1,0">←</button><button data-d="0,0">·</button><button data-d="1,0">→</button><button data-d="-1,1">↙</button><button data-d="0,1">↓</button><button data-d="1,1">↘</button></div>
+<div id="dd-inv"></div>
+<div id="dd-mode" hidden><div class="card">
+  <h2>Deepdelve</h2><p>Every floor is generated fresh. Fight, loot and dive as deep as you dare — death is permanent.</p>
+  <button type="button" id="dd-daily"><b>☀️ Daily Delve</b><span id="dd-daily-s">Today's dungeon — the same for everyone.</span></button>
+  <button type="button" id="dd-random"><b>🎲 Random Delve</b><span>A brand-new dungeon every run.</span></button>
+</div></div>
+<script>
+window.paConfig = {
+  slug: "deepdelve", title: "Deepdelve", native: true, music: "tense", unit: "points",
+  controls: [["Arrows / WASD", "Move & attack"], ["Q E Z C", "Diagonals"], ["Space / .", "Wait a turn"], ["1–4", "Use items"], [">", "Descend stairs (or walk onto them)"], ["Tap a tile", "Walk there"]]
+};
+</script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script>
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const W = 56, H = 34;
+const view = PA.canvas($("c"));
+const ctx = view.ctx;
+const fx = new PA.Particles(800), texts = new PA.Texts();
+
+/* ---------- seeded rng ---------- */
+let rs = 1;
+function seed(n) { rs = n >>> 0 || 1; }
+function rnd() { rs |= 0; rs = (rs + 0x6d2b79f5) | 0; let t = Math.imul(rs ^ (rs >>> 15), 1 | rs); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
+const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+const pick = (a) => a[Math.floor(rnd() * a.length)];
+function dateSeed() { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
+
+/* ---------- content ---------- */
+const MON = {
+  rat: { g: "🐀", n: "rat", hp: 4, atk: 2, def: 0, xp: 2, min: 1, w: 6 },
+  bat: { g: "🦇", n: "bat", hp: 5, atk: 2, def: 0, xp: 3, min: 1, w: 4, erratic: true },
+  slime: { g: "🟢", n: "slime", hp: 9, atk: 3, def: 0, xp: 5, min: 2, w: 4, split: true, slow: true },
+  goblin: { g: "👺", n: "goblin", hp: 10, atk: 4, def: 1, xp: 6, min: 2, w: 5 },
+  skel: { g: "💀", n: "skeleton", hp: 14, atk: 5, def: 2, xp: 9, min: 4, w: 4 },
+  spider: { g: "🕷️", n: "cave spider", hp: 11, atk: 6, def: 1, xp: 9, min: 4, w: 3, fast: true },
+  orc: { g: "👹", n: "orc brute", hp: 22, atk: 7, def: 3, xp: 14, min: 6, w: 4 },
+  wraith: { g: "👻", n: "wraith", hp: 18, atk: 8, def: 2, xp: 16, min: 8, w: 3, phase: true },
+  golem: { g: "🗿", n: "stone golem", hp: 40, atk: 10, def: 6, xp: 26, min: 10, w: 2, slow: true },
+  dragon: { g: "🐉", n: "deep dragon", hp: 42, atk: 8, def: 3, xp: 80, min: 99, w: 0, boss: true, breath: true }
+};
+const ITEMS = {
+  potion: { g: "🧪", n: "healing potion", w: 8 },
+  scroll: { g: "📜", n: "blink scroll", w: 3 },
+  bomb: { g: "💣", n: "fire bomb", w: 3 },
+  map: { g: "🗺️", n: "map scroll", w: 2 },
+  gold: { g: "💰", n: "gold", w: 10 },
+  sword: { g: "🗡️", n: "blade", w: 2 },
+  shield: { g: "🛡️", n: "armor", w: 2 },
+  heart: { g: "❤️", n: "heart crystal", w: 1 }
+};
+const SLOTS = ["potion", "scroll", "bomb", "map"];
+
+/* ---------- state ---------- */
+let G = null, mode = "random", daily = 0;
+function newGame(isDaily) {
+  mode = isDaily ? "daily" : "random";
+  daily = dateSeed();
+  const s = isDaily ? daily * 7 + 13 : (Math.random() * 2 ** 31) | 0;
+  G = { seed: s, depth: 0, p: { x: 0, y: 0, hp: 20, max: 20, atk: 3, def: 0, wpn: 1, arm: 0, lvl: 1, xp: 0, next: 10, gold: 0 }, inv: { potion: 1, scroll: 0, bomb: 0, map: 0 }, log: [], kills: 0, turns: 0, dead: false, path: null };
+  logMsg(isDaily ? "☀️ The daily dungeon awaits. Everyone delves the same halls today." : "You descend into the dark.");
+  nextFloor();
+}
+function logMsg(m) { G.log.push(m); if (G.log.length > 4) G.log.shift(); $("dd-log").innerHTML = G.log.map((x) => `<div>${x}</div>`).join(""); }
+
+/* ---------- generation: rooms + corridors ---------- */
+function nextFloor() {
+  G.depth++;
+  seed(G.seed + G.depth * 7919);
+  const map = Array.from({ length: H }, () => Array(W).fill(1)); // 1 wall, 0 floor
+  const rooms = [];
+  for (let tries = 0; tries < 200 && rooms.length < 14; tries++) {
+    const w = ri(4, 10), h = ri(3, 7), x = ri(1, W - w - 2), y = ri(1, H - h - 2);
+    if (rooms.some((r) => x < r.x + r.w + 1 && x + w + 1 > r.x && y < r.y + r.h + 1 && y + h + 1 > r.y)) continue;
+    rooms.push({ x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1) });
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) map[yy][xx] = 0;
+  }
+  // connect rooms in order of a nearest-neighbour chain, plus a few loops
+  const order = [rooms[0]], left = rooms.slice(1);
+  while (left.length) {
+    const last = order[order.length - 1];
+    left.sort((a, b) => Math.hypot(a.cx - last.cx, a.cy - last.cy) - Math.hypot(b.cx - last.cx, b.cy - last.cy));
+    order.push(left.shift());
+  }
+  const carve = (a, b) => {
+    let x = a.cx, y = a.cy;
+    const horizFirst = rnd() < 0.5;
+    const stepX = () => { while (x !== b.cx) { map[y][x] = 0; x += Math.sign(b.cx - x); } };
+    const stepY = () => { while (y !== b.cy) { map[y][x] = 0; y += Math.sign(b.cy - y); } };
+    if (horizFirst) { stepX(); stepY(); } else { stepY(); stepX(); }
+    map[y][x] = 0;
+  };
+  for (let i = 1; i < order.length; i++) carve(order[i - 1], order[i]);
+  for (let i = 0; i < 3; i++) carve(pick(rooms), pick(rooms));
+  // cave-ish erosion on deeper floors
+  if (G.depth >= 3) for (let i = 0; i < 120; i++) { const x = ri(2, W - 3), y = ri(2, H - 3); let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) n += map[y + dy][x + dx] === 0; if (n >= 5) map[y][x] = 0; }
+
+  G.map = map;
+  G.seen = Array.from({ length: H }, () => Array(W).fill(0));
+  G.vis = Array.from({ length: H }, () => Array(W).fill(0));
+  G.mons = []; G.items = []; G.torches = [];
+  const start = order[0], end = order[order.length - 1];
+  G.p.x = start.cx; G.p.y = start.cy;
+  G.stairs = { x: end.cx, y: end.cy };
+  const boss = G.depth % 5 === 0;
+  // monsters
+  const pool = Object.entries(MON).filter(([, m]) => m.min <= G.depth);
+  const nMon = 4 + Math.floor(G.depth * 1.4) + ri(0, 3);
+  for (let i = 0; i < nMon; i++) {
+    const r = pick(rooms.slice(1));
+    let tot = 0; for (const [, m] of pool) tot += m.w;
+    let q = rnd() * tot, k = pool[0][0];
+    for (const [id, m] of pool) { q -= m.w; if (q <= 0) { k = id; break; } }
+    spawnMon(k, ri(r.x, r.x + r.w - 1), ri(r.y, r.y + r.h - 1));
+  }
+  if (boss) { spawnMon("dragon", end.cx + 1 < W - 1 && map[end.cy][end.cx + 1] === 0 ? end.cx + 1 : end.cx, end.cy - 1 > 0 && map[end.cy - 1][end.cx] === 0 ? end.cy - 1 : end.cy); logMsg("🔥 The air is scorching. Something enormous guards the stairs."); }
+  // items
+  const nIt = 4 + ri(0, 4);
+  const ipool = Object.entries(ITEMS);
+  for (let i = 0; i < nIt; i++) {
+    const r = pick(rooms);
+    let tot = 0; for (const [, it] of ipool) tot += it.w;
+    let q = rnd() * tot, k = "gold";
+    for (const [id, it] of ipool) { q -= it.w; if (q <= 0) { k = id; break; } }
+    const x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1);
+    if ((x !== G.p.x || y !== G.p.y) && !(x === G.stairs.x && y === G.stairs.y)) G.items.push({ k, x, y, v: k === "gold" ? ri(5, 12) * G.depth : 0 });
+  }
+  // torches on room walls
+  for (const r of rooms) if (rnd() < 0.7) { const tx = ri(r.x, r.x + r.w - 1); if (map[r.y - 1] && map[r.y - 1][tx] === 1) G.torches.push({ x: tx, y: r.y - 1, f: rnd() * 6 }); }
+  G.mons = G.mons.filter((m) => Math.hypot(m.x - G.p.x, m.y - G.p.y) > 4);
+  fov();
+  paint();
+  if (G.depth > 1) { PA.sfx("whoosh", { pitch: 0.6 }); logMsg(`Depth ${G.depth}.` + (G.depth % 5 === 4 ? " You hear deep breathing below…" : "")); }
+}
+function spawnMon(k, x, y) {
+  if (G.map[y][x] !== 0) return;
+  const M = MON[k], s = M.boss ? 1 + (G.depth - 5) * 0.22 : 1 + (G.depth - M.min) * 0.12;
+  G.mons.push({ k, x, y, hp: Math.round(M.hp * Math.max(1, s)), max: Math.round(M.hp * Math.max(1, s)), atk: Math.round(M.atk * Math.max(1, s * .9)), def: M.def, awake: false, energy: 0, flash: 0, ox: 0, oy: 0 });
+}
+
+/* ---------- field of view: recursive shadowcasting ---------- */
+const MULT = [[1, 0, 0, -1, -1, 0, 0, 1], [0, 1, -1, 0, 0, -1, 1, 0], [0, 1, 1, 0, 0, -1, -1, 0], [1, 0, 0, 1, -1, 0, 0, -1]];
+const OCT = [0, 1, 2, 3, 4, 5, 6, 7].map((o) => [MULT[0][o], MULT[1][o], MULT[2][o], MULT[3][o]]);
+function fov() {
+  for (let y = 0; y < H; y++) G.vis[y].fill(0);
+  const R = G.depth >= 8 ? 6 : 7;
+  const { x: px, y: py } = G.p;
+  G.vis[py][px] = 1; G.seen[py][px] = 1;
+  const blocks = (x, y) => x < 0 || y < 0 || x >= W || y >= H || G.map[y][x] === 1;
+  function cast(row, start, end, xx, xy, yx, yy) {
+    if (start < end) return;
+    let newStart = 0;
+    for (let j = row; j <= R; j++) {
+      let blocked = false;
+      for (let dx = -j, dy = -j; dx <= 0; dx++) {
+        const X = px + dx * xx + dy * xy, Y = py + dx * yx + dy * yy;
+        const ls = (dx - 0.5) / (dy + 0.5), rs2 = (dx + 0.5) / (dy - 0.5);
+        if (start < rs2) continue; else if (end > ls) break;
+        if (dx * dx + dy * dy <= R * R && X >= 0 && Y >= 0 && X < W && Y < H) { G.vis[Y][X] = 1; G.seen[Y][X] = 1; }
+        if (blocked) {
+          if (blocks(X, Y)) { newStart = rs2; continue; }
+          blocked = false; start = newStart;
+        } else if (blocks(X, Y) && j < R) { blocked = true; cast(j + 1, start, ls, xx, xy, yx, yy); newStart = rs2; }
+      }
+      if (blocked) break;
+    }
+  }
+  for (const o of OCT) cast(1, 1, 0, o[0], o[1], o[2], o[3]);
+}
+
+/* ---------- distance map toward the player (for monster pathing) ---------- */
+function distMap() {
+  const d = Array.from({ length: H }, () => Array(W).fill(1e9));
+  const q = [[G.p.x, G.p.y]]; d[G.p.y][G.p.x] = 0;
+  for (let i = 0; i < q.length; i++) {
+    const [x, y] = q[i];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const X = x + dx, Y = y + dy;
+      if (X < 0 || Y < 0 || X >= W || Y >= H || G.map[Y][X] === 1 || d[Y][X] <= d[y][x] + 1) continue;
+      d[Y][X] = d[y][x] + 1; q.push([X, Y]);
+    }
+  }
+  return d;
+}
+const monAt = (x, y) => G.mons.find((m) => m.x === x && m.y === y);
+
+/* ---------- turns ---------- */
+function act(dx, dy) {
+  if (!G || G.dead || PA.state !== "play") return false;
+  const p = G.p;
+  if (dx === 0 && dy === 0) { endTurn(); return true; }
+  const nx = p.x + dx, ny = p.y + dy;
+  if (G.map[ny] == null || G.map[ny][nx] !== 0) { return false; }
+  const m = monAt(nx, ny);
+  if (m) { attack(m); endTurn(); return true; }
+  p.x = nx; p.y = ny; p.ox = -dx; p.oy = -dy;
+  PA.sfx("click", { pitch: 0.5 + Math.random() * .1, vol: .25 });
+  // pickups
+  const it = G.items.find((i) => i.x === nx && i.y === ny);
+  if (it) pickup(it);
+  if (nx === G.stairs.x && ny === G.stairs.y) { endTurn(); descend(); return true; }
+  endTurn();
+  return true;
+}
+function descend() {
+  if (G.mons.some((m) => MON[m.k].boss)) { logMsg("The dragon's wards seal the stairs. Defeat it first!"); PA.sfx("thud"); return; }
+  G.p.gold += G.depth * 10;
+  nextFloor();
+}
+function pickup(it) {
+  G.items = G.items.filter((i) => i !== it);
+  const I = ITEMS[it.k];
+  if (it.k === "gold") { G.p.gold += it.v; logMsg(`You pocket ${it.v} gold.`); PA.sfx("coin"); }
+  else if (it.k === "sword") { G.p.wpn++; logMsg(`A finer blade! Attack +2.`); PA.sfx("power"); }
+  else if (it.k === "shield") { G.p.arm++; logMsg(`Sturdier armor! Defense +1.`); PA.sfx("power"); }
+  else if (it.k === "heart") { G.p.max += 5; G.p.hp += 5; logMsg(`A heart crystal! Max health +5.`); PA.sfx("levelup"); }
+  else { G.inv[it.k]++; logMsg(`You pick up a ${I.n}.`); PA.sfx("select"); }
+  texts.add(0, 0, I.g, { size: 20, life: .8 }).world = [it.x, it.y];
+  paint();
+}
+function atkOf() { return G.p.atk + G.p.wpn * 2; }
+function defOf() { return G.p.def + G.p.arm; }
+function attack(m) {
+  const M = MON[m.k];
+  const crit = Math.random() < 0.1;
+  const dmg = Math.max(1, Math.round((atkOf() + ri(-1, 2)) * (crit ? 2 : 1)) - m.def);
+  m.hp -= dmg; m.flash = 1; m.awake = true;
+  G.p.ox = (m.x - G.p.x) * .4; G.p.oy = (m.y - G.p.y) * .4;
+  float(m.x, m.y, (crit ? "✦" : "") + dmg, crit ? "#ffe08a" : "#fff");
+  PA.sfx("hit", { pitch: 1.2 + Math.random() * .3, vol: .5 });
+  if (m.hp <= 0) {
+    G.mons = G.mons.filter((x) => x !== m);
+    G.kills++;
+    logMsg(`You slay the ${M.n}.`);
+    burst(m.x, m.y, M.boss ? 80 : 14, M.boss ? "#ff7a2a" : "#e8d6c4");
+    gainXp(M.xp);
+    if (M.split && m.max > 4) for (const [ddx, ddy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { if (G.map[m.y + ddy][m.x + ddx] === 0 && !monAt(m.x + ddx, m.y + ddy) && Math.random() < .5) { spawnMon("slime", m.x + ddx, m.y + ddy); const s = G.mons[G.mons.length - 1]; s.hp = s.max = Math.ceil(m.max / 2); s.awake = true; } }
+    if (M.boss) { G.p.gold += 300; logMsg("🐉 The deep dragon falls! The stairs unseal. (+300 gold)"); PA.flash("#ffd27a", 500); PA.shake(10, .6); PA.sfx("boom"); }
+    if (Math.random() < 0.18) G.items.push({ k: Math.random() < .6 ? "gold" : "potion", x: m.x, y: m.y, v: ri(4, 10) * G.depth });
+  }
+}
+function gainXp(v) {
+  const p = G.p; p.xp += v;
+  while (p.xp >= p.next) {
+    p.xp -= p.next; p.lvl++; p.next = Math.round(p.next * 1.45);
+    p.max += 5; p.hp = p.max; p.atk += 1; if (p.lvl % 3 === 0) p.def++;
+    logMsg(`⭐ Level ${p.lvl}! You feel stronger.`); PA.sfx("levelup"); PA.flash("#ffe08a", 250);
+  }
+}
+function endTurn() {
+  G.turns++;
+  const dm = distMap();
+  for (const m of G.mons.slice()) {
+    const M = MON[m.k];
+    if (!m.awake) { if (G.vis[m.y][m.x] && Math.random() < 0.85) { m.awake = true; } else continue; }
+    m.energy += M.fast ? 2 : M.slow ? 0.5 : 1;
+    while (m.energy >= 1) {
+      m.energy -= 1;
+      const dist = Math.max(Math.abs(m.x - G.p.x), Math.abs(m.y - G.p.y));
+      if (dist <= 1) { monHit(m); continue; }
+      if (M.breath && dist <= 4 && G.vis[m.y][m.x] && Math.random() < 0.35) {
+        const d = Math.max(1, ri(4, 7) + Math.floor(G.depth / 5) - defOf());
+        hurt(d, `The dragon breathes fire! (${d})`);
+        for (let i = 0; i <= dist; i++) burst(m.x + (G.p.x - m.x) * i / dist, m.y + (G.p.y - m.y) * i / dist, 6, "#ff8a3d");
+        continue;
+      }
+      // step down the distance map (bats wobble, wraiths drift through walls)
+      let best = null, bd = M.phase ? Math.hypot(m.x - G.p.x, m.y - G.p.y) : dm[m.y][m.x];
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+      if (M.erratic && Math.random() < 0.4) dirs.sort(() => Math.random() - .5);
+      for (const [dx, dy] of dirs) {
+        const X = m.x + dx, Y = m.y + dy;
+        if (X < 1 || Y < 1 || X >= W - 1 || Y >= H - 1 || monAt(X, Y) || (X === G.p.x && Y === G.p.y)) continue;
+        if (M.phase) { const v = Math.hypot(X - G.p.x, Y - G.p.y); if (v < bd) { bd = v; best = [X, Y]; } }
+        else if (G.map[Y][X] === 0 && (dm[Y][X] < bd || (M.erratic && Math.random() < 0.3))) { bd = dm[Y][X]; best = [X, Y]; }
+      }
+      if (best) { m.ox = m.x - best[0]; m.oy = m.y - best[1]; m.x = best[0]; m.y = best[1]; }
+    }
+  }
+  fov();
+  paint();
+}
+function monHit(m) {
+  const M = MON[m.k];
+  if (Math.random() < 0.12) { float(G.p.x, G.p.y, "miss", "#9ab"); return; }
+  const d = Math.max(1, m.atk + ri(-1, 1) - defOf());
+  m.ox = (G.p.x - m.x) * .4; m.oy = (G.p.y - m.y) * .4;
+  hurt(d, `The ${M.n} hits you for ${d}.`);
+}
+function hurt(d, msg) {
+  const p = G.p;
+  p.hp -= d; float(p.x, p.y, "-" + d, "#ff6b6b");
+  PA.shake(4, .2); PA.sfx("hit", { pitch: .7 });
+  logMsg(msg);
+  if (p.hp <= 0 && !G.dead) die();
+}
+function die() {
+  G.dead = true;
+  PA.flash("#ff3d3d", 600); PA.sfx("gameover");
+  logMsg("💀 You have perished in the deep.");
+  const score = G.p.gold + G.depth * 150 + G.kills * 12 + G.p.lvl * 40;
+  setTimeout(() => {
+    PA.gameOver(score, {
+      kicker: (mode === "daily" ? "Daily Delve · " : "") + "Fell on depth " + G.depth, title: G.depth >= 10 ? "Legend of the deep" : G.depth >= 5 ? "Dragon-slayer?" : "Rest in pieces",
+      stats: [["Depth", G.depth], ["Gold", G.p.gold], ["Kills", G.kills], ["Level", G.p.lvl]]
+    });
+    if (window.paXP) window.paXP.award("deepdelve", { score, depth: G.depth, daily: mode === "daily" });
+  }, 900);
+}
+function useItem(k) {
+  if (!G || G.dead || !G.inv[k]) return;
+  G.inv[k]--;
+  if (k === "potion") { const h = Math.min(G.p.max - G.p.hp, 12 + G.depth); G.p.hp += h; logMsg(`You drink a potion (+${h}).`); PA.sfx("power"); burst(G.p.x, G.p.y, 16, "#ff7eb6"); }
+  else if (k === "scroll") {
+    const opts = []; for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) if (G.map[y][x] === 0 && !monAt(x, y) && Math.hypot(x - G.p.x, y - G.p.y) > 10) opts.push([x, y]);
+    const [x, y] = opts[(Math.random() * opts.length) | 0]; G.p.x = x; G.p.y = y; logMsg("You blink across the dungeon!"); PA.sfx("whoosh"); burst(x, y, 20, "#5ef2ff");
+  } else if (k === "bomb") {
+    let n = 0;
+    for (const m of G.mons.slice()) if (Math.max(Math.abs(m.x - G.p.x), Math.abs(m.y - G.p.y)) <= 2) { m.hp -= 10 + G.depth * 2; m.flash = 1; n++; burst(m.x, m.y, 10, "#ff8a3d"); if (m.hp <= 0) { G.mons = G.mons.filter((x) => x !== m); G.kills++; gainXp(MON[m.k].xp); } }
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) burst(G.p.x + dx, G.p.y + dy, 3, "#ffb35c");
+    logMsg(`Boom! The fire bomb scorches ${n} foe${n === 1 ? "" : "s"}.`); PA.sfx("explode"); PA.shake(8, .4);
+  } else if (k === "map") { for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (G.map[y][x] === 0) G.seen[y][x] = 1; logMsg("The map reveals the floor."); PA.sfx("select"); }
+  endTurn();
+}
+
+/* ---------- visuals ---------- */
+let cell = 28, ox = 0, oy = 0;
+function float(x, y, s, c) { const t = { x: 0, y: 0, text: s, color: c, size: 16, life: .9, max: .9, vy: -40, world: [x, y] }; texts.list.push(t); return t; }
+function burst(x, y, n, c) { fx.burst((x + .5) * cell, (y + .5) * cell, { n, color: c, speed: 140, life: .6, size: 3 }); }
+const _add = texts.add.bind(texts);
+texts.add = (x, y, s, o) => { _add(x, y, s, o); return texts.list[texts.list.length - 1]; };
+function paint() {
+  if (!G) return;
+  const p = G.p;
+  PA.stat("dd-hp", `${Math.max(0, p.hp)}/${p.max}`);
+  PA.stat("dd-depth", G.depth);
+  PA.stat("dd-lvl", p.lvl);
+  PA.stat("dd-gold", p.gold);
+  PA.stat("dd-gear", `🗡️${p.wpn} 🛡️${p.arm}`);
+  $("dd-inv").innerHTML = SLOTS.map((k, i) => `<button type="button" data-k="${k}" ${G.inv[k] ? "" : "disabled"} title="${ITEMS[k].n}"><i>${i + 1}</i>${ITEMS[k].g}<b>${G.inv[k] || ""}</b></button>`).join("");
+}
+$("dd-inv").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) useItem(b.dataset.k); });
+const floorTile = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"); g.fillStyle = "#5c4b3d"; g.fillRect(0, 0, 64, 64); for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(${90 + Math.random() * 60},${70 + Math.random() * 40},${50 + Math.random() * 30},${Math.random() * .15})`; g.fillRect(Math.random() * 64, Math.random() * 64, 2 + Math.random() * 6, 2 + Math.random() * 4); } g.strokeStyle = "rgba(0,0,0,.25)"; g.strokeRect(.5, .5, 63, 63); return c; })();
+function render(t) {
+  const w = view.w, h = view.h;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.fillStyle = "#07060a"; ctx.fillRect(0, 0, w, h);
+  if (!G) return;
+  cell = Math.max(18, Math.min(40, Math.floor(Math.min(w / 24, h / 15))));
+  const p = G.p;
+  // smooth camera on the player
+  const tx = w / 2 - (p.x + .5) * cell, ty = h / 2 - (p.y + .5) * cell;
+  ox += (tx - ox) * .2; oy += (ty - oy) * .2;
+  const sh = PA.shakeOffset();
+  ctx.save(); ctx.translate(Math.round(ox + sh.x), Math.round(oy + sh.y));
+  const x0 = Math.max(0, Math.floor(-ox / cell) - 1), x1 = Math.min(W, Math.ceil((w - ox) / cell) + 1);
+  const y0 = Math.max(0, Math.floor(-oy / cell) - 1), y1 = Math.min(H, Math.ceil((h - oy) / cell) + 1);
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    if (!G.seen[y][x]) continue;
+    const vis = G.vis[y][x], X = x * cell, Y = y * cell;
+    const d = Math.hypot(x - p.x, y - p.y);
+    let light = vis ? Math.max(0.5, 1.05 - d / 11) : 0.2;
+    for (const tc of G.torches) { if (vis && Math.abs(tc.x - x) < 5 && Math.abs(tc.y - y) < 5) light = Math.min(1.1, light + Math.max(0, .35 - Math.hypot(tc.x - x, tc.y - y) * .08) * (0.85 + Math.sin(t * 9 + tc.f) * .15)); }
+    if (G.map[y][x] === 0) {
+      ctx.globalAlpha = light; ctx.drawImage(floorTile, X, Y, cell, cell);
+    } else {
+      const below = y + 1 < H && G.map[y + 1][x] === 0;
+      ctx.globalAlpha = light;
+      ctx.fillStyle = "#1b1512"; ctx.fillRect(X, Y, cell, cell);
+      ctx.fillStyle = "#211a16"; ctx.fillRect(X + 1, Y + 1, cell - 2, cell - 2); ctx.fillStyle = "rgba(255,220,180,.05)"; ctx.fillRect(X + 3, Y + 3, cell - 6, 2);
+      if (below) { ctx.fillStyle = "#7a5f4a"; ctx.fillRect(X, Y + cell * .55, cell, cell * .45); ctx.fillStyle = "#94755c"; ctx.fillRect(X, Y + cell * .55, cell, 3); ctx.fillStyle = "rgba(0,0,0,.25)"; for (let k = 1; k < 3; k++) ctx.fillRect(X, Y + cell * (.55 + k * .15), cell, 1); }
+      ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(X + cell * .5, Y, 1, cell * .62);
+    }
+  }
+  ctx.globalAlpha = 1;
+  // torches
+  for (const tc of G.torches) if (G.seen[tc.y][tc.x]) {
+    const X = (tc.x + .5) * cell, Y = (tc.y + .7) * cell, f = .8 + Math.sin(t * 11 + tc.f) * .2;
+    const g = ctx.createRadialGradient(X, Y, 0, X, Y, cell * 2.6 * f); g.addColorStop(0, "rgba(255,170,80,.35)"); g.addColorStop(1, "rgba(255,120,40,0)");
+    ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = g; ctx.fillRect(X - cell * 3, Y - cell * 3, cell * 6, cell * 6); ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "#ffcf70"; ctx.beginPath(); ctx.ellipse(X, Y - cell * .12, cell * .09, cell * .16 * f, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `${Math.round(cell * .78)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  // stairs
+  if (G.seen[G.stairs.y][G.stairs.x]) { const X = G.stairs.x * cell, Y = G.stairs.y * cell; ctx.globalAlpha = G.vis[G.stairs.y][G.stairs.x] ? 1 : .4; ctx.fillStyle = "#120d0a"; ctx.fillRect(X + 3, Y + 3, cell - 6, cell - 6); for (let i = 0; i < 4; i++) { ctx.fillStyle = `rgba(255,210,150,${.5 - i * .1})`; ctx.fillRect(X + 5 + i * 3, Y + 6 + i * (cell - 12) / 4, cell - 10 - i * 6, 2); } ctx.globalAlpha = 1; }
+  for (const it of G.items) if (G.vis[it.y][it.x]) ctx.fillText(ITEMS[it.k].g, (it.x + .5) * cell, (it.y + .5) * cell + Math.sin(t * 3 + it.x) * 2);
+  for (const m of G.mons) {
+    if (!G.vis[m.y][m.x]) continue;
+    m.ox *= .7; m.oy *= .7; m.flash = Math.max(0, m.flash - .08);
+    const X = (m.x + .5 + m.ox) * cell, Y = (m.y + .5 + m.oy) * cell;
+    ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.beginPath(); ctx.ellipse(X, Y + cell * .36, cell * .32, cell * .1, 0, 0, Math.PI * 2); ctx.fill();
+    if (MON[m.k].boss) { ctx.save(); ctx.font = `${Math.round(cell * 1.3)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; ctx.fillText(MON[m.k].g, X, Y - cell * .1); ctx.restore(); }
+    else ctx.fillText(MON[m.k].g, X, Y);
+    if (m.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${m.flash * .5})`; ctx.beginPath(); ctx.arc(X, Y, cell * .42, 0, Math.PI * 2); ctx.fill(); }
+    if (m.hp < m.max) { ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(X - cell * .4, Y - cell * .58, cell * .8, 4); ctx.fillStyle = "#ff6b6b"; ctx.fillRect(X - cell * .4, Y - cell * .58, cell * .8 * Math.max(0, m.hp / m.max), 4); }
+  }
+  // player
+  p.ox = (p.ox || 0) * .7; p.oy = (p.oy || 0) * .7;
+  const PX = (p.x + .5 + p.ox) * cell, PY = (p.y + .5 + p.oy) * cell;
+  const g = ctx.createRadialGradient(PX, PY, 0, PX, PY, cell * 3.4);
+  g.addColorStop(0, "rgba(255,220,160,.22)"); g.addColorStop(1, "rgba(255,200,120,0)");
+  ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = g; ctx.fillRect(PX - cell * 4, PY - cell * 4, cell * 8, cell * 8); ctx.globalCompositeOperation = "source-over";
+  if (!G.dead) ctx.fillText("🧙", PX, PY - Math.abs(Math.sin(t * 3)) * 2);
+  // path preview
+  if (G.path && G.path.length) { ctx.fillStyle = "rgba(255,220,160,.35)"; for (const [x, y] of G.path) { ctx.beginPath(); ctx.arc((x + .5) * cell, (y + .5) * cell, 3, 0, Math.PI * 2); ctx.fill(); } }
+  for (const tx2 of texts.list) if (tx2.world) { tx2.x = (tx2.world[0] + .5) * cell; tx2.y = (tx2.world[1] + .2) * cell + (tx2.vy * (1 - tx2.life / tx2.max)); }
+  fx.update(1 / 60); texts.list.forEach((x) => (x.life -= 1 / 60)); texts.list = texts.list.filter((x) => x.life > 0);
+  fx.draw(ctx); texts.draw(ctx);
+  ctx.restore();
+  // vignette
+  const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * .2, w / 2, h / 2, Math.max(w, h) * .7);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.5)"); ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+  // low health pulse
+  if (G.p.hp / G.p.max < .3 && !G.dead) { ctx.fillStyle = `rgba(255,30,30,${.08 + Math.sin(t * 5) * .05})`; ctx.fillRect(0, 0, w, h); }
+  // auto-walk one step every ~90ms
+  if (G.path && G.path.length && !G.dead && performance.now() - (G.lastStep || 0) > 90) {
+    G.lastStep = performance.now();
+    const [nx, ny] = G.path.shift();
+    const sawBefore = G.mons.filter((m) => G.vis[m.y][m.x]).length;
+    if (!act(nx - G.p.x, ny - G.p.y)) G.path = null;
+    else if (G.mons.filter((m) => G.vis[m.y][m.x]).length > sawBefore) G.path = null;
+  }
+}
+
+/* ---------- input ---------- */
+const KEYS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], KeyW: [0, -1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], KeyQ: [-1, -1], KeyE: [1, -1], KeyZ: [-1, 1], KeyC: [1, 1], KeyK: [0, -1], KeyJ: [0, 1], KeyH: [-1, 0], KeyL: [1, 0], KeyY: [-1, -1], KeyU: [1, -1], KeyB: [-1, 1], KeyN: [1, 1], Numpad8: [0, -1], Numpad2: [0, 1], Numpad4: [-1, 0], Numpad6: [1, 0], Numpad7: [-1, -1], Numpad9: [1, -1], Numpad1: [-1, 1], Numpad3: [1, 1], Space: [0, 0], Period: [0, 0], Numpad5: [0, 0] };
+let lastKey = 0;
+PA.onKey((e) => {
+  if (!G || G.dead || !$("dd-mode").hidden) return;
+  if (e.repeat && performance.now() - lastKey < 85) return;
+  lastKey = performance.now();
+  G.path = null;
+  if (KEYS[e.code]) { e.preventDefault(); act(...KEYS[e.code]); return; }
+  if (/^Digit[1-4]$/.test(e.code)) { useItem(SLOTS[+e.code.slice(5) - 1]); return; }
+  if (e.key === ">" && G.p.x === G.stairs.x && G.p.y === G.stairs.y) descend();
+});
+$("dd-pad").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; G && (G.path = null); const [dx, dy] = b.dataset.d.split(",").map(Number); act(dx, dy); });
+addEventListener("pointerdown", (e) => {
+  if (!G || G.dead || PA.state !== "play" || e.target.closest("button,#pa-gate,.pa-layer,.pa-tb,#dd-mode")) return;
+  const x = Math.floor((e.clientX - ox) / cell), y = Math.floor((e.clientY - oy) / cell);
+  if (x < 0 || y < 0 || x >= W || y >= H || !G.seen[y][x] || G.map[y][x] !== 0) return;
+  // BFS path through explored floor
+  const prev = new Map(), q = [[G.p.x, G.p.y]], key = (a, b) => a * 100 + b; prev.set(key(G.p.x, G.p.y), null);
+  for (let i = 0; i < q.length; i++) {
+    const [cx, cy] = q[i]; if (cx === x && cy === y) break;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      const X = cx + dx, Y = cy + dy, k = key(X, Y);
+      if (X < 0 || Y < 0 || X >= W || Y >= H || G.map[Y][X] !== 0 || !G.seen[Y][X] || prev.has(k)) continue;
+      prev.set(k, [cx, cy]); q.push([X, Y]);
+    }
+  }
+  if (!prev.has(key(x, y))) return;
+  const path = []; let c = [x, y];
+  while (c && !(c[0] === G.p.x && c[1] === G.p.y)) { path.unshift(c); c = prev.get(key(c[0], c[1])); }
+  G.path = path;
+});
+
+/* ---------- mode select ---------- */
+function showMode() {
+  const doneToday = (() => { try { return localStorage.getItem("dd_daily") === String(dateSeed()); } catch (e) { return false; } })();
+  $("dd-daily-s").textContent = doneToday ? "You've delved today's dungeon — try again for a better score." : "Today's dungeon — the same for everyone.";
+  $("dd-mode").hidden = false;
+  setTimeout(() => $("dd-daily").focus(), 30);
+}
+$("dd-daily").onclick = () => { $("dd-mode").hidden = true; try { localStorage.setItem("dd_daily", String(dateSeed())); } catch (e) {} newGame(true); };
+$("dd-random").onclick = () => { $("dd-mode").hidden = true; newGame(false); };
+PA.onStart(showMode);
+PA.loop(null, render);
+window.__dd = { get G() { return G; }, act, useItem };
+})();
+</script>
+</body></html>
