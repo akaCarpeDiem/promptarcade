@@ -2,9 +2,35 @@ name = "promptarcade"
 compatibility_date = "2026-09-26"
 pages_build_output_dir = "dist"
 
-# The live scores API (functions/api/...) needs its D1 binding here. Copy the exact block the
-# live project uses before deploying, for example:
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "promptarcade"
-# database_id = "<existing database id>"
+# Bindings for the live scores/players API (functions/). These copy the bindings set on the live
+# Pages project exactly, because a wrangler.toml with pages_build_output_dir overrides dashboard
+# bindings. Ids are not secrets. The secret SCORE_SALT stays in the dashboard; never put it here.
+#
+# D1 (scores.js uses SCORES whenever it is bound). Production: "promptarcade-scores".
+[[d1_databases]]
+binding = "SCORES"
+database_name = "promptarcade-scores"
+database_id = "f6a9c07e-42f8-4232-98f4-da133f4c9d33"
+
+# Workers KV fallback (only used if SCORES is not bound). Production: "promptarcade-scores".
+[[kv_namespaces]]
+binding = "SCORES_KV"
+id = "32e21ae6d05c4733adecc56380cddeec"
+
+# Workers AI: player-name moderation (functions/_shared/namemod.js).
+[ai]
+binding = "AI"
+
+# Preview deployments (any branch other than main) use their own database and namespace,
+# so test runs never touch the live boards.
+[[env.preview.d1_databases]]
+binding = "SCORES"
+database_name = "promptarcade-scores-preview"
+database_id = "7a204e9d-4bd1-4fbf-a661-e48c1aab3724"
+
+[[env.preview.kv_namespaces]]
+binding = "SCORES_KV"
+id = "3db7c34f1241402f92197d7ae3b12ccc"
+
+[env.preview.ai]
+binding = "AI"
