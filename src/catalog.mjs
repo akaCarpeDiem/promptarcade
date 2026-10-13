@@ -27,7 +27,7 @@ export const GAMES = [
     genre: "Multiplayer", tags: ["multiplayer", "io", "arcade"], difficulty: "Mid", accent: "#5ef2ff", accent2: "#ff5ca8",
     unit: "length",
     tagline: "A live multiplayer snake arena. Eat, grow, and cut off everyone else.",
-    about: "Slither through a glowing hex arena with players from everywhere — and a pack of surprisingly cunning bots. Eat light to grow, boost to cut in front of rivals, and turn their wreckage into your next meal. If the live server is quiet or unreachable, you drop straight into an offline match against bots.",
+    about: "Glide through a glowing hex arena with players from everywhere — and a pack of surprisingly cunning bots. Eat light to grow, boost to cut in front of rivals, and turn their wreckage into your next meal. If the live server is quiet or unreachable, you drop straight into an offline match against bots.",
     credit: CLAUDE_NEW,
     brief: "Make a multiplayer .io-style snake arena with smart bots, a live leaderboard, minimap and skins — and have it fall back to an offline match when the server isn't there.",
     tech: [
