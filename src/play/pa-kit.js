@@ -33,8 +33,8 @@
     sfxOn: pref("pa_sfx", true),
     // Music is on by default since the lo-fi soundtracks (v3.1); pa_music_on replaces the old opt-in pa_music.
     musicOn: pref("pa_music_on", true),
-    musicVol: prefNum("pa_music_vol", .6),
-    sfxVol: prefNum("pa_sfx_vol", .8)
+    musicVol: prefNum("pa_music_vol", .3),
+    sfxVol: prefNum("pa_sfx_vol", .3)
   };
 
   /* ---------------- math helpers ---------------- */
