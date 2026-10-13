@@ -86,14 +86,14 @@ export const GAMES = [
     slug: "block-bloom", title: "Block Bloom", added: "2026-10-11", featured: 5,
     genre: "Puzzle", tags: ["puzzle", "casual"], difficulty: "Simple", accent: "#ff7eb6", accent2: "#ffd36b",
     unit: "points",
-    tagline: "Fit the pieces, fill a line, watch it bloom.",
-    about: "Drag gem blocks onto an 8×8 board. Fill a row or column and it bursts into petals; clear several at once or keep clearing every turn for a combo. Simple to learn, hard to put down.",
+    tagline: "Falling gems, no preview. Clear a row in one colour for 10× points.",
+    about: "Gem blocks fall into the garden one at a time. Turn them, slide them and drop them to fill a row and watch it burst into petals. There is no next-piece window: each piece appears at the top the moment the last one lands, so you play what you get. Finish a whole row in a single colour and it scores ten times as much.",
     credit: CLAUDE_NEW,
-    brief: "A block-placement puzzle on an 8×8 grid with three pieces per hand, row and column clears and combos.",
+    brief: "A falling-block puzzle on an 8×14 board with turning pieces, no next-piece preview, combos, rising speed, and a 10× bonus for single-colour rows.",
     tech: [
-      "Hand dealer that checks the board so a playable piece is usually on offer",
-      "Live preview of the lines a drop would clear before you let go",
-      "Touch drag lifts the piece above your finger so you can see where it lands"
+      "Wall kicks let a piece turn snugly against walls and other blocks",
+      "Rows that are still one colour glow so you can chase the 10× bonus",
+      "Tap to turn, drag to move and flick down to drop on touch screens"
     ]
   },
   {

@@ -22,6 +22,8 @@
 
   function pref(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v === "1"; } catch (e) { return d; } }
   function setPref(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) {} }
+  function prefNum(k, d) { try { var v = parseFloat(localStorage.getItem(k)); return isFinite(v) ? Math.max(0, Math.min(1, v)) : d; } catch (e) { return d; } }
+  function setPrefNum(k, v) { try { localStorage.setItem(k, String(Math.round(v * 100) / 100)); } catch (e) {} }
 
   var PA = W.PA = {
     slug: slug,
@@ -29,7 +31,10 @@
     state: "gate",
     isTouch: (W.matchMedia && W.matchMedia("(pointer: coarse)").matches) || "ontouchstart" in W,
     sfxOn: pref("pa_sfx", true),
-    musicOn: pref("pa_music", false)
+    // Music is on by default since the lo-fi soundtracks (v3.1); pa_music_on replaces the old opt-in pa_music.
+    musicOn: pref("pa_music_on", true),
+    musicVol: prefNum("pa_music_vol", .6),
+    sfxVol: prefNum("pa_sfx_vol", .8)
   };
 
   /* ---------------- math helpers ---------------- */
@@ -61,7 +66,7 @@
   var css =
     "@font-face{font-family:Manrope;font-style:normal;font-weight:200 800;font-display:swap;src:url(/fonts/manrope.woff2) format('woff2')}" +
     "@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url(/fonts/jetbrains-mono.woff2) format('woff2')}" +
-    ".pa-tb{position:fixed;top:10px;right:10px;z-index:45;display:flex;gap:6px}" +
+    ".pa-tb{position:fixed;top:10px;right:10px;z-index:56;display:flex;gap:6px}" +
     ".pa-tb button,.pa-ibtn{width:38px;height:38px;display:grid;place-items:center;padding:0;border-radius:12px;cursor:pointer;color:#e8f9ff;background:rgba(10,14,30,.55);border:1px solid rgba(142,233,255,.28);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 4px 14px rgba(0,0,0,.3);transition:background .15s,transform .1s,border-color .15s}" +
     ".pa-tb button:hover{background:rgba(30,40,80,.75);border-color:rgba(142,233,255,.6)}.pa-tb button:active{transform:scale(.92)}" +
     ".pa-home{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;color:#e8f9ff;background:rgba(10,14,30,.55);border:1px solid rgba(142,233,255,.28);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}.pa-home svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}" +
@@ -72,6 +77,14 @@
     ".pa-xpline{font:600 12px Manrope,system-ui,sans-serif;color:#cdd3ff;margin:.2rem 0 .1rem}.pa-xpline b{color:#ffe08a}" +
     ".pa-tb svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}" +
     ".pa-tb button[aria-pressed=false]{color:#7a7694}" +
+    ".pa-mixer{position:absolute;top:46px;right:0;width:min(250px,calc(100vw - 20px));display:grid;gap:8px;padding:12px;border-radius:16px;background:rgba(12,15,32,.94);border:1px solid rgba(142,233,255,.3);box-shadow:0 14px 40px rgba(0,0,0,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-family:Manrope,system-ui,sans-serif;color:#e8f9ff;animation:paFade .18s ease both}" +
+    ".pa-mixer[hidden]{display:none!important}" +
+    ".pa-mx-row{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:10px}" +
+    ".pa-tb .pa-mx-tg,.pa-tb .pa-mx-mute{width:auto;height:auto;min-height:34px;padding:0 .7rem;border-radius:999px;font:700 .78rem Manrope,system-ui,sans-serif;white-space:nowrap;box-shadow:none}" +
+    ".pa-tb .pa-mx-tg{min-width:104px;justify-content:start}" +
+    ".pa-tb .pa-mx-tg[aria-pressed=true]{color:#bdf7d3;border-color:rgba(126,231,168,.55)}" +
+    ".pa-mixer input[type=range]{width:100%;accent-color:#8ee9ff;height:28px;margin:0}" +
+    ".pa-mx-now{font:500 .68rem/1.3 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.04em;color:#a8a3c0}" +
     "body.pa-ported #hud{right:110px!important}" +
     ".pa-layer{position:fixed;inset:0;z-index:55;display:grid;place-items:center;padding:12px;background:rgba(4,6,16,.66);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);font-family:Manrope,system-ui,sans-serif;color:#f4f1ff;animation:paFade .25s ease both}" +
     ".pa-layer[hidden]{display:none!important}" +
@@ -133,7 +146,7 @@
       master = AC.createDynamicsCompressor();
       master.threshold.value = -14; master.ratio.value = 4;
       master.connect(AC.destination);
-      sfxBus = AC.createGain(); sfxBus.gain.value = .8; sfxBus.connect(master);
+      sfxBus = AC.createGain(); sfxBus.gain.value = PA.sfxVol; sfxBus.connect(master);
       musicBus = AC.createGain(); musicBus.gain.value = .0001; musicBus.connect(master);
       noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
       var d = noiseBuf.getChannelData(0);
@@ -219,34 +232,264 @@
   };
   PA.sfxPresets = SFX;
 
-  /* ---------------- procedural music ---------------- */
-  var N = function (semi) { return 440 * Math.pow(2, (semi - 9) / 12) / 4; }; // semitone above C (octave 2-ish)
-  var TRACKS = {
-    synth: { bpm: 112, prog: [[9, 12, 16], [5, 9, 12], [0, 4, 7], [7, 11, 14]], lead: "square", bass: "sawtooth" },
-    drive: { bpm: 128, prog: [[4, 7, 11], [0, 4, 7], [2, 6, 9], [11, 14, 18]], lead: "sawtooth", bass: "sawtooth" },
-    chill: { bpm: 92, prog: [[2, 5, 9, 12], [7, 11, 14, 17], [0, 4, 7, 11], [9, 12, 16, 19]], lead: "triangle", bass: "triangle" },
-    tense: { bpm: 120, prog: [[0, 3, 7], [8, 12, 15], [5, 8, 12], [7, 11, 14]], lead: "square", bass: "square" },
-    retro: { bpm: 140, prog: [[0, 4, 7], [9, 12, 16], [5, 9, 12], [7, 11, 14]], lead: "square", bass: "triangle" },
-    space: { bpm: 100, prog: [[2, 5, 9], [10, 14, 17], [7, 10, 14], [9, 13, 16]], lead: "triangle", bass: "sawtooth" }
+  /* ---------------- procedural lo-fi music ----------------
+   * Every game gets its own endless lo-fi loop, synthesised live with WebAudio (no samples, no files,
+   * nothing licensed). A theme sets the mood: tempo, swing, scale, chords, instruments, reverb, tape
+   * filter and vinyl crackle. The game's slug seeds the key, chord order and melody, so two games on
+   * the same theme still play their own tune. The melody mutates every 8 bars so it never loops stiffly.
+   * paConfig.music picks the theme; PA.music.set(name) switches mid-game (e.g. a boss fight). */
+  function mulberry(a) {
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashStr(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+  var THEMES = {
+    // Warm jazzy lo-fi: maj7 / min9 chords, Rhodes, soft boom-bap, lots of swing.
+    lofi: { label: "Lo-fi beats", bpm: 78, swing: .17, root: 50, scale: [0, 2, 4, 7, 9, 11],
+      progs: [[[0, 4, 7, 11, 14], [9, 12, 16, 19, 23], [2, 5, 9, 12, 16], [7, 11, 14, 17, 21]],
+              [[5, 9, 12, 16, 19], [4, 7, 11, 14, 17], [2, 5, 9, 12, 16], [0, 4, 7, 11, 14]],
+              [[2, 5, 9, 12, 16], [7, 11, 14, 17, 21], [0, 4, 7, 11, 14], [9, 12, 16, 19, 23]]],
+      keys: "stab", lead: "rhodes", pad: "warm", drums: "lofi", reverb: .3, delay: .14, cutoff: 2400, crackle: 1, density: .42 },
+    // Eerie: harmonic minor, diminished turns, music box over a low drone, distant bells, sparse kick.
+    spooky: { label: "Haunted lo-fi", bpm: 66, swing: .08, root: 45, scale: [0, 2, 3, 5, 7, 8, 11],
+      progs: [[[0, 3, 7, 14], [8, 12, 15, 19], [5, 8, 12, 15], [7, 11, 14, 17]],
+              [[0, 3, 7, 10], [1, 5, 8, 12], [0, 3, 6, 9], [7, 11, 14, 20]]],
+      keys: "none", lead: "musicbox", pad: "dark", drums: "sparse", reverb: .65, delay: .32, cutoff: 2600, crackle: 1.4, density: .3, drone: true, bell: .35 },
+    // Ember Swarm boss fights: same haunted palette, heavier and faster.
+    "spooky-boss": { label: "Haunted lo-fi (boss)", bpm: 82, swing: .04, root: 45, scale: [0, 1, 3, 5, 7, 8, 11],
+      progs: [[[0, 3, 7, 12], [1, 5, 8, 13], [0, 3, 6, 9], [7, 11, 14, 19]]],
+      keys: "none", lead: "musicbox", pad: "dark", drums: "boom", reverb: .5, delay: .28, cutoff: 2800, crackle: 1.2, density: .5, drone: true, bell: .2 },
+    // Drifting space: lydian chords, glassy arpeggios, long reverb and echoes, barely-there drums.
+    space: { label: "Space lo-fi", bpm: 74, swing: 0, root: 48, scale: [0, 2, 4, 6, 7, 9, 11],
+      progs: [[[0, 7, 14, 16, 23], [5, 12, 16, 21], [9, 16, 19, 24], [7, 14, 18, 23]],
+              [[0, 4, 7, 14], [2, 6, 9, 16], [4, 7, 11, 18], [2, 6, 9, 14]]],
+      keys: "arp", lead: "glass", pad: "airy", drums: "soft", reverb: .7, delay: .38, cutoff: 3000, crackle: .45, density: .28 },
+    // Caves and torchlight: dorian minor, plucked lead, dripping bells.
+    cavern: { label: "Dungeon lo-fi", bpm: 72, swing: .12, root: 45, scale: [0, 2, 3, 5, 7, 9, 10],
+      progs: [[[0, 3, 7, 10, 14], [5, 9, 12, 15], [3, 7, 10, 14], [10, 14, 17, 21]],
+              [[0, 3, 7, 10], [8, 12, 15, 19], [10, 14, 17, 21], [7, 10, 14, 17]]],
+      keys: "stab", lead: "pluck", pad: "dark", drums: "lofi", reverb: .55, delay: .26, cutoff: 1900, crackle: .9, density: .34, bell: .25 },
+    // Neon night drive: minor synthwave chords, saw pads, arpeggios, lazy beat.
+    synthwave: { label: "Synthwave lo-fi", bpm: 86, swing: .06, root: 45, scale: [0, 2, 3, 5, 7, 8, 10],
+      progs: [[[0, 3, 7, 12], [8, 12, 15, 19], [3, 7, 10, 15], [10, 14, 17, 22]],
+              [[0, 3, 7, 10], [5, 8, 12, 15], [8, 12, 15, 19], [7, 10, 14, 19]]],
+      keys: "arp", lead: "saw", pad: "saw", drums: "lofi", reverb: .38, delay: .26, cutoff: 2300, crackle: .6, density: .36 },
+    // Bouncy and bright for the platformer.
+    bounce: { label: "Bouncy lo-fi", bpm: 94, swing: .15, root: 52, scale: [0, 2, 4, 5, 7, 9],
+      progs: [[[0, 4, 7, 11], [5, 9, 12, 16], [2, 5, 9, 12], [7, 11, 14, 17]],
+              [[0, 4, 7, 14], [9, 12, 16, 19], [5, 9, 12, 16], [7, 11, 14, 17]]],
+      keys: "stab", lead: "pluck", pad: "warm", drums: "lofi", reverb: .22, delay: .16, cutoff: 3200, crackle: .6, density: .55 }
   };
-  var music = { track: TRACKS[cfg.music] || TRACKS.synth, timer: 0, step: 0, next: 0, playing: false, intensity: 0 };
+  // Older theme names still used in game configs.
+  var ALIAS = { chill: "lofi", puzzle: "lofi", tense: "cavern", drive: "synthwave", synth: "synthwave", arcade: "synthwave", retro: "synthwave", platform: "bounce" };
+  function themeName(n) { return THEMES[n] ? n : ALIAS[n] || "lofi"; }
+
+  var music = { name: "", th: null, timer: 0, step: 0, next: 0, playing: false, intensity: 0, built: false };
+  var mfx = {};   // effect nodes: tape (lowpass), rev (reverb send), dly (echo send), crackle source
+
+  function chooseTheme(n) {
+    var name = themeName(n), th = THEMES[name];
+    music.name = name; music.th = th;
+    var r = mulberry(hashStr(slug + "|" + name));
+    music.rng = r;
+    music.key = th.root + Math.floor(r() * 5) - 2;
+    var prog = th.progs[Math.floor(r() * th.progs.length)], rot = Math.floor(r() * prog.length);
+    music.prog = prog.slice(rot).concat(prog.slice(0, rot));
+    music.motif = makeMotif();
+    music.melody = phrase(music.motif);
+    if (mfx.tape) setFx();
+  }
+  function makeMotif() {
+    var th = music.th, r = music.rng, m = [];
+    for (var s = 0; s < 16; s++) {
+      var p = th.density * (s % 4 === 0 ? 1.5 : s % 2 ? .55 : 1);
+      m.push(r() < p ? Math.floor(r() * th.scale.length * 1.6) : null);
+    }
+    return m;
+  }
+  function phrase(motif) {
+    // four bars: the motif, a variation, the motif again, then an answer
+    var th = music.th, r = music.rng, out = [], L = th.scale.length;
+    for (var b = 0; b < 4; b++) for (var s = 0; s < 16; s++) {
+      var n = motif[s];
+      if (b === 1 && n != null && r() < .35) n = Math.max(0, n + (r() < .5 ? 1 : -1));
+      if (b === 3) n = r() < th.density * .9 ? Math.floor(r() * L * 1.4) : (s === 0 ? 0 : null);
+      out.push(n);
+    }
+    return out;
+  }
+  function degree(n) { var L = music.th.scale.length; return music.th.scale[n % L] + 12 * Math.floor(n / L); }
+
+  function impulse(a, secs) {
+    var len = Math.floor(a.sampleRate * secs), buf = a.createBuffer(2, len, a.sampleRate);
+    for (var c = 0; c < 2; c++) {
+      var d = buf.getChannelData(c);
+      for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+    }
+    return buf;
+  }
+  function crackleBuf(a) {
+    var len = a.sampleRate * 4, buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+    for (var i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * .035;                                   // tape hiss
+      if (Math.random() < 0.00045) { var amp = (Math.random() * .8 + .2) * (Math.random() < .5 ? -1 : 1); for (var k = 0; k < 40 && i + k < len; k++) d[i + k] += amp * Math.exp(-k / 6); }
+    }
+    return buf;
+  }
+  function buildFx() {
+    var a = AC;
+    mfx.tape = a.createBiquadFilter(); mfx.tape.type = "lowpass"; mfx.tape.Q.value = .4;
+    mfx.tape.connect(musicBus);
+    mfx.rev = a.createConvolver(); mfx.rev.buffer = impulse(a, 3.2);
+    mfx.revOut = a.createGain(); mfx.rev.connect(mfx.revOut); mfx.revOut.connect(mfx.tape);
+    mfx.dly = a.createDelay(2); mfx.dlyFb = a.createGain(); mfx.dlyFb.gain.value = .38;
+    mfx.dlyTone = a.createBiquadFilter(); mfx.dlyTone.type = "lowpass"; mfx.dlyTone.frequency.value = 1800;
+    mfx.dlyOut = a.createGain();
+    mfx.dly.connect(mfx.dlyTone); mfx.dlyTone.connect(mfx.dlyFb); mfx.dlyFb.connect(mfx.dly); mfx.dlyTone.connect(mfx.dlyOut); mfx.dlyOut.connect(mfx.tape);
+    mfx.crackleGain = a.createGain(); mfx.crackleGain.connect(musicBus);
+    mfx.crackleBuf = crackleBuf(a);
+    music.built = true;
+    setFx();
+  }
+  function setFx() {
+    var th = music.th, t = AC.currentTime;
+    mfx.revOut.gain.setTargetAtTime(th.reverb * 1.3, t, .3);
+    mfx.dlyOut.gain.setTargetAtTime(th.delay, t, .3);
+    mfx.dly.delayTime.setTargetAtTime(60 / th.bpm * .75, t, .05);
+    mfx.crackleGain.gain.setTargetAtTime(th.crackle * .55, t, .3);
+    tapeCutoff();
+  }
+  function tapeCutoff() {
+    if (!mfx.tape) return;
+    mfx.tape.frequency.setTargetAtTime(music.th.cutoff * (.9 + music.intensity * .5), AC.currentTime, .4);
+  }
+
+  // A voice: oscillators -> envelope -> dry to the tape filter, with reverb and echo sends.
+  function voice(t, parts, env, sends) {
+    var a = AC, g = a.createGain(), end = t + env.a + env.d;
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(.0002, env.v), t + env.a);
+    if (env.h) g.gain.setValueAtTime(env.v, t + env.a + env.h);
+    g.gain.exponentialRampToValueAtTime(.0001, end + (env.h || 0));
+    var out = g;
+    if (env.lp) {
+      var f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(env.lp, t); f.Q.value = env.q || .7;
+      if (env.lpTo) f.frequency.exponentialRampToValueAtTime(env.lpTo, t + (env.lpT || .3));
+      g.connect(f); out = f;
+    }
+    out.connect(mfx.tape);
+    if (sends && sends[0]) { var r = a.createGain(); r.gain.value = sends[0]; out.connect(r); r.connect(mfx.rev); }
+    if (sends && sends[1]) { var e = a.createGain(); e.gain.value = sends[1]; out.connect(e); e.connect(mfx.dly); }
+    var wob = 9 * Math.sin(t * 2.1) + (music.rng() - .5) * 8;                // tape wobble, in cents
+    parts.forEach(function (p) {
+      var o = a.createOscillator(), pg = a.createGain();
+      o.type = p.type; o.frequency.value = p.f; o.detune.value = wob + (p.det || 0);
+      pg.gain.value = p.g == null ? 1 : p.g;
+      o.connect(pg); pg.connect(g);
+      o.start(t); o.stop(end + (env.h || 0) + .05);
+    });
+  }
+  function hit(t, o) {
+    var a = AC, src = a.createBufferSource(); src.buffer = noiseBuf;
+    var f = a.createBiquadFilter(); f.type = o.type; f.frequency.value = o.freq; f.Q.value = o.q || .7;
+    var g = a.createGain();
+    g.gain.setValueAtTime(o.vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + o.dur);
+    src.connect(f); f.connect(g); g.connect(mfx.tape);
+    if (o.rev) { var r = a.createGain(); r.gain.value = o.rev; g.connect(r); r.connect(mfx.rev); }
+    src.start(t, Math.random() * .8); src.stop(t + o.dur + .02);
+  }
+  function kick(t, v) {
+    var a = AC, o = a.createOscillator(), g = a.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(42, t + .22);
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(v, t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + .42);
+    o.connect(g); g.connect(mfx.tape); o.start(t); o.stop(t + .45);
+  }
+  var INST = {
+    rhodes: function (t, f, d, v) { voice(t, [{ type: "sine", f: f }, { type: "sine", f: f * 2, g: .22, det: 4 }, { type: "triangle", f: f, g: .18 }], { a: .008, d: Math.min(2.4, d * 1.8), v: v, lp: 2200 }, [.45, .18]); },
+    musicbox: function (t, f, d, v) { voice(t, [{ type: "sine", f: f * 2 }, { type: "sine", f: f * 6, g: .12 }, { type: "triangle", f: f * 4, g: .08 }], { a: .004, d: 1.6, v: v * .8 }, [1, .6]); },
+    glass: function (t, f, d, v) { voice(t, [{ type: "sine", f: f * 2 }, { type: "sine", f: f * 4.01, g: .2 }], { a: .03, d: 2, v: v * .7 }, [1, .7]); },
+    pluck: function (t, f, d, v) { voice(t, [{ type: "triangle", f: f }, { type: "square", f: f, g: .12 }], { a: .004, d: .55, v: v, lp: 3600, lpTo: 500, lpT: .35 }, [.4, .35]); },
+    saw: function (t, f, d, v) { voice(t, [{ type: "sawtooth", f: f, det: -6 }, { type: "sawtooth", f: f, det: 7 }], { a: .02, d: Math.min(1.4, d * 1.4), v: v * .45, lp: 1500 }, [.5, .45]); },
+    bell: function (t, f, d, v) { voice(t, [{ type: "sine", f: f }, { type: "sine", f: f * 2.76, g: .35 }, { type: "sine", f: f * 5.4, g: .1 }], { a: .003, d: 3, v: v }, [1.1, .5]); },
+    bass: function (t, f, d, v) { voice(t, [{ type: "sine", f: f }, { type: "triangle", f: f, g: .4 }], { a: .012, d: d, v: v, lp: 520 }, null); }
+  };
+  var PADS = {
+    warm: function (f) { return [{ type: "triangle", f: f, det: -7 }, { type: "sine", f: f, det: 7, g: .8 }]; },
+    dark: function (f) { return [{ type: "sawtooth", f: f, det: -10, g: .5 }, { type: "sawtooth", f: f, det: 10, g: .5 }]; },
+    airy: function (f) { return [{ type: "sine", f: f }, { type: "triangle", f: f * 2, det: 5, g: .3 }]; },
+    saw: function (f) { return [{ type: "sawtooth", f: f, det: -8, g: .45 }, { type: "sawtooth", f: f, det: 8, g: .45 }]; }
+  };
+  var DRUMS = {   // 16 steps: k = kick, s = snare, h = hat (loud / quiet), lower case is softer
+    lofi:   { k: "x......x..x.....", s: "....x.......x...", h: "x.x.x.x.x.x.x.x." },
+    sparse: { k: "x...............", s: "............x...", h: "........x......." },
+    soft:   { k: "x.......x.......", s: "................", h: "..x...x...x...x." },
+    boom:   { k: "x..x....x.x.....", s: "....x.......x...", h: "xxx.xxx.xxx.xxx." }
+  };
+
   function scheduleStep(t, step) {
-    var tr = music.track, spb = 60 / tr.bpm / 4;
-    var bar = Math.floor(step / 16) % tr.prog.length, s = step % 16, ch = tr.prog[bar];
-    var root = ch[0];
-    if (s % 4 === 0) PA.noise({ music: true, at: t - AC.currentTime, dur: .16, vol: .32, freq: 160, to: 40 });
-    if (s % 8 === 4) PA.noise({ music: true, at: t - AC.currentTime, dur: .14, vol: .12, freq: 2400, type: "bandpass", q: .6 });
-    if (s % 2 === 1) PA.noise({ music: true, at: t - AC.currentTime, dur: .04, vol: .05, freq: 8000, type: "highpass" });
-    if (s % 2 === 0) PA.tone({ music: true, at: t - AC.currentTime, freq: N(root) * (s % 4 === 2 ? 2 : 1), type: tr.bass, dur: spb * 1.8, vol: .09, filter: 700 });
-    var arpN = ch[(s * 3 + Math.floor(s / 4)) % ch.length];
-    PA.tone({ music: true, at: t - AC.currentTime, freq: N(arpN) * 4, type: tr.lead, dur: spb * .9, vol: .028 + music.intensity * .02, filter: 2600 + music.intensity * 2000 });
-    if (s === 0 || s === 10) PA.tone({ music: true, at: t - AC.currentTime, freq: N(ch[ch.length - 1]) * 8, type: "triangle", dur: spb * 5, vol: .025, attack: .04 });
+    var th = music.th, spb = 60 / th.bpm / 4, s = step % 16, bar = Math.floor(step / 16);
+    var chord = music.prog[bar % music.prog.length], key = music.key;
+    var swing = s % 2 ? th.swing * spb : 0, tt = t + swing;
+    var hum = function () { return .85 + music.rng() * .3; };
+    var I = music.intensity;
+
+    // every 8 bars the melody mutates; every 16 the motif itself changes
+    if (s === 0 && bar > 0 && bar % 8 === 0) {
+      if (bar % 16 === 0) music.motif = makeMotif();
+      music.melody = phrase(music.motif);
+    }
+
+    // drums
+    var dp = DRUMS[th.drums];
+    if (dp && !(th.drums === "sparse" && bar % 2 === 1 && s === 12)) {
+      if (dp.k[s] === "x") kick(tt, (s === 0 ? .42 : .3) * hum());
+      if (dp.s[s] === "x") { hit(tt, { type: "bandpass", freq: 1700, q: .6, vol: .16 * hum(), dur: .18, rev: .25 }); hit(tt, { type: "highpass", freq: 5000, vol: .05, dur: .09 }); }
+      if (dp.h[s] === "x" || (I > .55 && s % 2 === 1 && th.drums !== "sparse")) hit(tt, { type: "highpass", freq: 7500, vol: (s % 4 === 0 ? .045 : .028) * hum() * (.7 + I * .5), dur: .035 });
+    }
+
+    // bass: root on the one, fifth or root later in the bar
+    if (s === 0) INST.bass(tt, mtof(key - 12 + chord[0]), spb * 7, .2 * hum());
+    if (s === 10 && th.drums !== "sparse") INST.bass(tt, mtof(key - 12 + chord[0] + (bar % 2 ? 7 : 0)), spb * 5, .15 * hum());
+
+    // pad: the whole chord, swelling once a bar
+    if (s === 0) {
+      var padV = th.pad === "dark" ? .04 : .036;
+      chord.slice(0, 4).forEach(function (n, i) {
+        voice(t, PADS[th.pad](mtof(key + n + (i ? 0 : 12))), { a: spb * 5, h: spb * 6, d: spb * 6, v: padV * (i ? 1 : .8), lp: th.pad === "dark" ? 700 : 1300 }, [.8, 0]);
+      });
+    }
+
+    // keys: lo-fi chord stabs or a gentle arpeggio
+    if (th.keys === "stab" && (s === 0 || s === 7 || (s === 10 && bar % 2))) {
+      chord.slice(1).forEach(function (n, i) { INST.rhodes(tt + i * .012, mtof(key + 12 + n), spb * 4, .055 * hum()); });
+    }
+    if (th.keys === "arp" && s % 2 === 0) {
+      var an = chord[(s / 2 + bar) % chord.length];
+      (th.lead === "saw" ? INST.pluck : INST.glass)(tt, mtof(key + 12 + an), spb * 2, (th.lead === "saw" ? .05 : .045) * hum());
+    }
+
+    // lead melody (rests for a while every 16 bars so it can breathe)
+    var n = music.melody[(bar % 4) * 16 + s];
+    if (n != null && bar % 16 < 12) {
+      var oct = th.lead === "musicbox" || th.lead === "glass" ? 12 : 24;
+      INST[th.lead](tt, mtof(key + oct + degree(n)), spb * 2, (th.lead === "rhodes" ? .11 : .09) * hum() * (.8 + I * .3));
+    }
+
+    // atmosphere
+    if (th.drone && s === 0 && bar % 2 === 0) voice(t, [{ type: "sawtooth", f: mtof(key - 24), g: .6 }, { type: "sine", f: mtof(key - 24 + 6), g: .25, det: 3 }], { a: spb * 8, h: spb * 12, d: spb * 10, v: .05, lp: 320 }, [.6, 0]);
+    if (th.bell && s === 8 && music.rng() < th.bell) INST.bell(tt, mtof(key + 24 + degree(Math.floor(music.rng() * music.th.scale.length))), 2, .05);
   }
   function musicTick() {
     if (!AC || !music.playing) return;
-    var spb = 60 / music.track.bpm / 4;
-    while (music.next < AC.currentTime + .15) {
-      scheduleStep(music.next, music.step);
+    var spb = 60 / music.th.bpm / 4;
+    while (music.next < AC.currentTime + .2) {
+      try { scheduleStep(music.next, music.step); } catch (e) {}
       music.next += spb;
       music.step++;
     }
@@ -254,25 +497,42 @@
   function musicStart() {
     var a = ac();
     if (!a || music.playing) return;
+    if (!music.built) buildFx();
     music.playing = true;
-    music.next = a.currentTime + .08;
+    music.next = a.currentTime + .1;
     musicBus.gain.cancelScheduledValues(a.currentTime);
-    musicBus.gain.setTargetAtTime(.55, a.currentTime, .3);
-    music.timer = setInterval(musicTick, 40);
+    musicBus.gain.setTargetAtTime(PA.musicVol * .9, a.currentTime, .6);
+    mfx.crackle = a.createBufferSource(); mfx.crackle.buffer = mfx.crackleBuf; mfx.crackle.loop = true;
+    var bp = a.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 2600; bp.Q.value = .5;
+    mfx.crackle.connect(bp); bp.connect(mfx.crackleGain); mfx.crackle.start();
+    music.timer = setInterval(musicTick, 50);
+    musicTick();
   }
   function musicStop() {
     if (!music.playing) return;
     music.playing = false;
     clearInterval(music.timer);
-    if (AC) { musicBus.gain.cancelScheduledValues(AC.currentTime); musicBus.gain.setTargetAtTime(.0001, AC.currentTime, .08); }
+    if (AC) {
+      musicBus.gain.cancelScheduledValues(AC.currentTime); musicBus.gain.setTargetAtTime(.0001, AC.currentTime, .12);
+      try { mfx.crackle.stop(AC.currentTime + .6); } catch (e) {}
+    }
   }
   function syncMusic() {
-    if (PA.musicOn && PA.state === "play" && !paused) musicStart(); else musicStop();
+    if (PA.musicOn && PA.musicVol > 0 && (PA.state === "play" || PA.state === "over") && !paused) musicStart(); else musicStop();
   }
+  chooseTheme(cfg.music || "lofi");
   PA.music = {
-    set: function (name) { if (TRACKS[name]) music.track = TRACKS[name]; },
-    intensity: function (v) { music.intensity = PA.clamp(v, 0, 1); },
-    tracks: TRACKS
+    set: function (name) { if (themeName(name) !== music.name) chooseTheme(name); },
+    intensity: function (v) {
+      v = PA.clamp(v, 0, 1);
+      if (Math.abs(v - music.intensity) < .04) return;
+      music.intensity = v;
+      if (AC && music.playing) tapeCutoff();
+    },
+    theme: function () { return music.name; },
+    label: function () { return music.th.label; },
+    themes: THEMES,
+    tracks: THEMES
   };
 
   /* ---------------- toolbar + pause menu ---------------- */
@@ -285,15 +545,50 @@
   tb.className = "pa-tb";
   var framed = (function () { try { return W.self !== W.top; } catch (e) { return true; } })();
   tb.innerHTML = (framed ? "" : '<a class="pa-home" href="/games/' + slug + '/" aria-label="Back to PromptArcade" title="Back to PromptArcade"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></a>') +
-    '<button type="button" id="pa-tb-sound" aria-label="Sound effects" title="Sound (M)"></button>' +
+    '<button type="button" id="pa-tb-sound" aria-label="Sound and music" aria-haspopup="true" aria-expanded="false" title="Sound and music (M mutes)"></button>' +
     '<button type="button" id="pa-tb-pause" aria-label="Pause" title="Pause (Esc / P)">' + ICON.pause + "</button>";
   D.body.appendChild(tb);
   var soundBtn = tb.querySelector("#pa-tb-sound");
+  // Speaker button opens a small mixer: music and sound effects each get an on/off switch and a volume slider.
+  var mixer = D.createElement("div");
+  mixer.className = "pa-mixer";
+  mixer.hidden = true;
+  mixer.setAttribute("role", "dialog");
+  mixer.setAttribute("aria-label", "Sound and music");
+  mixer.innerHTML =
+    '<div class="pa-mx-row"><button type="button" class="pa-mx-tg" id="pa-mx-music"></button>' +
+    '<input type="range" min="0" max="100" step="1" id="pa-mx-music-v" aria-label="Music volume"></div>' +
+    '<div class="pa-mx-row"><button type="button" class="pa-mx-tg" id="pa-mx-sfx"></button>' +
+    '<input type="range" min="0" max="100" step="1" id="pa-mx-sfx-v" aria-label="Sound effects volume"></div>' +
+    '<div class="pa-mx-now" id="pa-mx-now"></div>' +
+    '<button type="button" class="pa-mx-mute" id="pa-mx-mute"></button>';
+  tb.appendChild(mixer);
+  var mxMusic = mixer.querySelector("#pa-mx-music"), mxMusicV = mixer.querySelector("#pa-mx-music-v");
+  var mxSfx = mixer.querySelector("#pa-mx-sfx"), mxSfxV = mixer.querySelector("#pa-mx-sfx-v");
+  var mxNow = mixer.querySelector("#pa-mx-now"), mxMute = mixer.querySelector("#pa-mx-mute");
+  function allMuted() { return !(PA.sfxOn && PA.sfxVol > 0) && !(PA.musicOn && PA.musicVol > 0); }
   function paintSound() {
-    soundBtn.innerHTML = PA.sfxOn ? ICON.sound : ICON.mute;
-    soundBtn.setAttribute("aria-pressed", PA.sfxOn ? "true" : "false");
+    soundBtn.innerHTML = allMuted() ? ICON.mute : ICON.sound;
+    soundBtn.setAttribute("aria-pressed", allMuted() ? "false" : "true");
+    mxMusic.textContent = "♪ Music " + (PA.musicOn ? "on" : "off");
+    mxMusic.setAttribute("aria-pressed", PA.musicOn ? "true" : "false");
+    mxSfx.textContent = "✦ Effects " + (PA.sfxOn ? "on" : "off");
+    mxSfx.setAttribute("aria-pressed", PA.sfxOn ? "true" : "false");
+    mxMusicV.value = Math.round(PA.musicVol * 100);
+    mxSfxV.value = Math.round(PA.sfxVol * 100);
+    mxNow.textContent = "Now playing: " + PA.music.label();
+    mxMute.textContent = allMuted() ? "Unmute all (M)" : "Mute all (M)";
+  }
+  function openMixer(on) {
+    mixer.hidden = !on;
+    soundBtn.setAttribute("aria-expanded", on ? "true" : "false");
+    if (on) paintSound();
+    else if (D.activeElement && mixer.contains(D.activeElement)) { try { D.activeElement.blur(); } catch (e) {} }
   }
   paintSound();
+  D.addEventListener("pointerdown", function (e) {
+    if (!mixer.hidden && !(e.target.closest && e.target.closest("#pa-tb-sound,.pa-mixer"))) openMixer(false);
+  }, true);
 
   var pauseLayer = D.createElement("div");
   pauseLayer.className = "pa-layer";
@@ -317,7 +612,31 @@
   paintToggles();
 
   PA.setSfx = function (on) { PA.sfxOn = !!on; setPref("pa_sfx", PA.sfxOn); paintSound(); paintToggles(); if (on) PA.sfx("select"); };
-  PA.setMusic = function (on) { PA.musicOn = !!on; setPref("pa_music", PA.musicOn); paintToggles(); if (on) ac(); syncMusic(); };
+  PA.setMusic = function (on) { PA.musicOn = !!on; setPref("pa_music_on", PA.musicOn); paintSound(); paintToggles(); if (on) ac(); syncMusic(); };
+  PA.setSfxVolume = function (v) {
+    PA.sfxVol = PA.clamp(v, 0, 1); setPrefNum("pa_sfx_vol", PA.sfxVol);
+    if (AC) sfxBus.gain.setTargetAtTime(PA.sfxVol, AC.currentTime, .05);
+    paintSound();
+  };
+  PA.setMusicVolume = function (v) {
+    PA.musicVol = PA.clamp(v, 0, 1); setPrefNum("pa_music_vol", PA.musicVol);
+    if (AC && music.playing) musicBus.gain.setTargetAtTime(PA.musicVol * .9, AC.currentTime, .05);
+    syncMusic(); paintSound();
+  };
+  /** Mute everything, or bring both back (turning a zeroed slider up to a sensible level). */
+  PA.toggleMute = function () {
+    if (allMuted()) {
+      if (PA.musicVol === 0) PA.setMusicVolume(.6);
+      if (PA.sfxVol === 0) PA.setSfxVolume(.8);
+      PA.setMusic(true); PA.setSfx(true);
+    } else { PA.setMusic(false); PA.setSfx(false); }
+  };
+  mxMusic.addEventListener("click", function () { PA.setMusic(!PA.musicOn); });
+  mxSfx.addEventListener("click", function () { PA.setSfx(!PA.sfxOn); });
+  mxMute.addEventListener("click", function () { PA.toggleMute(); });
+  mxMusicV.addEventListener("input", function () { if (!PA.musicOn && +mxMusicV.value > 0) PA.setMusic(true); PA.setMusicVolume(mxMusicV.value / 100); });
+  mxSfxV.addEventListener("input", function () { if (!PA.sfxOn && +mxSfxV.value > 0) PA.sfxOn = true; PA.setSfxVolume(mxSfxV.value / 100); setPref("pa_sfx", PA.sfxOn); });
+  mxSfxV.addEventListener("change", function () { PA.sfx("select"); });
 
   var pauseCbs = [];
   PA.onPause = function (fn) { pauseCbs.push(fn); };
@@ -346,7 +665,7 @@
   PA.togglePause = function () { if (paused) PA.resume(); else PA.pause(); };
 
   tb.querySelector("#pa-tb-pause").addEventListener("click", function () { PA.togglePause(); });
-  soundBtn.addEventListener("click", function () { PA.setSfx(!PA.sfxOn); });
+  soundBtn.addEventListener("click", function () { ac(); openMixer(mixer.hidden); });
   pauseLayer.querySelector("#pa-resume").addEventListener("click", PA.resume);
   pauseLayer.querySelector("#pa-restart").addEventListener("click", function () { PA.resume(); PA.restart(); });
   tgSfx.addEventListener("click", function () { PA.setSfx(!PA.sfxOn); });
@@ -379,7 +698,7 @@
     if ((k === "Escape" || (!cfg.typing && (k === "p" || k === "P"))) && (PA.state === "play" || paused)) {
       e.preventDefault(); e.stopImmediatePropagation(); PA.togglePause(); return;
     }
-    if ((k === "m" || k === "M") && !e.repeat && !cfg.typing && !(cfg.keys && cfg.keys.indexOf("m") >= 0)) { PA.setSfx(!PA.sfxOn); }
+    if ((k === "m" || k === "M") && !e.repeat && !cfg.typing && !(cfg.keys && cfg.keys.indexOf("m") >= 0)) { PA.toggleMute(); }
     if (paused) { e.stopImmediatePropagation(); if (k !== "Tab") e.preventDefault(); return; }
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(k) >= 0) e.preventDefault();
     if (PA.state === "over" && native && (k === "Enter" || k === " ") && overReady) { e.preventDefault(); PA.restart(); return; }
