@@ -177,7 +177,43 @@ const hexTile = (() => {
   hex(0, 0); hex(w, 0); hex(w / 2, h / 2); hex(0, h); hex(w, h);
   return s;
 })();
-let hexPattern = null;
+/* The floor is one opaque tile (floor colour + hex lines) pre-scaled to the current zoom, so each frame
+ * is a single unscaled pattern fill. Re-scaling a pattern every frame was most of the frame time on
+ * big screens (full screen at 1080p and up). */
+const FLOOR = [[0, [11, 16, 48]], [0.7, [8, 10, 31]], [1, [20, 8, 32]]];
+function floorColor(d) {
+  for (let i = 1; i < FLOOR.length; i++) {
+    const [p1, c1] = FLOOR[i], [p0, c0] = FLOOR[i - 1];
+    if (d <= p1) { const k = (d - p0) / (p1 - p0); return c0.map((v, j) => Math.round(v + (c1[j] - v) * k)); }
+  }
+  return FLOOR[FLOOR.length - 1][1];
+}
+let floorTile = null;
+function floorPattern(ctx, z, d) {
+  const shade = Math.round(Math.min(1, d) * 24);
+  if (floorTile && floorTile.shade === shade && Math.abs(floorTile.z - z) < z * 0.015) return floorTile.pat;
+  const tw = Math.max(8, Math.round(hexTile.width * z)), th = Math.max(8, Math.round(hexTile.height * z));
+  const c = floorTile && floorTile.c.width === tw && floorTile.c.height === th ? floorTile.c : document.createElement("canvas");
+  c.width = tw; c.height = th;
+  const g = c.getContext("2d"), col = floorColor(shade / 24);
+  g.fillStyle = `rgb(${col})`; g.fillRect(0, 0, tw, th);
+  g.drawImage(hexTile, 0, 0, tw, th);
+  floorTile = { c, z, shade, pat: ctx.createPattern(c, "repeat") };
+  return floorTile.pat;
+}
+/* Full-screen gradients (vignette, Blackout fog) are drawn once per size at quarter resolution. */
+const overlays = {};
+function overlay(name, w, h, paint) {
+  const key = w + "x" + h;
+  let o = overlays[name];
+  if (!o || o.key !== key) {
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.ceil(w / 4)); c.height = Math.max(1, Math.ceil(h / 4));
+    const g = c.getContext("2d"); g.scale(c.width / w, c.height / h); paint(g, w, h);
+    o = overlays[name] = { key, c };
+  }
+  return o.c;
+}
 
 /* ---------------- world state (fed by frames) ----------------
  * meta: every snake in the room (names, skins, evolutions) · snakes: only the bodies near you
@@ -682,27 +718,38 @@ function scanForTips(now) {
 
 /* ---------------- auto quality ----------------
  * q.glow: soft glow strokes · q.fx: particles and trails · q.res: canvas resolution
- * Steps down after 2 s under 50 FPS, steps back up after 10 s of steady frames.
+ * Steps down after 2 s under 50 FPS, steps back up after 12 s of steady frames, but never back
+ * to a level that was too slow in the last minute (so it doesn't flip-flop and stutter).
+ * The canvas also has a pixel budget: big or high-DPI screens (full screen) render at most
+ * PIXEL_BUDGET pixels and the browser scales the picture up, so cost doesn't grow with the screen.
  */
 const q = { level: +(qs.get("q") || 0), glow: true, fx: true, res: 1 };
+const PIXEL_BUDGET = [2.4e6, 2.1e6, 1.6e6, 1.1e6];
 let slowFor = 0, fastFor = 0, resApplied = 1;
-function applyQuality() {
-  q.glow = q.level < 1; q.fx = q.level < 2; q.res = q.level >= 3 ? 0.75 : 1;
-  fx.max = q.level >= 2 ? 300 : 600;
-  if (q.res !== resApplied) { resApplied = q.res; view.fit(); }
+const slowAt = [0, 0, 0, 0];
+function targetRes() {
+  const px = view.w * view.h * view.dpr * view.dpr;
+  return Math.min(1, Math.sqrt(PIXEL_BUDGET[q.level] / Math.max(1, px)));
 }
-addEventListener("resize", () => { if (resApplied !== 1) fixRes(); });
+function applyQuality() {
+  q.glow = q.level < 1; q.fx = q.level < 2;
+  fx.max = q.level >= 2 ? 300 : 600;
+  fixRes();
+}
+addEventListener("resize", () => fixRes());
 const fit0 = view.fit;
 view.fit = () => { fit0(); fixRes(); };
 function fixRes() {
-  const c = view.canvas;
-  c.width = Math.floor(view.w * view.dpr * resApplied); c.height = Math.floor(view.h * view.dpr * resApplied);
+  resApplied = q.res = targetRes();
+  const c = view.canvas, cw = Math.floor(view.w * view.dpr * resApplied), ch = Math.floor(view.h * view.dpr * resApplied);
+  if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
 }
 function watchFps(dt) {
   if (!dt) return;
+  const now = performance.now();
   if (dt > 1 / 50) { slowFor += dt; fastFor = 0; } else { fastFor += dt; slowFor = Math.max(0, slowFor - dt * 0.5); }
-  if (slowFor > 2 && q.level < 3) { q.level++; slowFor = 0; applyQuality(); }
-  else if (fastFor > 10 && q.level > 0 && !qs.get("q")) { q.level--; fastFor = 0; applyQuality(); }
+  if (slowFor > 2 && q.level < 3) { slowAt[q.level] = now; q.level++; slowFor = 0; fastFor = 0; applyQuality(); }
+  else if (fastFor > 12 && q.level > 0 && !qs.get("q") && now - slowAt[q.level - 1] > 60000) { q.level--; fastFor = 0; applyQuality(); }
 }
 applyQuality();
 
@@ -925,29 +972,38 @@ function render(t) {
   fx.update(dt); texts.update(dt);
 
   const w = view.w, h = view.h, k = view.dpr * resApplied;
-  ctx.setTransform(k, 0, 0, k, 0, 0);
-  ctx.fillStyle = "#04050c"; ctx.fillRect(0, 0, w, h);
   const sh = PA.shakeOffset();
+  // floor + hex grid in device pixels (translate-only pattern: the fast path)
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const zDev = cam.z * k, camD = Math.hypot(cam.x, cam.y);
+  const fp = floorPattern(ctx, zDev, camD / W.worldR);
+  const ox = Math.round((w / 2 + sh.x) * k - cam.x * zDev), oy = Math.round((h / 2 + sh.y) * k - cam.y * zDev);
+  if (fp.setTransform) fp.setTransform(new DOMMatrix([1, 0, 0, 1, ox, oy]));
+  ctx.fillStyle = fp; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.save();
   ctx.translate(w / 2 + sh.x, h / 2 + sh.y);
   ctx.scale(cam.z, cam.z);
   ctx.translate(-cam.x, -cam.y);
 
-  // arena floor + hex grid, clipped to the circle
-  ctx.save();
-  ctx.beginPath(); ctx.arc(0, 0, W.worldR, 0, TAU); ctx.clip();
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, W.worldR);
-  g.addColorStop(0, "#0b1030"); g.addColorStop(0.7, "#080a1f"); g.addColorStop(1, "#140820");
-  ctx.fillStyle = g; ctx.fillRect(cam.x - w / cam.z, cam.y - h / cam.z, (w / cam.z) * 2, (h / cam.z) * 2);
-  if (!hexPattern) hexPattern = ctx.createPattern(hexTile, "repeat");
-  ctx.fillStyle = hexPattern; ctx.fillRect(cam.x - w / cam.z, cam.y - h / cam.z, (w / cam.z) * 2, (h / cam.z) * 2);
-  ctx.restore();
-  // border
-  ctx.lineWidth = 14; ctx.strokeStyle = "#ff3d7f";
-  if (q.glow) { ctx.shadowColor = "#ff3d7f"; ctx.shadowBlur = 40; }
-  ctx.globalAlpha = 0.75 + Math.sin(t * 2) * 0.15;
-  ctx.beginPath(); ctx.arc(0, 0, W.worldR, 0, TAU); ctx.stroke();
-  ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  // outside the arena and the border, only when the edge is on screen
+  const halfDiag = Math.hypot(w, h) / 2 / cam.z;
+  if (camD + halfDiag > W.worldR - 80) {
+    const vx = cam.x - halfDiag, vy = cam.y - halfDiag;
+    ctx.beginPath(); ctx.rect(vx, vy, halfDiag * 2, halfDiag * 2); ctx.arc(0, 0, W.worldR, 0, TAU);
+    ctx.fillStyle = "#04050c"; ctx.fill("evenodd");
+    const pulse = 0.75 + Math.sin(t * 2) * 0.15;
+    ctx.strokeStyle = "#ff3d7f";
+    ctx.beginPath(); ctx.arc(0, 0, W.worldR, 0, TAU);
+    if (q.glow) {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.07 * pulse; ctx.lineWidth = 70; ctx.stroke();
+      ctx.globalAlpha = 0.14 * pulse; ctx.lineWidth = 36; ctx.stroke();
+      ctx.globalCompositeOperation = "source-over";
+    }
+    ctx.globalAlpha = pulse; ctx.lineWidth = 14; ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   drawPortals(t, now);
 
@@ -986,14 +1042,18 @@ function render(t) {
 
   // Blackout: fog beyond a soft circle (a Firefly sees through it)
   if (W.mod === "blackout" && !(me && me.evo === 7)) {
-    const fg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2, w / 2, h / 2, Math.min(w, h) * 0.7);
-    fg.addColorStop(0, "rgba(2,3,8,0)"); fg.addColorStop(1, "rgba(2,3,8,.93)");
-    ctx.fillStyle = fg; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(overlay("fog", w, h, (g, w, h) => {
+      const fg = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2, w / 2, h / 2, Math.min(w, h) * 0.7);
+      fg.addColorStop(0, "rgba(2,3,8,0)"); fg.addColorStop(1, "rgba(2,3,8,.93)");
+      g.fillStyle = fg; g.fillRect(0, 0, w, h);
+    }), 0, 0, w, h);
   }
   // vignette
-  const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
-  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.55)");
-  ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(overlay("vignette", w, h, (g, w, h) => {
+    const vg = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.55)");
+    g.fillStyle = vg; g.fillRect(0, 0, w, h);
+  }), 0, 0, w, h);
   drawArrivalArrows(now);
 
   if (me) {
