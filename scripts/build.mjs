@@ -50,6 +50,9 @@ fs.writeFileSync(path.join(OUT, "games/play/pa-data.js"), "/* generated from src
 /* Google AdSense loader: in every page head (layout pages get it from html.mjs). */
 const ADSENSE_TAG = '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4059575347806121" crossorigin="anonymous"></script>';
 
+/* Google Analytics 4 tag: right after <head> on every page (layout pages get it from html.mjs). */
+const GA_TAG = `<!-- Google tag (gtag.js) --><script async src="https://www.googletagmanager.com/gtag/js?id=G-L394D0L4NL"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-L394D0L4NL');</script>`;
+
 /* ---------- play files: copy, cache-bust kit scripts, drop stale injected beacons ---------- */
 copyDir(path.join(SRC, "play"), path.join(OUT, "games/play"));
 const ver = {};
@@ -64,6 +67,7 @@ for (const f of fs.readdirSync(path.join(OUT, "games/play"))) {
   let h = read(p);
   h = h.replace(/<script[^>]*static\.cloudflareinsights\.com[^>]*><\/script>/g, "");
   h = h.replace(/(src|href)="(\/games\/play\/pa-(?:score|gate|kit|data)\.js)(?:\?v=[^"]*)?"/g, (m, a, u) => `${a}="${u}?v=${v(u.slice(1))}"`);
+  if (!h.includes("gtag/js?id=G-L394D0L4NL")) h = h.replace(/<head[^>]*>/i, (m) => m + "\n" + GA_TAG);
   if (!h.includes(ADSENSE_TAG)) h = h.replace(/<\/head>/i, ADSENSE_TAG + "\n</head>");
   fs.writeFileSync(p, h);
 }
