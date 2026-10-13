@@ -49,7 +49,7 @@ canvas{display:block}
 <button type="button" id="ga-boost" aria-label="Boost">BOOST</button>
 <script>
 window.paConfig = {
-  slug: "glowline-arena", title: "Glowline Arena", native: true, music: "synth", unit: "length", pauseOnBlur: false,
+  slug: "glowline-arena", title: "Glowline Arena", native: true, music: "synthwave", unit: "length", pauseOnBlur: false,
   arena: "wss://arena.promptarcade.games/room",
   controls: [["Mouse", "Steer toward the cursor"], ["Hold click / Space", "Boost (costs length)"], ["← → / A D", "Steer with keys"], ["Touch", "Point to steer · BOOST button"]]
 };
@@ -312,7 +312,7 @@ PA.onPause((p) => { if (net && net.kind === "local") net.paused = p; });
 let aim = 0, boostKey = false, boostPtr = false, boostBtn = false, mouse = null, keyTurn = 0, lastSent = { a: 99, b: false, t: 0 };
 addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" || e.buttons) mouse = { x: e.clientX, y: e.clientY }; });
 addEventListener("pointerdown", (e) => {
-  if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,#ga-skin")) return;
+  if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,.pa-tb,#ga-skin")) return;
   mouse = { x: e.clientX, y: e.clientY };
   if (e.pointerType === "mouse") boostPtr = true;
 });

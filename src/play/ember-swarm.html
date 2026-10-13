@@ -87,7 +87,7 @@ html,body{margin:0;height:100%;background:#0a0608;color:#fff4ea;overflow:hidden;
 
 <script>
 window.paConfig = {
-  slug: "ember-swarm", title: "Ember Swarm", native: true, music: "tense", unit: "points",
+  slug: "ember-swarm", title: "Ember Swarm", native: true, music: "spooky", unit: "points",
   controls: [["WASD / arrows", "Move"], ["Weapons", "Fire automatically"], ["1 · 2 · 3", "Pick an upgrade"], ["Touch", "Drag anywhere to move"]]
 };
 </script>
@@ -339,7 +339,7 @@ function spawnBoss(kind) {
   $("es-boss").classList.add("on");
   PA.sfx("boom"); PA.shake(12, .8); PA.flash("#ff4d2e", 400);
   texts.add(G.p.x, G.p.y - 80, TYPES[kind].boss.toUpperCase() + " AWAKENS", { color: "#ff8a5c", size: 26, life: 2.4, vy: -18 });
-  PA.music.set("drive");
+  PA.music.set("spooky-boss");
 }
 
 /* ============ damage ============ */
@@ -378,7 +378,7 @@ function killEnemy(e) {
     $("es-boss").classList.remove("on");
     if (e.segs) for (const s of e.segs) { s.dead = true; fx.burst(s.x, s.y, { n: 20, colors: ["#ff8a3d", "#ffd27a"], speed: 300, life: .9, size: 5 }); }
     G.gold += e.type === "wyrm" ? 120 : 50;
-    PA.shake(16, 1); PA.flash("#ffd27a", 500); PA.music.set("tense");
+    PA.shake(16, 1); PA.flash("#ffd27a", 500); PA.music.set("spooky");
     texts.add(e.x, e.y - 60, "BOSS BANISHED!", { color: "#ffd27a", size: 30, life: 2.2, vy: -20 });
     for (let i = 0; i < 2; i++) G.gems.push({ x: e.x + rand(-30, 30), y: e.y + rand(-30, 30), v: 1, kind: "chest" });
     if (e.type === "wyrm") setTimeout(() => endRun(true), 1400);
@@ -1018,7 +1018,7 @@ function beginRun() {
   $("es-boss").classList.remove("on");
   fx.clear(); texts.clear();
   newRun();
-  PA.music.set("tense");
+  PA.music.set("spooky");
   PA.sfx("power");
 }
 
