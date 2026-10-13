@@ -73,7 +73,14 @@ export async function authPlayer(DB, id, token) {
   if (!ID_RE.test(String(id || "")) || !TOKEN_RE.test(String(token || ""))) return null;
   const row = await DB.prepare("SELECT id, display_name, token_hash, hidden, rename_count FROM players WHERE id = ?1").bind(id).first();
   if (!row) return null;
-  return sameHex(row.token_hash, await sha256Hex(token)) ? row : null;
+  const h = await sha256Hex(token);
+  if (sameHex(row.token_hash, h)) return row;
+  // a device signed in by email has its own key (see auth.js)
+  try {
+    const dev = await DB.prepare("SELECT player_id FROM player_tokens WHERE token_hash = ?1").bind(h).first();
+    if (dev && dev.player_id === id) return row;
+  } catch (e) { /* no sign-ins yet: the table doesn't exist */ }
+  return null;
 }
 
 const err = (status, error, message) => ({ ok: false, status, error, message });
@@ -120,8 +127,8 @@ export async function renamePlayer(env, DB, { id, token, name, ipHash }) {
   return { ok: true, status: 200, name: mod.name, previous: player.display_name, moderation: mod.source };
 }
 
-/** Parse a JSON body (≤ 2 KB, same-origin when an Origin header is present). */
-export async function readJson(request) {
+/** Parse a JSON body (≤ 2 KB unless a larger limit is given, same-origin when an Origin header is present). */
+export async function readJson(request, maxBytes = 2048) {
   if (!(request.headers.get("content-type") || "").includes("application/json")) return err(415, "json-only", "Expected JSON.");
   const origin = request.headers.get("origin");
   if (origin) {
@@ -130,6 +137,6 @@ export async function readJson(request) {
     if (host !== new URL(request.url).host) return err(403, "cross-origin", "Cross-origin request.");
   }
   const raw = await request.text();
-  if (raw.length > 2048) return err(413, "too-large", "Request too large.");
+  if (raw.length > maxBytes) return err(413, "too-large", "Request too large.");
   try { return { ok: true, body: JSON.parse(raw) || {} }; } catch { return err(400, "bad-json", "Expected JSON."); }
 }

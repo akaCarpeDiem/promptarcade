@@ -356,6 +356,75 @@
     });
   }
 
+  /* ---------- account (email sign-in) on my arcade ---------- */
+  const acct = $("#account");
+  if (acct && W.paPlayer && W.paPlayer.startSignIn) {
+    const P = W.paPlayer, msg = $("#acct-msg");
+    const views = { out: $("#acct-out"), code: $("#acct-code"), in: $("#acct-in") };
+    let pending = "";
+    const say = (t, kind) => { msg.textContent = t || ""; msg.className = "acct-msg" + (kind ? " " + kind : ""); };
+    const show = (v) => { for (const k in views) views[k].hidden = k !== v; const tag = $("#acct-tag"); tag.textContent = v === "in" ? "Signed in" : "Optional"; tag.classList.toggle("on", v === "in"); };
+    const busy = (btn, on, label) => { btn.disabled = on; if (label) btn.textContent = label; };
+    const render = () => { const e = P.email(); if (e) { $("#acct-who").textContent = e; show("in"); } else if (!pending) show("out"); };
+    const send = (email) => {
+      const btn = $("#acct-send"); busy(btn, true, "Sending…"); say("");
+      return P.startSignIn(email).then((r) => {
+        busy(btn, false, "Email me a code");
+        if (!r.ok) { say(r.error, "err"); return; }
+        pending = email; $("#acct-code-to").textContent = email; show("code"); say("Check your inbox (and spam folder) for the code.");
+        setTimeout(() => { try { $("#acct-code-input").focus(); } catch (e) {} }, 30);
+      });
+    };
+    const verify = (email, code) => {
+      const btn = $("#acct-verify"); if (btn.disabled) return Promise.resolve(false); busy(btn, true, "Checking…"); say("");
+      return P.verifyCode(email, code).then((r) => {
+        busy(btn, false, "Sign in");
+        if (!r.ok) { if (views.out.hidden && views.code.hidden) show("out"); say(r.error, "err"); return false; }
+        pending = ""; render();
+        say(r.existing ? "Signed in. Your progress from this device was added to your account." : "Signed in. You can now sign in with this email on any device.", "ok");
+        setTimeout(() => location.reload(), 1600);
+        return true;
+      });
+    };
+    $("#acct-email-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const v = $("#acct-email").value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { say("Enter your email address.", "err"); $("#acct-email").focus(); return; }
+      send(v);
+    });
+    $("#acct-code-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const c = $("#acct-code-input").value.replace(/\D/g, "");
+      if (c.length !== 6) { say("Enter the 6-digit code from the email.", "err"); return; }
+      verify(pending, c);
+    });
+    $("#acct-code-input").addEventListener("input", (e) => { const c = e.target.value.replace(/\D/g, "").slice(0, 6); e.target.value = c; if (c.length === 6) verify(pending, c); });
+    $("#acct-back").addEventListener("click", () => { pending = ""; show("out"); say(""); $("#acct-email").focus(); });
+    $("#acct-resend").addEventListener("click", () => pending && send(pending));
+    $("#acct-sync").addEventListener("click", () => {
+      const btn = $("#acct-sync"); busy(btn, true, "Syncing…");
+      P.sync(true).then((r) => {
+        busy(btn, false, "Sync now");
+        if (r.ok && r.changed.length) { say("Synced. Loading your latest progress…", "ok"); setTimeout(() => location.reload(), 900); }
+        else say(r.ok ? "Everything is up to date." : r.error === "signed-out" ? "You were signed out. Sign in again to sync." : r.error, r.ok ? "ok" : "err");
+        render();
+      });
+    });
+    $("#acct-signout").addEventListener("click", () => {
+      if (!confirm("Sign out on this device? Your progress stays saved on your account, and stays here too.")) return;
+      P.signOut().then(() => { render(); say("Signed out on this device."); });
+    });
+    W.addEventListener("pa:account", render);
+    render();
+    // One-tap link from the email: /me/?signin=CODE&email=ADDRESS
+    const q = new URLSearchParams(location.search), qc = (q.get("signin") || "").replace(/\D/g, ""), qe = (q.get("email") || "").trim();
+    if (qc.length === 6 && qe) {
+      history.replaceState(null, "", location.pathname + "#account");
+      if (P.email() && P.email() === qe.toLowerCase()) say("You're already signed in.", "ok");
+      else { pending = qe; $("#acct-code-to").textContent = qe; $("#acct-code-input").value = qc; show("code"); acct.scrollIntoView({ block: "center" }); verify(qe, qc); }
+    } else if (location.hash === "#account" && !P.email()) setTimeout(() => { try { $("#acct-email").focus(); } catch (e) {} }, 300);
+  }
+
   /* ---------- daily page streak calendar ---------- */
   const cal = $("#daily-days");
   if (cal) {

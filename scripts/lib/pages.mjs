@@ -121,7 +121,7 @@ export function library(ctx) {
   const makers = [...new Set(GAMES.map((g) => makerClass(g.credit)))];
   const tagsF = ["multiplayer", "daily", "3d", "physics"];
   const body = `<div class="wrap" style="padding-top:34px">
-  <div class="sec-head"><div><span class="kicker">The arcade</span><h2 style="font-size:clamp(32px,4.6vw,56px)">All ${GAMES.length} games</h2><p>Every one free, no account, playable on desktop and phone — and every one written by an AI model.</p></div></div>
+  <div class="sec-head"><div><span class="kicker">The arcade</span><h2 style="font-size:clamp(32px,4.6vw,56px)">All ${GAMES.length} games</h2><p>Every one free, no account needed, playable on desktop and phone — and every one written by an AI model.</p></div></div>
   <div class="filters" role="search">
     <input id="f-q" type="search" placeholder="Search by name, genre or model…" aria-label="Search games"/>
     <div class="fchips" aria-label="Genre">
@@ -145,7 +145,7 @@ export function game(ctx, g) {
   const tall = ["wordglow", "nebula-drop", "block-bloom"].includes(g.slug);
   const c = g.credit;
   const modelLine = c.model ? `${esc(c.model)}` : `${esc(c.maker)} <span class="note" style="display:inline">(model version not recorded)</span>`;
-  const desc = `${g.tagline} Play ${g.title} free in your browser — made by ${c.model || c.maker} from prompts. Global Top 10, no account.`;
+  const desc = `${g.tagline} Play ${g.title} free in your browser — made by ${c.model || c.maker} from prompts. Global Top 10, no account needed.`;
   const body = `<div class="ghead" style="--a:${g.accent};--b:${g.accent2}"><div class="wrap">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Arcade</a><span>/</span><a href="/games/">Games</a><span>/</span><span>${esc(g.title)}</span></nav>
   <h1>${esc(g.title)}</h1>
@@ -267,12 +267,29 @@ export function me(ctx) {
     <div class="bignum"><b id="me-quests">0</b><span>daily quests done</span></div>
     <div class="bignum"><b id="me-badge-count">0</b><span>badges</span></div>
   </div>
+  <section style="padding:20px 0" id="account"><div class="panel acct">
+    <h2>Account <span class="acct-tag" id="acct-tag">Optional</span></h2>
+    <div id="acct-out">
+      <p class="acct-lead">Sign in with your email to keep your name, scores, XP and badges on every device. No password: we email you a 6-digit code.</p>
+      <form class="acct-row" id="acct-email-form" novalidate><input type="email" id="acct-email" placeholder="Your email address" autocomplete="email" inputmode="email" required aria-label="Email address"/><button class="btn small" type="submit" id="acct-send">Email me a code</button></form>
+    </div>
+    <div id="acct-code" hidden>
+      <p class="acct-lead">We sent a code to <b id="acct-code-to"></b>. It works for 15 minutes.</p>
+      <form class="acct-row" id="acct-code-form" novalidate><input id="acct-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456" aria-label="6-digit code"/><button class="btn small" type="submit" id="acct-verify">Sign in</button></form>
+      <p class="note"><button class="linkbtn" type="button" id="acct-back">Use a different email</button> · <button class="linkbtn" type="button" id="acct-resend">Send a new code</button></p>
+    </div>
+    <div id="acct-in" hidden>
+      <p class="acct-lead">Signed in as <b id="acct-who"></b>. Your progress syncs on its own when you finish a run or leave the page.</p>
+      <div class="acct-row"><button class="btn small" type="button" id="acct-sync">Sync now</button><button class="btn ghost small" type="button" id="acct-signout">Sign out on this device</button></div>
+    </div>
+    <p class="acct-msg" id="acct-msg" role="status"></p>
+  </div></section>
   <section style="padding:20px 0"><div class="panel"><h2>Last 30 days</h2><div class="days" id="me-days"></div></div></section>
   <section style="padding:20px 0"><div class="sec-head"><div><h2>Badges</h2><p>Earn XP from every run, +100 for the daily quest, +50 for every badge.</p></div></div><div class="badges" id="me-badges"></div></section>
   <section style="padding:20px 0"><div class="sec-head"><div><h2>Your games</h2></div></div><div class="statgrid" id="me-stats"></div></section>
-  <p class="note">Your pass lives in this browser only — no account, nothing uploaded except leaderboard scores. <button class="btn ghost small" type="button" id="me-reset" style="margin-left:8px">Reset my pass</button></p>
+  <p class="note">Without an account your pass lives in this browser only. <button class="btn ghost small" type="button" id="me-reset" style="margin-left:8px">Reset my pass</button></p>
 </div>`;
-  return { path: "/me/", html: layout({ title: "My Arcade Pass", description: "Your PromptArcade level, XP, badges, streak and personal bests.", path: "/me/", v: ctx.v, body, noindex: true }) };
+  return { path: "/me/", html: layout({ title: "My Arcade Pass", description: "Your PromptArcade level, XP, badges, streak and personal bests. Sign in to sync them across devices.", path: "/me/", v: ctx.v, body, noindex: true }) };
 }
 
 export function lab(ctx) {
@@ -346,9 +363,11 @@ export function about(ctx) {
 }
 export function privacy(ctx) {
   return prose(ctx, "/privacy/", "Privacy", "How PromptArcade handles your data.", `<span class="kicker">Privacy</span><h1>Privacy</h1>
-<p>${SITE.name} has no accounts and collects as little as possible.</p>
+<p>${SITE.name} works without an account and collects as little as possible. Signing in is optional.</p>
 <h2>On your device</h2>
 <p>Your player name, scores, Arcade Pass (XP, badges, streaks), game progress (for example your Wordglow stats and Ember Swarm upgrades) and sound preferences are stored in your browser's localStorage so the site remembers them. Clearing site data removes them.</p>
+<h2>Optional account</h2>
+<p>If you sign in on the My Arcade page, we store your email address so we can email you one-time sign-in codes, and we link it to your player. While you're signed in, your player name, scores, Arcade Pass and game progress are copied to our database on Cloudflare so they appear on your other devices. We use your email only for sign-in codes — no newsletters — and it is never shown publicly. Codes are sent through our email provider, Resend. To delete your account and its saved progress, email <a href="mailto:${SITE.email}">${SITE.email}</a> from that address.</p>
 <h2>Shared leaderboards</h2>
 <p>When a run ends, the game sends your player name and score to our leaderboard service on Cloudflare, where it is shown publicly on that game's Top 10 and the Hall of Fame. To limit spam we store a short salted hash derived from your IP address and the date — not the IP address itself.</p>
 <h2>Multiplayer</h2>

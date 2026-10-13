@@ -62,6 +62,7 @@
     "#pa-gate #pa-gate-change{font-size:.78rem;font-weight:600;min-height:32px;padding:.2rem .6rem;background:transparent;color:#a8a3c0;border:1px solid rgba(244,241,255,.14)}" +
     "#pa-gate .pa-gate-meta{display:flex;justify-content:center;gap:.5rem;flex-wrap:wrap;margin:.8rem 0 0;font-size:.76rem;color:#8f8aa6}" +
     "#pa-gate .pa-gate-meta span{white-space:nowrap}#pa-gate .pa-gate-meta b{color:#ffd27a;font-weight:700}" +
+    "#pa-gate .pa-gate-acct{margin:.6rem 0 0;font-size:.74rem;color:#8f8aa6}#pa-gate .pa-gate-acct a{color:#a8e9ff;text-underline-offset:2px}" +
     "#pa-gate .pa-gate-hint{margin:.55rem 0 0;font-size:.72rem;color:#7a7694;letter-spacing:.04em}" +
     "@media (max-height:430px){#pa-gate .pa-gate-keys,#pa-gate .pa-gate-sub{display:none}#pa-gate .pa-gate-card{padding:.9rem 1rem}}" +
     "@media (prefers-reduced-motion:reduce){#pa-gate,#pa-gate .pa-gate-card,#pa-gate .pa-gate-card::before,#pa-gate #pa-gate-start{animation:none}}" +
@@ -106,6 +107,7 @@
       "</div>" +
       '<p class="pa-gate-hint" id="pa-gate-hint" hidden>Press Enter or Space to start</p>' +
       '<div class="pa-gate-meta" id="pa-gate-meta"></div>' +
+      '<p class="pa-gate-acct" id="pa-gate-acct" hidden></p>' +
     "</div>";
   document.body.appendChild(gate);
 
@@ -120,6 +122,18 @@
   var sub = document.getElementById("pa-gate-sub");
   var meta = document.getElementById("pa-gate-meta");
   var mode = "name";
+  var acctEl = document.getElementById("pa-gate-acct");
+  function paintAccount() {
+    var P = window.paPlayer;
+    if (!P || !P.email) return;
+    var e = P.email();
+    acctEl.hidden = false;
+    acctEl.innerHTML = e
+      ? "Progress syncs to " + escapeHtml(e)
+      : '<a href="/me/#account" target="_top">Sign in</a> to keep your progress on every device';
+  }
+  paintAccount();
+  window.addEventListener("pa:account", paintAccount);
 
   function paintMeta() {
     if (!slug || !window.paScores) return;

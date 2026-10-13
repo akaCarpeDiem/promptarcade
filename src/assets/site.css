@@ -378,3 +378,17 @@ footer .fine{grid-column:1/-1;border-top:1px solid var(--line);padding-top:20px;
 }
 .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,30px);opacity:0;z-index:95;background:#fff;color:#0a0820;font:800 14px var(--body);padding:.7rem 1.1rem;border-radius:14px;transition:.3s var(--ease);pointer-events:none}
 .toast.on{opacity:1;transform:translate(-50%,0)}
+/* account panel on /me */
+.acct .acct-tag{font:700 11px var(--mono);letter-spacing:.12em;color:var(--dim);border:1px solid var(--line2);border-radius:999px;padding:3px 9px}
+.acct .acct-tag.on{color:var(--mint);border-color:rgba(125,255,176,.4)}
+.acct-lead{margin:0 0 12px;color:var(--muted);font-size:15px;max-width:640px}
+.acct-lead b{color:var(--ink);word-break:break-all}
+.acct-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.acct-row input{flex:1 1 220px;min-width:0;height:44px;border-radius:999px;border:1px solid var(--line2);background:rgba(255,255,255,.04);color:var(--ink);padding:0 18px;font:600 16px var(--body);outline:none;transition:border-color .2s,background .2s}
+.acct-row input:focus{border-color:var(--cyan);background:rgba(94,242,255,.05)}
+#acct-code-input{flex:0 1 180px;letter-spacing:.3em;font:700 20px var(--mono);text-align:center}
+.acct-msg{min-height:1.2em;margin:10px 0 0;font-size:14px;color:var(--muted)}
+.acct-msg.err{color:#ffb4a8}
+.acct-msg.ok{color:var(--mint)}
+.linkbtn{background:none;border:0;padding:0;color:var(--cyan);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.btn[disabled]{opacity:.6;cursor:progress}

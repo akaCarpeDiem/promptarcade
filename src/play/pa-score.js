@@ -7,7 +7,8 @@
  * - Results are broadcast to the parent page (postMessage "pa-score") and in-frame ("pa:score").
  * - Player identity (window.paPlayer): the first name entry creates a player on the server
  *   ({playerId, playerToken} in localStorage). Renaming updates every score that player owns.
- *   Identity lives in this browser only; another device gets its own player.
+ *   Signing in with email (code sent by /api/auth/start) links the player to an account so other
+ *   devices can sign in to the same player; signed-in browsers merge progress via /api/account/sync.
  */
 (function () {
   var NAME_KEY = "pa_player_name";
@@ -361,6 +362,97 @@
   }, true);
   window.addEventListener("pa:start", arm);
 
+
+  /* ---------------- email sign-in + progress sync ---------------- */
+  var EMAIL_KEY = "pa_account_email";
+  var SYNC_RE = /^(pa_pass_v1|ga_xp|es_meta_v1|wg_v1|nd_best|bb_best|dd_daily|pa_scores_[a-z0-9-]{1,40})$/;
+  function accountEmail() { return hasPlayer() ? lsGet(EMAIL_KEY) : ""; }
+  function authError(r, fallback) {
+    if (r.status === 404 || r.status === 405) return "Sign-in isn't available on this copy of the site.";
+    return (r.data && r.data.message) || fallback || OFFLINE_MSG;
+  }
+  /** Email a sign-in code. Resolves {ok} or {ok:false, error}. */
+  function startSignIn(email) {
+    return postJson("/api/auth/start", { email: String(email || "").trim() }).then(function (r) {
+      return r.ok ? { ok: true } : { ok: false, error: authError(r) };
+    }, function () { return { ok: false, error: OFFLINE_MSG }; });
+  }
+  /** Check the emailed code and sign this browser in. Resolves {ok, email, name, merged, existing}. */
+  function verifyCode(email, code) {
+    var body = { email: String(email || "").trim(), code: String(code || "").replace(/\D/g, "") };
+    if (hasPlayer()) { body.playerId = playerId(); body.playerToken = playerToken(); }
+    if (getName()) body.name = getName();
+    return postJson("/api/auth/verify", body).then(function (r) {
+      if (!r.ok) return { ok: false, error: authError(r) };
+      var d = r.data;
+      lsSet(ID_KEY, d.playerId); lsSet(TOKEN_KEY, d.playerToken); lsSet(EMAIL_KEY, d.email);
+      if (d.name) applyName(d.name);
+      announceAccount();
+      return syncProgress(true).then(function () {
+        return { ok: true, email: d.email, name: d.name, merged: d.merged || 0, existing: !!d.existing };
+      });
+    }, function () { return { ok: false, error: OFFLINE_MSG }; });
+  }
+  /** Sign this browser out. Progress stays here and on the account; the next score makes a fresh guest player. */
+  function signOut() {
+    var body = { playerId: playerId(), playerToken: playerToken() };
+    var done = function () { clearPlayer(); lsSet(EMAIL_KEY, ""); announceAccount(); return { ok: true }; };
+    return postJson("/api/auth/signout", body).then(done, done);
+  }
+  function announceAccount() {
+    try { window.dispatchEvent(new CustomEvent("pa:account", { detail: { email: accountEmail() } })); } catch (e) {}
+  }
+  function collectState() {
+    var out = {};
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || !SYNC_RE.test(k)) continue;
+        var raw = localStorage.getItem(k);
+        try { out[k] = JSON.parse(raw); } catch (e) { out[k] = raw; }
+      }
+    } catch (e) {}
+    return out;
+  }
+  function writeState(state) {
+    var changed = [];
+    Object.keys(state || {}).forEach(function (k) {
+      if (!SYNC_RE.test(k)) return;
+      var v = state[k];
+      var raw = typeof v === "string" ? v : JSON.stringify(v);
+      if (lsGet(k) !== raw) { try { localStorage.setItem(k, raw); changed.push(k); } catch (e) {} }
+    });
+    return changed;
+  }
+  var syncing = null;
+  /** Merge this browser's progress with the account. force skips the 2-minute throttle. */
+  function syncProgress(force) {
+    if (!hasPlayer() || !lsGet(EMAIL_KEY) || typeof fetch !== "function") return Promise.resolve({ ok: false, skipped: true });
+    if (syncing) return syncing;
+    if (!force) {
+      try {
+        var last = Number(sessionStorage.getItem("pa_account_sync") || 0);
+        if (Date.now() - last < 2 * 60 * 1000) return Promise.resolve({ ok: false, skipped: true });
+      } catch (e) {}
+    }
+    try { sessionStorage.setItem("pa_account_sync", String(Date.now())); } catch (e) {}
+    syncing = postJson("/api/account/sync", { playerId: playerId(), playerToken: playerToken(), state: collectState() }).then(function (r) {
+      syncing = null;
+      if (r.status === 401) { clearPlayer(); lsSet(EMAIL_KEY, ""); announceAccount(); return { ok: false, error: "signed-out" }; }
+      if (!r.ok) return { ok: false, error: authError(r) };
+      if (!r.data.email) { lsSet(EMAIL_KEY, ""); announceAccount(); return { ok: false, error: "signed-out" }; }
+      if (r.data.email !== lsGet(EMAIL_KEY)) lsSet(EMAIL_KEY, r.data.email);
+      if (r.data.name && r.data.name !== getName()) applyName(r.data.name);
+      var changed = writeState(r.data.state);
+      try { window.dispatchEvent(new CustomEvent("pa:synced", { detail: { changed: changed } })); } catch (e) {}
+      return { ok: true, changed: changed };
+    }, function () { syncing = null; return { ok: false, error: OFFLINE_MSG }; });
+    return syncing;
+  }
+  window.addEventListener("pa:score", function () { if (lsGet(EMAIL_KEY)) setTimeout(function () { syncProgress(true); }, 400); });
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden" && lsGet(EMAIL_KEY)) syncProgress(); });
+  window.addEventListener("storage", function (e) { if (e.key === EMAIL_KEY) announceAccount(); });
+
   window.paPlayer = {
     id: playerId,
     hasPlayer: hasPlayer,
@@ -368,9 +460,14 @@
     setName: setPlayerName,
     ensure: ensurePlayer,
     openRename: openRename,
-    chip: nameChip
+    chip: nameChip,
+    email: accountEmail,
+    startSignIn: startSignIn,
+    verifyCode: verifyCode,
+    signOut: signOut,
+    sync: syncProgress
   };
-  setTimeout(syncPlayer, 1200);
+  setTimeout(function () { syncPlayer(); syncProgress(); }, 1200);
 
   window.paReport = window.psReport = report;
   window.paScores = {

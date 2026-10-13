@@ -5,6 +5,9 @@ pages_build_output_dir = "dist"
 # Bindings for the live scores/players API (functions/). These copy the bindings set on the live
 # Pages project exactly, because a wrangler.toml with pages_build_output_dir overrides dashboard
 # bindings. Ids are not secrets. The secret SCORE_SALT stays in the dashboard; never put it here.
+# Email sign-in (functions/_shared/auth.js) needs the secret RESEND_API_KEY, also dashboard-only,
+# for Production and Preview. The sender defaults to login@promptarcade.games; to change it,
+# add AUTH_FROM under [vars] here (dashboard plain-text variables are overridden by this file).
 #
 # D1 (scores.js uses SCORES whenever it is bound). Production: "promptarcade-scores".
 [[d1_databases]]
