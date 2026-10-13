@@ -33,6 +33,7 @@ export function layout({ title, description, path, body, og = "/og/home.png", he
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4059575347806121" crossorigin="anonymous"></script>
 <title>${esc(fullTitle)}</title>
 <meta name="description" content="${esc(description)}"/>
 <link rel="canonical" href="${canonical}"/>

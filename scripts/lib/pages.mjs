@@ -354,7 +354,9 @@ export function privacy(ctx) {
 <h2>Multiplayer</h2>
 <p>When you play Glowline Arena online, your player name, chosen skin and in-game movements are sent to our game server on Cloudflare so other players can see you. Matches are not recorded; nothing is kept after you leave.</p>
 <h2>Hosting and analytics</h2>
-<p>The site is hosted on Cloudflare, which processes standard request data to serve pages and may provide privacy-friendly, cookie-free visit counts. If ads are ever enabled, the ad provider may use cookies to show and measure ads, and where required you will be asked for consent first.</p>
+<p>The site is hosted on Cloudflare, which processes standard request data to serve pages and may provide privacy-friendly, cookie-free visit counts.</p>
+<h2>Advertising</h2>
+<p>We use Google AdSense to show ads. Google and its partners may use cookies to show ads based on your visits to this and other sites, and to measure them; where required you will be asked for consent first. See <a href="https://policies.google.com/technologies/ads">how Google uses information in ads</a>; you can turn off personalised ads in <a href="https://adssettings.google.com/">Google's Ad Settings</a>.</p>
 <h2>Requests</h2>
 <p>To remove a name or score, or for any privacy question, contact <a href="mailto:${SITE.email}">${SITE.email}</a>. We don't sell personal data.</p>`);
 }

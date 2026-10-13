@@ -47,6 +47,9 @@ const data = {
 fs.mkdirSync(path.join(OUT, "games/play"), { recursive: true });
 fs.writeFileSync(path.join(OUT, "games/play/pa-data.js"), "/* generated from src/catalog.mjs — do not edit */\nwindow.PA_DATA=" + JSON.stringify(data) + ";\n");
 
+/* Google AdSense loader: in every page head (layout pages get it from html.mjs). */
+const ADSENSE_TAG = '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4059575347806121" crossorigin="anonymous"></script>';
+
 /* ---------- play files: copy, cache-bust kit scripts, drop stale injected beacons ---------- */
 copyDir(path.join(SRC, "play"), path.join(OUT, "games/play"));
 const ver = {};
@@ -61,6 +64,7 @@ for (const f of fs.readdirSync(path.join(OUT, "games/play"))) {
   let h = read(p);
   h = h.replace(/<script[^>]*static\.cloudflareinsights\.com[^>]*><\/script>/g, "");
   h = h.replace(/(src|href)="(\/games\/play\/pa-(?:score|gate|kit|data)\.js)(?:\?v=[^"]*)?"/g, (m, a, u) => `${a}="${u}?v=${v(u.slice(1))}"`);
+  if (!h.includes(ADSENSE_TAG)) h = h.replace(/<\/head>/i, ADSENSE_TAG + "\n</head>");
   fs.writeFileSync(p, h);
 }
 
@@ -130,6 +134,7 @@ write("_headers", `/*
 const urls = ["/", "/games/", "/daily/", "/hall-of-fame/", "/lab/", "/new/", "/about/", "/privacy/", "/terms/", "/contact/", ...GAMES.map((g) => `/games/${g.slug}/`), ...GAMES.map((g) => `/games/${g.slug}/source/`)];
 const today = ctx.now.toISOString().slice(0, 10);
 write("sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${SITE.url}${u}</loc><lastmod>${today}</lastmod></url>`).join("\n")}\n</urlset>\n`);
+write("ads.txt", "google.com, pub-4059575347806121, DIRECT, f08c47fec0942fa0\n");
 write("robots.txt", `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /me/\n\nSitemap: ${SITE.url}/sitemap.xml\n`);
 write("manifest.webmanifest", JSON.stringify({
   name: SITE.name, short_name: "PromptArcade", description: SITE.description, start_url: "/", scope: "/", display: "standalone", background_color: "#05051a", theme_color: "#05051a",
