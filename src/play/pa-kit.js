@@ -235,7 +235,7 @@
   /* ---------------- procedural lo-fi music ----------------
    * Every game gets its own endless lo-fi loop, synthesised live with WebAudio (no samples, no files,
    * nothing licensed). A theme sets the mood: tempo, swing, scale, chords, instruments, reverb, tape
-   * filter and vinyl crackle. The game's slug seeds the key, chord order and melody, so two games on
+   * filter. The game's slug seeds the key, chord order and melody, so two games on
    * the same theme still play their own tune. The melody mutates every 8 bars so it never loops stiffly.
    * paConfig.music picks the theme; PA.music.set(name) switches mid-game (e.g. a boss fight). */
   function mulberry(a) {
@@ -255,43 +255,43 @@
       progs: [[[0, 4, 7, 11, 14], [9, 12, 16, 19, 23], [2, 5, 9, 12, 16], [7, 11, 14, 17, 21]],
               [[5, 9, 12, 16, 19], [4, 7, 11, 14, 17], [2, 5, 9, 12, 16], [0, 4, 7, 11, 14]],
               [[2, 5, 9, 12, 16], [7, 11, 14, 17, 21], [0, 4, 7, 11, 14], [9, 12, 16, 19, 23]]],
-      keys: "stab", lead: "rhodes", pad: "warm", drums: "lofi", reverb: .3, delay: .14, cutoff: 2400, crackle: 1, density: .42 },
+      keys: "stab", lead: "rhodes", pad: "warm", drums: "lofi", reverb: .3, delay: .14, cutoff: 2400, density: .42 },
     // Eerie: harmonic minor, diminished turns, music box over a low drone, distant bells, sparse kick.
     spooky: { label: "Haunted lo-fi", bpm: 66, swing: .08, root: 45, scale: [0, 2, 3, 5, 7, 8, 11],
       progs: [[[0, 3, 7, 14], [8, 12, 15, 19], [5, 8, 12, 15], [7, 11, 14, 17]],
               [[0, 3, 7, 10], [1, 5, 8, 12], [0, 3, 6, 9], [7, 11, 14, 20]]],
-      keys: "none", lead: "musicbox", pad: "dark", drums: "sparse", reverb: .65, delay: .32, cutoff: 2600, crackle: 1.4, density: .3, drone: true, bell: .35 },
+      keys: "none", lead: "musicbox", pad: "dark", drums: "sparse", reverb: .65, delay: .32, cutoff: 2600, density: .3, drone: true, bell: .35 },
     // Ember Swarm boss fights: same haunted palette, heavier and faster.
     "spooky-boss": { label: "Haunted lo-fi (boss)", bpm: 82, swing: .04, root: 45, scale: [0, 1, 3, 5, 7, 8, 11],
       progs: [[[0, 3, 7, 12], [1, 5, 8, 13], [0, 3, 6, 9], [7, 11, 14, 19]]],
-      keys: "none", lead: "musicbox", pad: "dark", drums: "boom", reverb: .5, delay: .28, cutoff: 2800, crackle: 1.2, density: .5, drone: true, bell: .2 },
+      keys: "none", lead: "musicbox", pad: "dark", drums: "boom", reverb: .5, delay: .28, cutoff: 2800, density: .5, drone: true, bell: .2 },
     // Drifting space: lydian chords, glassy arpeggios, long reverb and echoes, barely-there drums.
     space: { label: "Space lo-fi", bpm: 74, swing: 0, root: 48, scale: [0, 2, 4, 6, 7, 9, 11],
       progs: [[[0, 7, 14, 16, 23], [5, 12, 16, 21], [9, 16, 19, 24], [7, 14, 18, 23]],
               [[0, 4, 7, 14], [2, 6, 9, 16], [4, 7, 11, 18], [2, 6, 9, 14]]],
-      keys: "arp", lead: "glass", pad: "airy", drums: "soft", reverb: .7, delay: .38, cutoff: 3000, crackle: .45, density: .28 },
+      keys: "arp", lead: "glass", pad: "airy", drums: "soft", reverb: .7, delay: .38, cutoff: 3000, density: .28 },
     // Caves and torchlight: dorian minor, plucked lead, dripping bells.
     cavern: { label: "Dungeon lo-fi", bpm: 72, swing: .12, root: 45, scale: [0, 2, 3, 5, 7, 9, 10],
       progs: [[[0, 3, 7, 10, 14], [5, 9, 12, 15], [3, 7, 10, 14], [10, 14, 17, 21]],
               [[0, 3, 7, 10], [8, 12, 15, 19], [10, 14, 17, 21], [7, 10, 14, 17]]],
-      keys: "stab", lead: "pluck", pad: "dark", drums: "lofi", reverb: .55, delay: .26, cutoff: 1900, crackle: .9, density: .34, bell: .25 },
+      keys: "stab", lead: "pluck", pad: "dark", drums: "lofi", reverb: .55, delay: .26, cutoff: 1900, density: .34, bell: .25 },
     // Neon night drive: minor synthwave chords, saw pads, arpeggios, lazy beat.
     synthwave: { label: "Synthwave lo-fi", bpm: 86, swing: .06, root: 45, scale: [0, 2, 3, 5, 7, 8, 10],
       progs: [[[0, 3, 7, 12], [8, 12, 15, 19], [3, 7, 10, 15], [10, 14, 17, 22]],
               [[0, 3, 7, 10], [5, 8, 12, 15], [8, 12, 15, 19], [7, 10, 14, 19]]],
-      keys: "arp", lead: "saw", pad: "saw", drums: "lofi", reverb: .38, delay: .26, cutoff: 2300, crackle: .6, density: .36 },
+      keys: "arp", lead: "saw", pad: "saw", drums: "lofi", reverb: .38, delay: .26, cutoff: 2300, density: .36 },
     // Bouncy and bright for the platformer.
     bounce: { label: "Bouncy lo-fi", bpm: 94, swing: .15, root: 52, scale: [0, 2, 4, 5, 7, 9],
       progs: [[[0, 4, 7, 11], [5, 9, 12, 16], [2, 5, 9, 12], [7, 11, 14, 17]],
               [[0, 4, 7, 14], [9, 12, 16, 19], [5, 9, 12, 16], [7, 11, 14, 17]]],
-      keys: "stab", lead: "pluck", pad: "warm", drums: "lofi", reverb: .22, delay: .16, cutoff: 3200, crackle: .6, density: .55 }
+      keys: "stab", lead: "pluck", pad: "warm", drums: "lofi", reverb: .22, delay: .16, cutoff: 3200, density: .55 }
   };
   // Older theme names still used in game configs.
   var ALIAS = { chill: "lofi", puzzle: "lofi", tense: "cavern", drive: "synthwave", synth: "synthwave", arcade: "synthwave", retro: "synthwave", platform: "bounce" };
   function themeName(n) { return THEMES[n] ? n : ALIAS[n] || "lofi"; }
 
   var music = { name: "", th: null, timer: 0, step: 0, next: 0, playing: false, intensity: 0, built: false };
-  var mfx = {};   // effect nodes: tape (lowpass), rev (reverb send), dly (echo send), crackle source
+  var mfx = {};   // effect nodes: tape (lowpass), rev (reverb send), dly (echo send)
 
   function chooseTheme(n) {
     var name = themeName(n), th = THEMES[name];
@@ -334,14 +334,6 @@
     }
     return buf;
   }
-  function crackleBuf(a) {
-    var len = a.sampleRate * 4, buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
-    for (var i = 0; i < len; i++) {
-      d[i] = (Math.random() * 2 - 1) * .035;                                   // tape hiss
-      if (Math.random() < 0.00045) { var amp = (Math.random() * .8 + .2) * (Math.random() < .5 ? -1 : 1); for (var k = 0; k < 40 && i + k < len; k++) d[i + k] += amp * Math.exp(-k / 6); }
-    }
-    return buf;
-  }
   function buildFx() {
     var a = AC;
     mfx.tape = a.createBiquadFilter(); mfx.tape.type = "lowpass"; mfx.tape.Q.value = .4;
@@ -352,8 +344,6 @@
     mfx.dlyTone = a.createBiquadFilter(); mfx.dlyTone.type = "lowpass"; mfx.dlyTone.frequency.value = 1800;
     mfx.dlyOut = a.createGain();
     mfx.dly.connect(mfx.dlyTone); mfx.dlyTone.connect(mfx.dlyFb); mfx.dlyFb.connect(mfx.dly); mfx.dlyTone.connect(mfx.dlyOut); mfx.dlyOut.connect(mfx.tape);
-    mfx.crackleGain = a.createGain(); mfx.crackleGain.connect(musicBus);
-    mfx.crackleBuf = crackleBuf(a);
     music.built = true;
     setFx();
   }
@@ -362,7 +352,6 @@
     mfx.revOut.gain.setTargetAtTime(th.reverb * 1.3, t, .3);
     mfx.dlyOut.gain.setTargetAtTime(th.delay, t, .3);
     mfx.dly.delayTime.setTargetAtTime(60 / th.bpm * .75, t, .05);
-    mfx.crackleGain.gain.setTargetAtTime(th.crackle * .55, t, .3);
     tapeCutoff();
   }
   function tapeCutoff() {
@@ -449,8 +438,8 @@
     var dp = DRUMS[th.drums];
     if (dp && !(th.drums === "sparse" && bar % 2 === 1 && s === 12)) {
       if (dp.k[s] === "x") kick(tt, (s === 0 ? .42 : .3) * hum());
-      if (dp.s[s] === "x") { hit(tt, { type: "bandpass", freq: 1700, q: .6, vol: .16 * hum(), dur: .18, rev: .25 }); hit(tt, { type: "highpass", freq: 5000, vol: .05, dur: .09 }); }
-      if (dp.h[s] === "x" || (I > .55 && s % 2 === 1 && th.drums !== "sparse")) hit(tt, { type: "highpass", freq: 7500, vol: (s % 4 === 0 ? .045 : .028) * hum() * (.7 + I * .5), dur: .035 });
+      if (dp.s[s] === "x") hit(tt, { type: "bandpass", freq: 1500, q: .9, vol: .12 * hum(), dur: .14, rev: .08 });
+      if (dp.h[s] === "x" || (I > .55 && s % 2 === 1 && th.drums !== "sparse")) hit(tt, { type: "bandpass", freq: 9000, q: 1.2, vol: (s % 4 === 0 ? .022 : .014) * hum() * (.7 + I * .5), dur: .03 });
     }
 
     // bass: root on the one, fifth or root later in the bar
@@ -502,9 +491,6 @@
     music.next = a.currentTime + .1;
     musicBus.gain.cancelScheduledValues(a.currentTime);
     musicBus.gain.setTargetAtTime(PA.musicVol * .9, a.currentTime, .6);
-    mfx.crackle = a.createBufferSource(); mfx.crackle.buffer = mfx.crackleBuf; mfx.crackle.loop = true;
-    var bp = a.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 2600; bp.Q.value = .5;
-    mfx.crackle.connect(bp); bp.connect(mfx.crackleGain); mfx.crackle.start();
     music.timer = setInterval(musicTick, 50);
     musicTick();
   }
@@ -514,7 +500,6 @@
     clearInterval(music.timer);
     if (AC) {
       musicBus.gain.cancelScheduledValues(AC.currentTime); musicBus.gain.setTargetAtTime(.0001, AC.currentTime, .12);
-      try { mfx.crackle.stop(AC.currentTime + .6); } catch (e) {}
     }
   }
   function syncMusic() {
