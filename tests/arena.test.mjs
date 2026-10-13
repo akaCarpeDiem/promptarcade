@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Sim, lengthFor, radiusFor } from "../src/play/arena/sim.js";
 import { encodeFrame, decodeFrame } from "../src/play/arena/proto.js";
 import { Room, cleanName } from "../src/play/arena/room.js";
+import { regexCheck } from "../functions/_shared/namemod.js";
 
 test("bots play a long match without errors and keep the arena populated", () => {
   const s = new Sim({ bots: 16, seed: 7 });
@@ -79,6 +80,13 @@ test("names are cleaned and slurs blocked", () => {
   assert.equal(cleanName("a".repeat(40)).length, 16);
   assert.equal(cleanName(""), "Player");
   assert.equal(cleanName("n1gger"), "Player");
+  // With the server filter passed in (as the Worker does), the full name list applies too.
+  const blocked = (n) => regexCheck(n).block;
+  assert.equal(cleanName("Fuck3r", blocked), "Player");
+  assert.equal(cleanName("xXpornXx", blocked), "Player");
+  assert.equal(cleanName("Admin", blocked), "Player");
+  assert.equal(cleanName("Hancock", blocked), "Hancock");
+  assert.equal(cleanName("Neo", blocked), "Neo");
 });
 
 /* ---------------- 2026-10 upgrade (features on, v2 frames) ---------------- */

@@ -57,13 +57,31 @@ button{font:inherit;color:inherit}
 .search-btn{display:flex;align-items:center;gap:8px;height:38px;padding:0 10px 0 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);cursor:pointer;font-size:13.5px;transition:border-color .2s,background .2s}
 .search-btn:hover{border-color:var(--line2);background:rgba(255,255,255,.06)}
 .search-btn svg{width:16px;height:16px}
-.search-btn kbd{font:600 11px var(--mono);padding:2px 6px;border-radius:6px;border:1px solid var(--line2);color:var(--muted)}
+.search-btn kbd{font:600 11px var(--mono);padding:2px 6px;border-radius:6px;border:1px solid var(--line2);color:var(--muted);margin-left:auto}
+.search-btn{width:220px}
+@media (max-width:1180px){.search-btn{width:170px}}
 .pass-chip{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px 0 6px;border-radius:999px;text-decoration:none;border:1px solid rgba(255,211,107,.3);background:linear-gradient(90deg,rgba(255,211,107,.12),rgba(255,92,168,.08));font:700 13px var(--body);transition:transform .2s,border-color .2s}
 .pass-chip:hover{transform:translateY(-1px);border-color:rgba(255,211,107,.6)}
 .pass-chip .lv{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:conic-gradient(var(--gold) var(--p,0%),rgba(255,255,255,.12) 0);font:800 11px var(--mono);position:relative}
 .pass-chip .lv::before{content:"";position:absolute;inset:3px;border-radius:50%;background:#16123a}
 .pass-chip .lv span{position:relative}
 .pass-chip .fl{font-size:14px}
+/* Arcade Pass hover card under the My Arcade chip */
+.pass-wrap{position:relative}
+.pass-pop{position:absolute;right:0;top:calc(100% + 10px);width:270px;padding:14px 16px;border-radius:16px;background:rgba(12,10,40,.97);border:1px solid rgba(255,211,107,.28);box-shadow:0 24px 60px rgba(0,0,0,.55);font-size:13px;line-height:1.45;color:var(--muted);opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .15s,transform .15s,visibility 0s .15s;z-index:60}
+.pass-pop::before{content:"";position:absolute;left:0;right:0;top:-12px;height:12px}
+.pass-wrap:focus-within .pass-pop{opacity:1;visibility:visible;transform:none;transition:opacity .15s,transform .15s}
+@media (hover:hover){.pass-wrap:hover .pass-pop{opacity:1;visibility:visible;transform:none;transition:opacity .15s,transform .15s}}
+.pp-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
+.pp-k{font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+.pp-lv{font:700 15px var(--body);color:var(--ink)}
+.pp-lv b{font:800 18px var(--display)}
+.pp-bar{height:6px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+.pp-bar i{display:block;height:100%;width:var(--p,0%);background:linear-gradient(90deg,var(--gold),var(--pink));border-radius:inherit}
+.pp-xp{margin-top:6px;font:600 12px var(--mono);white-space:pre-line}
+.pp-sync{margin:10px 0 0;padding-top:10px;border-top:1px solid var(--line)}
+.pp-sync a{display:inline-block;margin-top:4px;color:var(--cyan);font-weight:700;text-decoration:none}
+.pp-sync a:hover{text-decoration:underline}
 .menu-btn{display:none;width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03);cursor:pointer}
 .menu-btn svg{width:20px;height:20px}
 @media (max-width:900px){

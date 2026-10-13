@@ -6,6 +6,9 @@
  * nearby-only frames; everyone else stays in the original "lobby", unchanged.
  */
 import { Room } from "../../../src/play/arena/room.js";
+import { regexCheck } from "../../../functions/_shared/namemod.js";
+
+const nameBlocked = (n) => regexCheck(n).block;
 
 const ALLOWED = [/^https:\/\/(www\.)?promptarcade\.games$/, /^https:\/\/[a-z0-9-]+\.promptarcade\.pages\.dev$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
 
@@ -19,7 +22,7 @@ export class ArenaRoom {
     if (request.headers.get("Upgrade") !== "websocket") return new Response("Expected WebSocket", { status: 426 });
     if (!this.room) {
       const v2 = new URL(request.url).searchParams.get("v") === "2";
-      this.room = new Room({ bots: Number(this.env.ARENA_BOTS || 14), proto: v2 ? 2 : 1 });
+      this.room = new Room({ bots: Number(this.env.ARENA_BOTS || 14), proto: v2 ? 2 : 1, nameBlocked });
     }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);

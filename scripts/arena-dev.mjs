@@ -4,10 +4,13 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { Room } from "../src/play/arena/room.js";
+import { regexCheck } from "../functions/_shared/namemod.js";
+
+const nameBlocked = (n) => regexCheck(n).block;
 
 const port = +(process.argv[2] || 5191);
-const room = new Room({ bots: +(process.env.BOTS || 14) });
-const room2 = new Room({ bots: +(process.env.BOTS || 14), proto: 2, modifier: process.env.MOD === undefined ? undefined : process.env.MOD || null });
+const room = new Room({ bots: +(process.env.BOTS || 14), nameBlocked });
+const room2 = new Room({ bots: +(process.env.BOTS || 14), proto: 2, nameBlocked, modifier: process.env.MOD === undefined ? undefined : process.env.MOD || null });
 
 function frame(data) {
   const bin = typeof data !== "string";
