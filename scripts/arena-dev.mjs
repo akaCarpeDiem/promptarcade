@@ -7,6 +7,7 @@ import { Room } from "../src/play/arena/room.js";
 
 const port = +(process.argv[2] || 5191);
 const room = new Room({ bots: +(process.env.BOTS || 14) });
+const room2 = new Room({ bots: +(process.env.BOTS || 14), proto: 2, modifier: process.env.MOD === undefined ? undefined : process.env.MOD || null });
 
 function frame(data) {
   const bin = typeof data !== "string";
@@ -26,7 +27,7 @@ server.on("upgrade", (req, socket) => {
     send(d) { if (!closed) socket.write(frame(d)); },
     close() { if (!closed) { closed = true; try { socket.end(Buffer.from([0x88, 0])); } catch (e) {} } }
   };
-  const h = room.connect(sock);
+  const h = (/[?&]v=2\b/.test(req.url) ? room2 : room).connect(sock);
   let buf = Buffer.alloc(0);
   socket.on("data", (chunk) => {
     buf = Buffer.concat([buf, chunk]);

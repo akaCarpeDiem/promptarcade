@@ -8,6 +8,9 @@ A Cloudflare Worker with one Durable Object that runs the multiplayer snake matc
 - Deploy: `cd worker/arena && npx wrangler deploy` (creates the `arena.promptarcade.games` custom domain)
 - Cost: free-plan Durable Objects (SQLite class). The room stops its clock 5 seconds after the
   last viewer leaves, so it only bills while people are playing.
+- Two rooms: `/room` is the original game (for pages that haven't updated) and `/room?v=2` is the
+  upgraded game (power-ups, portals, evolutions, daily modifier, nearby-only frames). Deploying this
+  Worker never changes the original room's rules.
 - If this Worker isn't deployed, or is down or full, the game quietly switches to an offline match
   against bots. Nothing else on the site depends on it.
 - Local test: `node scripts/arena-dev.mjs 5191`, then open

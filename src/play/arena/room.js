@@ -3,7 +3,7 @@
  * { send(stringOrArrayBuffer), close(code, reason) } and forward messages to the returned handlers.
  */
 import { Sim, TICK_HZ } from "./sim.js";
-import { encodeFrame } from "./proto.js";
+import { encodeFrame, encodeFrame2, makeViewer, viewFor } from "./proto.js";
 
 const MAX_HUMANS = 40;
 const BLOCK = /(n[i1]gg|f[a@]gg?[o0]t|r[e3]t[a@]rd|k[i1]ke|sp[i1]c\b|ch[i1]nk|tr[a@]nn|wh[o0]re|c[u\*]nt|h[i1]tl[e3]r|n[a@]z[i1])/i;
@@ -17,7 +17,8 @@ export function cleanName(n) {
 export class Room {
   constructor(opts = {}) {
     this.opts = opts;
-    this.sim = new Sim({ bots: opts.bots == null ? 14 : opts.bots, seed: opts.seed });
+    this.v2 = opts.proto === 2;
+    this.sim = new Sim({ bots: opts.bots == null ? 14 : opts.bots, seed: opts.seed, features: this.v2, modifier: opts.modifier });
     this.conns = new Set();
     this.timer = null;
     this.idleTicks = 0;
@@ -29,9 +30,9 @@ export class Room {
       try { sock.send(JSON.stringify({ t: "full" })); sock.close(1013, "full"); } catch (e) {}
       return { message() {}, close() {} };
     }
-    const c = { sock, snake: 0, msgs: 0, window: Date.now(), name: "Player", skin: 0 };
+    const c = { sock, snake: 0, msgs: 0, window: Date.now(), name: "Player", skin: 0, vw: this.v2 ? makeViewer() : null };
     this.conns.add(c);
-    this.send(c, JSON.stringify({ t: "snap", snap: this.sim.snapshot(), online: this.conns.size, hz: TICK_HZ }));
+    this.send(c, JSON.stringify({ t: "snap", snap: this.sim.snapshot(this.v2), online: this.conns.size, hz: TICK_HZ, v: this.v2 ? 2 : 1 }));
     this.ensureTicking();
     return {
       message: (data) => this.onMessage(c, data),
@@ -53,10 +54,14 @@ export class Room {
       if (this.humans() >= MAX_HUMANS) { this.send(c, JSON.stringify({ t: "full" })); return; }
       c.name = cleanName(m.name);
       c.skin = (m.skin | 0) >>> 0;
-      c.snake = this.sim.addPlayer(c.name, c.skin);
+      c.snake = this.sim.addPlayer(c.name, c.skin, this.v2 ? m.cos : undefined);
       this.send(c, JSON.stringify({ t: "you", id: c.snake }));
     } else if (m.t === "in") {
       if (c.snake) this.sim.setInput(c.snake, +m.a, !!m.b);
+    } else if (m.t === "ab" && this.v2) {
+      if (c.snake) this.sim.useAbility(c.snake);
+    } else if (m.t === "cam" && this.v2) {
+      if (Number.isFinite(+m.x) && Number.isFinite(+m.y)) { c.vw.cx = Math.max(-4000, Math.min(4000, +m.x)); c.vw.cy = Math.max(-4000, Math.min(4000, +m.y)); }
     } else if (m.t === "ping") {
       this.send(c, JSON.stringify({ t: "pong", c: m.c }));
     } else if (m.t === "leave") {
@@ -84,8 +89,12 @@ export class Room {
     for (const d of ev.del) {
       for (const c of this.conns) if (c.snake === d[0]) c.snake = 0;
     }
-    const frame = encodeFrame(ev);
-    for (const c of this.conns) this.send(c, frame);
+    if (this.v2) {
+      for (const c of this.conns) this.send(c, encodeFrame2(viewFor(this.sim, ev, c.vw, c.snake)));
+    } else {
+      const frame = encodeFrame(ev);
+      for (const c of this.conns) this.send(c, frame);
+    }
     if (this.sim.tick % (TICK_HZ * 2) === 0) {
       const info = JSON.stringify({ t: "info", online: this.humans(), watching: this.conns.size });
       for (const c of this.conns) this.send(c, info);

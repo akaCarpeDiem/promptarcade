@@ -75,7 +75,7 @@ for (const f of fs.readdirSync(path.join(OUT, "games/play"))) {
 /* ---------- per-game code stats + sources for the source pages ---------- */
 const countLines = (t) => t.split("\n").filter((l) => l.trim()).length;
 const stats = {};
-const DEPS = { "glowline-arena": ["arena/sim.js", "arena/proto.js", "arena/room.js"], "wordglow": [] };
+const DEPS = { "glowline-arena": ["arena/sim.js", "arena/proto.js", "arena/room.js", "arena/art.js"], "wordglow": [] };
 const LIBS = { "skystack": 1, "hyperlane-3d": 1 };
 for (const g of GAMES) {
   const file = path.join(SRC, "play", g.slug + ".html");

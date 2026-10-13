@@ -13,75 +13,150 @@ canvas{display:block}
 #ga-lb li{display:flex;gap:.45rem;align-items:center;padding:1px 0;white-space:nowrap;overflow:hidden}
 #ga-lb li i{font-style:normal;width:16px;color:#8b93b8;font:600 11px 'JetBrains Mono',monospace}
 #ga-lb li span{flex:1;overflow:hidden;text-overflow:ellipsis}
+#ga-lb li em{font-style:normal;font-size:11px;margin-right:2px}
 #ga-lb li b{font:600 11px 'JetBrains Mono',monospace;color:#fff}
 #ga-lb li.me{color:#ffe08a}#ga-lb li.me b{color:#ffe08a}
 #ga-lb li u{width:8px;height:8px;border-radius:50%;flex:none;text-decoration:none}
 #ga-mode{top:10px;left:10px;padding:.42rem .7rem;display:flex;align-items:center;gap:.5rem}
 #ga-mode .dot{width:8px;height:8px;border-radius:50%;background:#ffb86b;box-shadow:0 0 10px #ffb86b}
 #ga-mode.online .dot{background:#5dffb0;box-shadow:0 0 10px #5dffb0;animation:gap 1.6s infinite}
+#ga-mode-mod{color:#ffe08a}
 @keyframes gap{50%{opacity:.4}}
 #ga-me{left:10px;bottom:12px;padding:.5rem .8rem;display:flex;gap:1rem;opacity:0;transition:opacity .4s}
 #ga-me.on{opacity:1}
 #ga-me div small{display:block;font:600 9px 'JetBrains Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:#8ee9ff}
 #ga-me div b{font:700 17px 'JetBrains Mono',monospace;color:#fff}
-#ga-feed{position:fixed;left:10px;top:52px;z-index:31;pointer-events:none;display:flex;flex-direction:column;gap:4px;max-width:60vw}
-#ga-feed div{font:600 12px Manrope,sans-serif;color:#c9d2f5;background:rgba(6,9,22,.5);padding:.25rem .6rem;border-radius:999px;width:max-content;max-width:100%;animation:gf 4.5s forwards}
+#ga-pow{position:fixed;left:10px;bottom:72px;z-index:31;display:flex;gap:6px;pointer-events:none}
+#ga-pow span{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font:800 15px Manrope,sans-serif;color:#fff;background:conic-gradient(var(--c) calc(var(--k)*1turn),rgba(255,255,255,.08) 0);position:relative}
+#ga-pow span::before{content:"";position:absolute;inset:3px;border-radius:50%;background:#0a0e22}
+#ga-pow span i{position:relative;font-style:normal;color:var(--c)}
+#ga-ab{position:fixed;z-index:42;left:10px;bottom:112px;width:58px;height:58px;border-radius:50%;border:0;padding:0;background:none;display:none;touch-action:none;cursor:pointer}
+#ga-ab.on{display:block}
+#ga-ab canvas{width:58px;height:58px}
+#ga-feed{position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:31;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:4px;max-width:min(60vw,520px)}
+#ga-feed div{font:600 12px Manrope,sans-serif;color:#c9d2f5;background:rgba(6,9,22,.55);padding:.25rem .7rem;border-radius:999px;width:max-content;max-width:100%;animation:gf 4.2s forwards;text-align:center}
 #ga-feed div.me{color:#ffe08a;border:1px solid rgba(255,224,138,.35)}
-@keyframes gf{0%{opacity:0;transform:translateX(-12px)}8%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
+#ga-feed div.evo{color:#fff;border:1px solid rgba(185,140,255,.5)}
+@keyframes gf{0%{opacity:0;transform:translateY(-8px)}8%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
+#ga-banner{position:fixed;left:50%;top:16%;transform:translate(-50%,0);z-index:32;pointer-events:none;text-align:center;opacity:0;transition:opacity .35s,transform .35s}
+#ga-banner.on{opacity:1;transform:translate(-50%,6px)}
+#ga-banner b{display:block;font:800 26px Manrope,sans-serif;letter-spacing:.02em;text-shadow:0 0 22px currentColor}
+#ga-banner small{display:block;font:600 13px Manrope,sans-serif;color:#dfe6ff;margin-top:.2rem}
 #ga-mini{position:fixed;right:12px;bottom:12px;z-index:31;width:130px;height:130px;pointer-events:none;border-radius:50%;background:rgba(6,9,22,.55);border:1px solid rgba(142,233,255,.18)}
-#ga-skin{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:.6rem;background:rgba(6,9,22,.78);border:1px solid rgba(142,233,255,.25);border-radius:999px;padding:.35rem .5rem;transition:opacity .3s}
-#ga-skin.off{opacity:0;pointer-events:none}
-#ga-skin button{width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;font-size:15px;cursor:pointer}
+#ga-skin{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:.5rem;background:rgba(6,9,22,.8);border:1px solid rgba(142,233,255,.25);border-radius:999px;padding:.35rem .5rem;transition:opacity .3s;max-width:calc(100vw - 20px);box-sizing:border-box}
+#ga-skin.off,#ga-start-extra.off{opacity:0;pointer-events:none}
+#ga-skin button{width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;font-size:15px;cursor:pointer;flex:none}
 #ga-skin canvas{position:static;width:120px;height:34px}
-#ga-skin small{font:600 10px 'JetBrains Mono',monospace;letter-spacing:.14em;color:#8ee9ff;text-transform:uppercase;padding-right:.4rem}
+#ga-skin small{font:600 10px 'JetBrains Mono',monospace;letter-spacing:.12em;color:#8ee9ff;text-transform:uppercase;padding-right:.2rem;min-width:84px}
+#ga-skin small em{display:block;font-style:normal;color:#ffb86b;letter-spacing:.04em;text-transform:none;font-size:10px}
+#ga-start-extra{position:fixed;left:10px;top:52px;z-index:62;display:flex;gap:.45rem;align-items:flex-start;transition:opacity .3s;flex-wrap:wrap;max-width:min(560px,calc(100vw - 20px))}
+.ga-chip{font:700 12px Manrope,sans-serif;color:#f4f1ff;background:rgba(6,9,22,.8);border:1px solid rgba(142,233,255,.28);border-radius:999px;padding:.45rem .8rem;cursor:pointer}
+.ga-chip.mod{cursor:default;border-color:rgba(255,224,138,.4);color:#ffe08a}
+.ga-sheet{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:rgba(4,6,16,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:default}
+.ga-sheet[hidden]{display:none}
+.ga-card{width:min(920px,calc(100vw - 24px));max-height:calc(100vh - 40px);overflow:auto;background:#0a0e22;border:1px solid rgba(142,233,255,.22);border-radius:18px;padding:1rem 1.1rem 1.2rem;box-sizing:border-box;-webkit-user-select:text;user-select:text;touch-action:pan-y}
+.ga-card h2{margin:0;font:800 20px Manrope,sans-serif}
+.ga-card header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.7rem}
+.ga-card header button{border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#fff;border-radius:999px;padding:.4rem .9rem;font:700 13px Manrope,sans-serif;cursor:pointer}
+.ga-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.7rem}
+.ga-tile{background:#070a1c;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden}
+.ga-tile canvas{width:100%;aspect-ratio:220/130;height:auto}
+.ga-tile p{margin:0;padding:.45rem .6rem .55rem;font:600 12px Manrope,sans-serif;color:#c9d2f5}
+.ga-tile p b{display:block;color:#fff;font-size:13px}
+.ga-opts{display:flex;gap:1rem;flex-wrap:wrap;margin:.2rem 0 .8rem;font:600 13px Manrope,sans-serif;color:#c9d2f5}
+.ga-opts label{display:flex;gap:.4rem;align-items:center;cursor:pointer}
+.ga-row{margin:.6rem 0 .2rem;font:700 11px 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#8ee9ff}
+.ga-pick{display:flex;gap:.4rem;flex-wrap:wrap}
+.ga-pick button{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:#fff;border-radius:10px;padding:.45rem .7rem;font:600 12px Manrope,sans-serif;cursor:pointer}
+.ga-pick button.on{border-color:#ffe08a;color:#ffe08a;background:rgba(255,224,138,.1)}
+.ga-pick button[disabled]{opacity:.45;cursor:not-allowed}
+.ga-xp{font:700 14px Manrope,sans-serif;color:#ffe08a}
+.ga-xpbar{height:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;margin:.35rem 0 .2rem}
+.ga-xpbar i{display:block;height:100%;background:linear-gradient(90deg,#5ef2ff,#ff5ca8)}
+#ga-tip{position:fixed;left:10px;top:52px;z-index:33;width:220px;background:#0a0e22;border:1px solid rgba(142,233,255,.3);border-radius:12px;overflow:hidden;pointer-events:none;transform:translateX(calc(-100% - 20px));transition:transform .35s ease}
+#ga-tip.on{transform:none}
+#ga-tip canvas{width:220px;height:130px}
+#ga-tip p{margin:0;padding:.4rem .6rem .5rem;font:600 12px Manrope,sans-serif;color:#c9d2f5}
+#ga-tip p b{display:block;color:#fff}
 #ga-boost{position:fixed;right:150px;bottom:24px;z-index:42;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,224,138,.55);background:rgba(255,224,138,.12);color:#ffe08a;font:800 12px Manrope,sans-serif;letter-spacing:.08em;display:none;touch-action:none}
 #ga-boost.on{background:rgba(255,224,138,.35)}
-@media (pointer:coarse){#ga-boost{display:block}#ga-lb{width:150px;font-size:11px}#ga-mini{width:100px;height:100px}#ga-boost{right:122px}}
-@media (max-width:560px){#ga-lb li:nth-child(n+6){display:none}}
+@media (pointer:coarse){#ga-boost{display:block}#ga-lb{width:150px;font-size:11px}#ga-mini{width:100px;height:100px}#ga-boost{right:122px}#ga-ab{left:auto;right:132px;bottom:112px}#ga-pow{bottom:74px}#ga-tip{top:52px;width:180px}#ga-tip canvas{width:180px;height:106px}}
+@media (max-width:560px){#ga-lb li:nth-child(n+6){display:none}#ga-count{display:none}#ga-feed{top:auto;bottom:178px;max-width:86vw}#ga-banner{top:25%;width:86vw}#ga-banner b{font-size:20px}.ga-grid{grid-template-columns:repeat(2,1fr);gap:.5rem}.ga-tile p{font-size:11px}#ga-skin canvas{width:84px}}
 </style></head><body>
 <canvas id="c" aria-label="Glowline Arena playfield"></canvas>
-<div class="ga-panel" id="ga-mode"><span class="dot"></span><span id="ga-mode-t">Connecting…</span></div>
+<div class="ga-panel" id="ga-mode"><span class="dot"></span><span id="ga-mode-t">Connecting…</span><span id="ga-mode-mod"></span></div>
 <div id="ga-feed" aria-live="polite"></div>
+<div id="ga-banner" aria-live="polite"><b id="ga-banner-t"></b><small id="ga-banner-s"></small></div>
 <div class="ga-panel" id="ga-lb"><h3><span>Leaderboard</span><span id="ga-count"></span></h3><ol id="ga-lb-list"></ol></div>
+<div id="ga-pow" aria-label="Active power-ups"></div>
+<button type="button" id="ga-ab" aria-label="Use evolution ability"><canvas id="ga-ab-c" width="116" height="116"></canvas></button>
 <div class="ga-panel" id="ga-me"><div><small>Length</small><b id="ga-len">0</b></div><div><small>Rank</small><b id="ga-rank">–</b></div><div><small>Kills</small><b id="ga-kills">0</b></div></div>
 <canvas id="ga-mini" width="260" height="260"></canvas>
+<div id="ga-tip" aria-live="polite"><canvas id="ga-tip-c" width="440" height="260"></canvas><p><b id="ga-tip-t"></b><span id="ga-tip-s"></span></p></div>
+<div id="ga-start-extra"><span class="ga-chip mod" id="ga-mod-chip" hidden></span><button type="button" class="ga-chip" id="ga-how-btn">? How to play</button><button type="button" class="ga-chip" id="ga-style-btn">✦ Style</button></div>
 <div id="ga-skin"><button type="button" id="ga-skin-prev" aria-label="Previous skin">◀</button><canvas id="ga-skin-c" width="240" height="68"></canvas><button type="button" id="ga-skin-next" aria-label="Next skin">▶</button><small id="ga-skin-n">Skin 1</small></div>
-<button type="button" id="ga-boost" aria-label="Boost">BOOST</button>
+<button type="button" id="ga-boost" aria-label="Boost (double-tap for your evolution ability)">BOOST</button>
+<div class="ga-sheet" id="ga-how" hidden><div class="ga-card" role="dialog" aria-label="How to play">
+  <header><h2>How to play</h2><button type="button" data-close>Close</button></header>
+  <div class="ga-opts">
+    <label><input type="checkbox" id="ga-opt-tips"/> Show tips during a match</label>
+    <label><input type="checkbox" id="ga-opt-rm"/> Reduced motion</label>
+  </div>
+  <div class="ga-grid" id="ga-how-grid"></div>
+</div></div>
+<div class="ga-sheet" id="ga-style" hidden><div class="ga-card" role="dialog" aria-label="Style">
+  <header><h2>Style</h2><button type="button" data-close>Close</button></header>
+  <div class="ga-xp" id="ga-xp-t"></div><div class="ga-xpbar"><i id="ga-xp-bar"></i></div>
+  <p style="margin:.2rem 0 .4rem;font:600 12px Manrope,sans-serif;color:#8b93b8">Glow XP comes from every run: 10 per minute alive, 1 per 10 peak length and 20 per kill, up to 500 a run. Everything here is looks only. It never changes how a snake plays.</p>
+  <div id="ga-style-rows"></div>
+</div></div>
 <script>
 window.paConfig = {
   slug: "glowline-arena", title: "Glowline Arena", native: true, music: "synthwave", unit: "length", pauseOnBlur: false,
-  arena: "wss://arena.promptarcade.games/room",
-  controls: [["Mouse", "Steer toward the cursor"], ["Hold click / Space", "Boost (costs length)"], ["← → / A D", "Steer with keys"], ["Touch", "Point to steer · BOOST button"]]
+  arena: "wss://arena.promptarcade.games/room?v=2",
+  controls: [["Mouse", "Steer toward the cursor"], ["Hold click / Space", "Boost (costs length)"], ["Double-tap boost / E", "Evolution ability"], ["← → / A D", "Steer with keys"], ["Touch", "Point to steer · BOOST button"]]
 };
 </script>
 <script src="/games/play/pa-score.js"></script>
 <script src="/games/play/pa-gate.js"></script>
 <script src="/games/play/pa-kit.js"></script>
 <script type="module">
-import { Sim, TICK_HZ, lengthFor, radiusFor, SKINS } from "/games/play/arena/sim.js";
-import { decodeFrame } from "/games/play/arena/proto.js";
+import { Sim, TICK_HZ, lengthFor, radiusFor, SKINS_V2, PK, T, MODIFIERS, EVO_ACTIVE } from "/games/play/arena/sim.js";
+import { decodeFrame2, viewFor, makeViewer } from "/games/play/arena/proto.js";
+import {
+  SKIN, SKIN_NAMES, SKIN_XP, TRAILS, BURSTS, FRAMES, BOOSTS, FRAME_COL, EVO_PAL, EVO_GLYPH, EVO_NAMES, EVO_TEXT,
+  PK_NAMES, PK_TEXT, PK_COL, strokeBody, drawHead, pelletSprites, drawPortal, GUIDES, GUIDE_ORDER, EVO_GUIDE, PK_GUIDE, playGuide
+} from "/games/play/arena/art.js";
 
 const TAU = Math.PI * 2;
 const FRAME_MS = 1000 / TICK_HZ;
 const cfg = window.paConfig;
 const qs = new URLSearchParams(location.search);
-
-/* ---------------- palettes ---------------- */
-const SKIN = [
-  ["#5ef2ff", "#1b6dff", "#bff9ff"], ["#ff5ca8", "#8a2be2", "#ffc2e0"], ["#ffd84d", "#ff7a1a", "#fff3b8"],
-  ["#5dff9e", "#00a37a", "#c9ffe0"], ["#c77dff", "#3b1dff", "#ead4ff"], ["#ff6b6b", "#7a1030", "#ffd0d0"],
-  ["#ffffff", "#5ef2ff", "#ffffff"], ["#ff9f43", "#2e1a47", "#ffd9b0"], ["#00ffd5", "#ff00a0", "#c9fff5"],
-  ["#a3ff3c", "#1f5f00", "#e6ffc9"], ["#6ea8ff", "#ffffff", "#d6e5ff"], ["#ff3df2", "#00e1ff", "#ffd0fb"]
-];
 const FOODC = ["#5ef2ff", "#ff5ca8", "#ffd84d", "#5dff9e", "#c77dff", "#ff8a5c", "#7aa8ff", "#ffffff"];
+
+/* ---------------- prefs (per viewer, never needed for fairness) ---------------- */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+const prefs = {
+  tips: store.get("ga_tips", true),
+  rm: store.get("ga_rm", matchMedia("(prefers-reduced-motion: reduce)").matches),
+  cos: store.get("ga_cos", [0, 0, 0, 0]), // trail, burst, frame, boost sound
+  seen: store.get("ga_seen", {})
+};
+let xp = store.get("ga_xp", 0) | 0;
 
 /* ---------------- DOM ---------------- */
 const $ = (id) => document.getElementById(id);
 const view = PA.canvas($("c"));
 const ctx = view.ctx;
 const mini = $("ga-mini").getContext("2d");
-const fx = new PA.Particles(1400);
+const fx = new PA.Particles(600);
 const texts = new PA.Texts();
+const psprites = pelletSprites();
+const shake = (m, d) => { if (!prefs.rm) PA.shake(m, d); };
+const flash = (c, ms) => { if (!prefs.rm) PA.flash(c, ms); };
 
 /* glow sprites for food, one per colour */
 const sprites = FOODC.map((c) => {
@@ -104,37 +179,64 @@ const hexTile = (() => {
 })();
 let hexPattern = null;
 
-/* ---------------- world state (fed by frames) ---------------- */
-const W = { snakes: new Map(), food: new Map(), worldR: 2600, me: 0, lb: [], tick: 0 };
+/* ---------------- world state (fed by frames) ----------------
+ * meta: every snake in the room (names, skins, evolutions) · snakes: only the bodies near you
+ * map: every snake's rough position for the minimap · st: your own power-up timers (ticks)
+ */
+const W = {
+  snakes: new Map(), meta: new Map(), food: new Map(), portals: new Map(), decoys: new Map(), flares: [],
+  map: [], worldR: 2600, me: 0, lb: [], tick: 0, mod: null, st: null
+};
 let mode = "connecting", online = 0, net = null;
 let lastApply = 0, queue = [];
 let myStats = null; // {peak, kills, born, bestRank}
 let skin = 0;
-try { skin = (parseInt(localStorage.getItem("ga_skin") || "", 10) || ((Math.random() * SKINS) | 0)) % SKINS; } catch (e) {}
+skin = (store.get("ga_skin", (Math.random() * 12) | 0) | 0) % SKINS_V2;
+if (SKIN_XP[skin] > xp) skin = 0;
+
+const tnow = () => W.tick + alpha; // fractional server tick for smooth timers
 
 function applySnapshot(snap) {
-  W.snakes.clear(); W.food.clear(); W.worldR = snap.worldR; W.tick = snap.tick;
-  for (const s of snap.snakes) addSnake(s);
-  for (const f of snap.food) W.food.set(f[0], { x: f[1], y: f[2], v: f[3], c: f[4], born: 0, eat: 0 });
+  W.snakes.clear(); W.meta.clear(); W.food.clear(); W.portals.clear(); W.decoys.clear(); W.flares = [];
+  W.worldR = snap.worldR; W.tick = snap.tick; W.mod = snap.mod || null; W.map = [];
+  for (const s of snap.snakes) { W.meta.set(s.id, metaOf(s)); if (s.pts) addSnake(s); }
+  for (const f of snap.food) addFood(f, 0);
+  for (const p of snap.portals || []) W.portals.set(p[0], { x: p[1], y: p[2], uses: p[3], exp: p[4], born: 0 });
+  for (const d of snap.decoys || []) W.decoys.set(d[0], { owner: d[1], skin: d[2], r: d[3], pts: d[4], until: performance.now() + Math.max(0, d[5] - snap.tick) * FRAME_MS });
   queue = [];
+  showMod();
 }
+const metaOf = (d) => ({ id: d.id, name: d.name, skin: d.skin, bot: d.bot, evo: d.evo || 0, cos: d.cos || [0, 0, 0] });
 function addSnake(d) {
   const n = d.pts.length;
+  W.meta.set(d.id, metaOf(d));
   W.snakes.set(d.id, {
-    id: d.id, name: d.name, skin: d.skin, bot: d.bot, m: d.m, pm: d.m, a: d.a, pa: d.a,
-    pts: d.pts.slice(), x: d.pts[n - 2], y: d.pts[n - 1], px: d.pts[n - 2], py: d.pts[n - 1], boost: 0, born: performance.now()
+    id: d.id, name: d.name, skin: d.skin, bot: d.bot, evo: d.evo || 0, cos: d.cos || [0, 0, 0], m: d.m, pm: d.m, a: d.a, pa: d.a,
+    pts: d.pts.slice(), x: d.pts[n - 2], y: d.pts[n - 1], px: d.pts[n - 2], py: d.pts[n - 1], boost: 0, flags: 0,
+    born: performance.now(), venom: [], tell: 0, glowT: 0, glowC: "#fff", trailT: 0
   });
 }
+function addFood(f, born) {
+  W.food.set(f[0], { x: f[1], y: f[2], v: f[3], c: f[4] & 7, k: f[4] >> 4, born, eat: 0 });
+}
+const nameOf = (id) => { const m = W.meta.get(id); return m ? m.name : "someone"; };
+
 function applyFrame(ev) {
   W.tick = ev.tick;
-  for (const d of ev.add) if (!W.snakes.has(d.id)) addSnake(d);
-  const seen = new Set();
+  const now = performance.now();
+  for (const d of ev.add) if (!W.meta.has(d.id)) W.meta.set(d.id, metaOf(d));
+  for (const d of ev.enter) addSnake(d);
+  for (const id of ev.leave) W.snakes.delete(id);
   for (const h of ev.heads) {
     const s = W.snakes.get(h[0]);
     if (!s) continue;
-    seen.add(h[0]);
     s.px = s.x; s.py = s.y; s.pa = s.a; s.pm = s.m;
-    s.x = h[1]; s.y = h[2]; s.a = h[3]; s.m = h[4]; s.boost = h[5] & 1;
+    s.x = h[1]; s.y = h[2]; s.a = h[3]; s.m = h[4]; s.flags = h[5]; s.boost = h[5] & 1;
+    const evo = (h[5] >> 4) & 7;
+    if (evo !== s.evo) { s.evo = evo; const m = W.meta.get(s.id); if (m) m.evo = evo; }
+    // Viper venom is drawn from the boost flag and the head path, so it costs no bandwidth
+    if (s.evo === 1 && s.boost && W.tick % T.VENOM_EVERY === 0) s.venom.push(s.px, s.py, now);
+    while (s.venom.length && now - s.venom[2] > T.VENOM_LIFE * FRAME_MS) s.venom.splice(0, 3);
     s.pts.push(s.x, s.y);
     // trim generously; exact length is applied while drawing
     const L = lengthFor(s.m) + 60;
@@ -145,87 +247,195 @@ function applyFrame(ev) {
     }
     if (s.id === W.me && myStats) {
       if (s.m > myStats.peak) myStats.peak = s.m;
-      if (s.boost && Math.random() < 0.5) fx.burst(s.pts[0] + (Math.random() - .5) * 10, s.pts[1] + (Math.random() - .5) * 10, { n: 1, color: SKIN[s.skin][0], speed: 30, life: .5, size: 3 });
+      if (s.boost && Math.random() < 0.5 && q.fx) fx.burst(s.pts[0] + (Math.random() - .5) * 10, s.pts[1] + (Math.random() - .5) * 10, { n: 1, color: palOf(s)[0], speed: 30, life: .5, size: 3 });
+      if (s.boost && !s.wasBoost) boostSound();
     }
+    s.wasBoost = s.boost;
   }
-  const now = performance.now();
   for (const e of ev.eat) {
     const f = W.food.get(e[0]);
     if (!f) continue;
-    if (e[1]) { f.eat = now; f.by = e[1]; if (e[1] === W.me) { PA.sfx("pop", { pitch: 0.9 + Math.min(1, f.v / 10) + Math.random() * 0.15, vol: 0.5 }); } }
+    if (e[1] && W.snakes.has(e[1])) { f.eat = now; f.by = e[1]; if (e[1] === W.me && !f.k) PA.sfx("pop", { pitch: 0.9 + Math.min(1, f.v / 10) + Math.random() * 0.15, vol: 0.5 }); }
     else W.food.delete(e[0]);
   }
-  for (const f of ev.food) W.food.set(f[0], { x: f[1], y: f[2], v: f[3], c: f[4], born: now, eat: 0 });
+  for (const f of ev.food) addFood(f, now);
+  for (const x of ev.x) onEvent(x, now);
   for (const d of ev.del) onDeath(d);
+  if (ev.map) W.map = ev.map;
+  if (ev.me) W.st = ev.me;
   if (ev.lb) { W.lb = ev.lb; paintBoard(); }
 }
 
-function onDeath(d) {
-  const [id, killer, cause, peak, kills, ticks] = d;
-  const s = W.snakes.get(id);
-  W.snakes.delete(id);
-  if (!s) return;
-  if (cause !== "retired" && cause !== "left") {
-    const c = SKIN[s.skin];
-    const p = s.pts, step = Math.max(2, Math.floor(p.length / 2 / 40)) * 2;
-    if (onScreen(s.x, s.y, 600)) for (let i = 0; i < p.length; i += step) fx.burst(p[i], p[i + 1], { n: 3, colors: [c[0], c[2]], speed: 160, life: .7, size: 4 });
+/* ---------------- rare events ---------------- */
+function onEvent(x, now) {
+  const [kind] = x;
+  const s = W.snakes.get(x[1]);
+  const mine = x[1] === W.me;
+  switch (kind) {
+    case "evo": {
+      const m = W.meta.get(x[1]); if (m) m.evo = x[2];
+      if (s) { s.evo = x[2]; if (q.fx) fx.burst(s.x, s.y, { n: 40, colors: ["#ffffff", EVO_PAL[x[2]][0], EVO_PAL[x[2]][2]], speed: 260, life: .9, size: 4 }); }
+      if (mine) {
+        banner(EVO_GLYPH[x[2]] + " You evolved into " + an(EVO_NAMES[x[2]]) + "!", EVO_TEXT[x[2]], EVO_PAL[x[2]][0], 4200);
+        PA.sfx("levelup"); PA.sfx("power"); flash(EVO_PAL[x[2]][0], 400); shake(6, .3);
+        tip(EVO_GUIDE[x[2]], true);
+      } else feed(nameOf(x[1]) + " evolved into " + an(EVO_NAMES[x[2]]), "evo");
+      break;
+    }
+    case "ab":
+      if (s) {
+        if (x[2] === 3) s.tell = now + T.EEL_TELL * FRAME_MS;
+        if (x[2] === 6 && q.fx) fx.burst(s.x, s.y, { n: 14, colors: ["#ffb347", "#ff3d00"], speed: 160, life: .4, size: 4 });
+        if (onScreen(s.x, s.y, 200) && !mine) PA.sfx("whoosh", { vol: 0.3 });
+      }
+      if (mine) PA.sfx(x[2] === 6 ? "whoosh" : "power", { vol: 0.6 });
+      break;
+    case "dec": W.decoys.set(x[1], { owner: x[2], skin: x[3], r: x[4], pts: x[5], until: now + T.SPLIT_LIFE * FRAME_MS }); break;
+    case "decx": {
+      const d = W.decoys.get(x[1]);
+      if (d) { W.decoys.delete(x[1]); if (q.fx && onScreen(d.pts[0], d.pts[1], 300)) for (let i = 0; i < d.pts.length; i += 8) fx.burst(d.pts[i], d.pts[i + 1], { n: 2, colors: EVO_PAL[4], speed: 120, life: .5, size: 3 }); }
+      break;
+    }
+    case "po": W.portals.set(x[1], { x: x[2], y: x[3], uses: x[4], exp: x[5], born: now }); break;
+    case "pox": { const p = W.portals.get(x[1]); if (p) { p.gone = now; setTimeout(() => W.portals.delete(x[1]), 400); } break; }
+    case "pf": {
+      const p = W.portals.get(x[4]); if (p) p.uses = x[5];
+      W.flares.push({ x: x[2], y: x[3], t0: now, until: now + (T.FLARE * FRAME_MS) + 500, id: x[1] });
+      if (mine) PA.sfx("power", { pitch: 1.4, vol: 0.6 });
+      break;
+    }
+    case "tp": {
+      const dx = x[2], dy = x[3];
+      if (s) {
+        if (q.fx && onScreen(s.x, s.y, 200)) fx.burst(s.x, s.y, { n: 24, colors: ["#9b7bff", "#5ef2ff"], speed: 200, life: .6, size: 3 });
+        const p = s.pts; for (let i = 0; i < p.length; i += 2) { p[i] += dx; p[i + 1] += dy; }
+        s.x += dx; s.y += dy; s.px += dx; s.py += dy;
+        if (q.fx) fx.burst(s.x, s.y, { n: 30, colors: ["#ffffff", "#5ef2ff"], speed: 240, life: .7, size: 3 });
+      }
+      if (mine) { cam.x += dx; cam.y += dy; PA.sfx("whoosh", { pitch: 1.6 }); PA.sfx("levelup", { pitch: 1.5, vol: 0.4 }); flash("#9b7bff", 260); dwellStart = 0; }
+      break;
+    }
+    case "pr": if (mine) { banner("Portal refused", "You're circled. No escape when trapped!", "#ff4d6d", 1800); PA.sfx("hit"); dwellStart = 0; } break;
+    case "pz": { const p = W.portals.get(x[1]); if (p && q.fx) fx.burst(p.x, p.y, { n: 16, color: "#8b93b8", speed: 90, life: .5, size: 3 }); if (x[2] === W.me) { banner("Portal fizzled", "Too crowded to land safely. Try again.", "#c9d2f5", 1600); PA.sfx("click", { pitch: 0.5 }); dwellStart = 0; } break; }
+    case "pu": {
+      if (s) { s.glowT = now + 150; s.glowC = PK_COL[x[2]]; }
+      if (mine) {
+        PA.sfx(x[2] === 5 ? "levelup" : "power", { pitch: 1 + x[2] * 0.06, vol: 0.6 });
+        if (x[2] !== 5) texts.add(s ? s.x : cam.x, (s ? s.y : cam.y) - 30, PK_NAMES[x[2]].toUpperCase() + "!", { color: PK_COL[x[2]], size: 18, life: 1 });
+        if (x[2] === 6) feed("You grabbed the Bounty!", "me");
+        if (x[2] !== 5) tip(PK_GUIDE[x[2]] === "basics" ? null : PK_GUIDE[x[2]]);
+      }
+      break;
+    }
+    case "ward":
+      if (s && q.fx) fx.burst(s.x, s.y, { n: 18, color: "#5ef2ff", speed: 200, life: .5, size: 3 });
+      if (mine) { PA.sfx("hit", { pitch: 1.6 }); texts.add(s ? s.x : cam.x, (s ? s.y : cam.y) - 30, "WARD SAVED YOU", { color: "#5ef2ff", size: 16, life: 1.1 }); }
+      break;
+    case "mod": W.mod = x[1]; showMod(); break;
   }
-  const k = killer ? W.snakes.get(killer) : null;
+}
+
+function onDeath(d) {
+  const [id, killer, cause, peak, kills, ticks, leader] = d;
+  const s = W.snakes.get(id);
+  const meta = W.meta.get(id);
+  W.snakes.delete(id); W.meta.delete(id);
+  const name = meta ? meta.name : "someone";
+  if (s && cause !== "retired" && cause !== "left") {
+    const c = palOf(s), style = (s.cos && s.cos[1]) | 0;
+    const p = s.pts, step = Math.max(2, Math.floor(p.length / 2 / 40)) * 2;
+    if (onScreen(s.x, s.y, 600) && q.fx) {
+      const colors = style === 1 ? ["#ffe14d", "#ff5ca8", "#5ef2ff", "#ffffff"] : style === 2 ? ["#00ff9c", "#ff00a0", "#ffffff"] : style === 3 ? [c[0], c[2], "#ffd6f3"] : [c[0], c[2]];
+      for (let i = 0; i < p.length; i += step) fx.burst(p[i], p[i + 1], { n: 3, colors, speed: style === 1 ? 260 : 160, life: style === 3 ? 1.1 : .7, size: 4, shape: style === 2 ? "square" : "dot", gravity: style === 1 ? 120 : 0 });
+    }
+  }
+  const kname = killer ? nameOf(killer) : null;
   if (id === W.me) {
     W.me = 0;
-    PA.sfx("explode"); PA.shake(10, .5); PA.flash("#ff5ca8", 260);
-    camHold = { x: s.x, y: s.y, until: performance.now() + 1500, follow: killer };
+    PA.sfx("explode"); shake(10, .5); flash("#ff5ca8", 260);
+    camHold = { x: s ? s.x : cam.x, y: s ? s.y : cam.y, until: performance.now() + 1500, follow: killer };
     const alive = (performance.now() - myStats.born) / 1000;
-    const how = cause === "wall" ? "Hit the arena wall" : k ? "Cut off by " + k.name : "Crashed out";
+    const how = cause === "wall" ? "Hit the arena wall" : cause === "decoy" ? "Hit a Split-tail decoy" : kname ? "Cut off by " + kname : "Crashed out";
+    const gained = Math.min(500, Math.round(alive / 60 * 10 + myStats.peak / 10 + myStats.kills * 20));
+    const before = xp; xp += gained; store.set("ga_xp", xp);
+    const unlocked = unlocksBetween(before, xp);
     setTimeout(() => {
+      const stats = [["Peak length", Math.round(myStats.peak)], ["Kills", myStats.kills], ["Survived", fmtTime(alive)], ["Best rank", myStats.bestRank === 99 ? "–" : "#" + myStats.bestRank], ["Glow XP", "+" + gained]];
+      if (unlocked.length) stats.push(["Unlocked", unlocked.join(", ")]);
       PA.gameOver(Math.round(myStats.peak), {
         kicker: how, title: myStats.peak >= 500 ? "Monster run!" : myStats.peak >= 150 ? "Great run" : "Run over",
-        unit: "length",
-        stats: [["Peak length", Math.round(myStats.peak)], ["Kills", myStats.kills], ["Survived", fmtTime(alive)], ["Best rank", myStats.bestRank === 99 ? "–" : "#" + myStats.bestRank]]
+        unit: "length", stats
       });
       if (window.paXP) window.paXP.award("glowline-arena", { score: Math.round(myStats.peak), kills: myStats.kills });
     }, 900);
     $("ga-me").classList.remove("on");
-    feed(how, true);
+    $("ga-ab").classList.remove("on");
+    W.st = null;
+    feed(how, "me");
   } else if (killer && killer === W.me) {
     myStats.kills++;
     $("ga-kills").textContent = myStats.kills;
-    PA.sfx("combo"); PA.shake(4, .2);
-    texts.add(s.x, s.y - 30, "+" + s.name.toUpperCase(), { color: "#ffe08a", size: 20, life: 1.2 });
-    feed("You cut off " + s.name + "!", true);
-  } else if (k && peak > 120 && (cause === "cut")) {
-    feed(k.name + " cut off " + s.name);
+    PA.sfx("combo"); shake(4, .2);
+    if (s) texts.add(s.x, s.y - 30, "+" + name.toUpperCase(), { color: "#ffe08a", size: 20, life: 1.2 });
+    feed("You cut off " + name + "!", "me");
+  } else if (leader) {
+    feed(name + " was the leader and fell. Bounty dropped!", "evo");
+  } else if (kname && peak > 120 && cause === "cut") {
+    feed(kname + " cut off " + name);
   }
+  void kills; void ticks;
 }
+const an = (w) => (/^[AEIOU]/.test(w) ? "an " : "a ") + w;
 const fmtTime = (s) => (s >= 60 ? Math.floor(s / 60) + "m " : "") + Math.round(s % 60) + "s";
-function feed(msg, me) {
+function feed(msg, cls) {
   const el = document.createElement("div");
-  el.textContent = msg; if (me) el.className = "me";
-  $("ga-feed").prepend(el);
-  setTimeout(() => el.remove(), 4600);
-  while ($("ga-feed").children.length > 4) $("ga-feed").lastChild.remove();
+  el.textContent = msg; if (cls) el.className = cls;
+  $("ga-feed").appendChild(el);
+  setTimeout(() => el.remove(), 4300);
+  while ($("ga-feed").children.length > 3) $("ga-feed").firstChild.remove();
+}
+let bannerTo = 0;
+function banner(title, sub, color, ms) {
+  $("ga-banner-t").textContent = title; $("ga-banner-t").style.color = color || "#fff";
+  $("ga-banner-s").textContent = sub || "";
+  $("ga-banner").classList.add("on");
+  clearTimeout(bannerTo); bannerTo = setTimeout(() => $("ga-banner").classList.remove("on"), ms || 2500);
 }
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function myRank() {
+  const me = W.snakes.get(W.me);
+  if (!me) return 0;
+  let r = 1;
+  for (const e of W.map) if (e[0] !== W.me && e[3] > me.m) r++;
+  return r;
+}
 function paintBoard() {
-  let html = "", meIn = false, rank = 0;
-  const all = [...W.snakes.values()].sort((a, b) => b.m - a.m);
-  rank = W.me ? all.findIndex((s) => s.id === W.me) + 1 : 0;
+  let html = "", meIn = false;
+  const rank = myRank();
   W.lb.forEach(([id, m], i) => {
-    const s = W.snakes.get(id);
+    const s = W.meta.get(id);
     if (!s) return;
     const me = id === W.me; if (me) meIn = true;
-    html += `<li class="${me ? "me" : ""}"><i>${i + 1}</i><u style="background:${SKIN[s.skin][0]}"></u><span>${esc(s.name)}${s.bot ? "" : " ●"}</span><b>${m}</b></li>`;
+    const glyph = s.evo ? `<em style="color:${EVO_PAL[s.evo][0]}" title="${EVO_NAMES[s.evo]}">${EVO_GLYPH[s.evo]}</em>` : "";
+    html += `<li class="${me ? "me" : ""}"><i>${i === 0 ? "♛" : i + 1}</i><u style="background:${SKIN[s.skin][0]}"></u><span>${glyph}${esc(s.name)}${s.bot ? "" : " ●"}</span><b>${m}</b></li>`;
   });
   if (W.me && !meIn && rank) {
     const s = W.snakes.get(W.me);
-    html += `<li class="me"><i>${rank}</i><u style="background:${SKIN[s.skin][0]}"></u><span>${esc(s.name)}</span><b>${Math.round(s.m)}</b></li>`;
+    if (s) html += `<li class="me"><i>${rank}</i><u style="background:${SKIN[s.skin][0]}"></u><span>${esc(s.name)}</span><b>${Math.round(s.m)}</b></li>`;
   }
   $("ga-lb-list").innerHTML = html;
-  $("ga-count").textContent = W.snakes.size + " snakes";
+  $("ga-count").textContent = W.meta.size + " snakes";
   if (W.me && myStats) {
-    $("ga-rank").textContent = "#" + rank;
+    $("ga-rank").textContent = rank ? "#" + rank : "–";
     if (rank && rank < myStats.bestRank) myStats.bestRank = rank;
   }
+}
+function showMod() {
+  const m = W.mod && MODIFIERS[W.mod];
+  $("ga-mode-mod").textContent = m ? "· " + m.name : "";
+  const chip = $("ga-mod-chip");
+  chip.hidden = !m;
+  if (m) chip.textContent = "Today: " + m.name + " · " + m.text;
 }
 
 /* ---------------- networking ---------------- */
@@ -238,16 +448,19 @@ function setMode(m, n) {
 function startLocal(reason) {
   if (net && net.kind === "local") return;
   if (net && net.close) net.close();
-  const sim = new Sim({ bots: 15 });
-  const n = { kind: "local", sim, timer: 0, paused: false };
+  const sim = new Sim({ bots: 15, features: true, modifier: qs.has("mod") ? qs.get("mod") || null : undefined });
+  const vw = makeViewer();
+  const n = { kind: "local", sim, vw, timer: 0, paused: false };
   n.send = (m) => {
-    if (m.t === "join") { const id = sim.addPlayer(m.name, m.skin); setTimeout(() => onYou(id), 0); }
+    if (m.t === "join") { const id = sim.addPlayer(m.name, m.skin, m.cos); onYou(id); }
     else if (m.t === "in" && W.me) sim.setInput(W.me, m.a, m.b);
+    else if (m.t === "ab" && W.me) sim.useAbility(W.me);
+    else if (m.t === "cam") { vw.cx = m.x; vw.cy = m.y; }
   };
   n.close = () => clearInterval(n.timer);
-  n.timer = setInterval(() => { if (!n.paused) queue.push(sim.step()); }, FRAME_MS);
+  n.timer = setInterval(() => { if (!n.paused) queue.push(viewFor(sim, sim.step(), vw, W.me)); }, FRAME_MS);
   net = n;
-  applySnapshot(sim.snapshot());
+  applySnapshot(sim.snapshot(true));
   setMode("local");
   if (reason) console.info("Glowline Arena: offline mode (" + reason + ")");
   if (PA.state === "play" && !W.me) join();
@@ -263,20 +476,24 @@ function startOnline(url) {
   ws.onmessage = (e) => {
     if (typeof e.data === "string") {
       const m = JSON.parse(e.data);
-      if (m.t === "snap") { settled = true; clearTimeout(to); applySnapshot(m.snap); setMode("online", m.online); online = m.online; if (PA.state === "play" && !W.me) join(); }
+      if (m.t === "snap") {
+        if (m.v !== 2) return fail("server is the older version");
+        settled = true; clearTimeout(to); applySnapshot(m.snap); setMode("online", m.online); online = m.online;
+        if (PA.state === "play" && !W.me) join();
+      }
       else if (m.t === "you") onYou(m.id);
       else if (m.t === "info") { online = m.online; setMode("online", m.online); }
       else if (m.t === "full") fail("room full");
       else if (m.t === "pong") net.rtt = performance.now() - m.c;
     } else {
-      const ev = decodeFrame(e.data);
+      const ev = decodeFrame2(e.data);
       if (ev) queue.push(ev);
     }
   };
   ws.onclose = () => {
     if (!settled) return fail("closed");
     if (net && net.ws === ws) {
-      feed("Connection lost — switching to an offline match");
+      feed("Connection lost. Switching to an offline match");
       W.me = 0;
       if (PA.state === "play") { myStats = null; }
       startLocal("dropped");
@@ -296,32 +513,49 @@ function onYou(id) {
 function join() {
   if (!net) return;
   const name = (window.paPlayer && window.paPlayer.getName()) || "Player";
-  net.send({ t: "join", name, skin });
+  net.send({ t: "join", name, skin, cos: prefs.cos.slice(0, 3) });
 }
 
 const url = qs.get("arena") || cfg.arena;
 if (qs.get("offline") === "1" || !("WebSocket" in window) || !url) startLocal("forced"); else startOnline(url);
 
 PA.onStart(() => {
-  $("ga-skin").classList.add("off");
+  $("ga-skin").classList.add("off"); $("ga-start-extra").classList.add("off");
   if (net && (net.kind === "local" || (net.ws && net.ws.readyState === 1))) join();
 });
 PA.onPause((p) => { if (net && net.kind === "local") net.paused = p; });
 
 /* ---------------- input ---------------- */
 let aim = 0, boostKey = false, boostPtr = false, boostBtn = false, mouse = null, keyTurn = 0, lastSent = { a: 99, b: false, t: 0 };
+let lastBoostTap = 0;
+function boostTap() {
+  const now = performance.now();
+  if (now - lastBoostTap < 250) { ability(); lastBoostTap = 0; } else lastBoostTap = now;
+}
+function ability() {
+  const me = W.snakes.get(W.me);
+  if (!me || !EVO_ACTIVE[me.evo] || PA.state !== "play") return;
+  if (W.st && W.tick < W.st[4]) { PA.sfx("click", { pitch: 0.6, vol: 0.4 }); return; }
+  net.send({ t: "ab" });
+}
 addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" || e.buttons) mouse = { x: e.clientX, y: e.clientY }; });
 addEventListener("pointerdown", (e) => {
-  if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,.pa-tb,#ga-skin")) return;
+  if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,.pa-tb,#ga-skin,.ga-sheet,#ga-start-extra")) return;
   mouse = { x: e.clientX, y: e.clientY };
-  if (e.pointerType === "mouse") boostPtr = true;
+  if (e.pointerType === "mouse") { boostPtr = true; boostTap(); }
 });
 addEventListener("pointerup", (e) => { if (e.pointerType === "mouse") boostPtr = false; });
 addEventListener("blur", () => { boostPtr = boostKey = false; });
-PA.onKey((e) => { if (e.code === "Space") e.preventDefault(); });
+PA.onKey((e) => {
+  if (e.code === "Space") e.preventDefault();
+  if (e.repeat) return;
+  if (e.code === "Space" || e.code === "KeyW" || e.code === "ArrowUp") boostTap();
+  if (e.code === "KeyE") ability();
+});
 const bb = $("ga-boost");
-bb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); boostBtn = true; bb.classList.add("on"); });
+bb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); boostBtn = true; bb.classList.add("on"); boostTap(); });
 ["pointerup", "pointercancel", "pointerleave"].forEach((t) => bb.addEventListener(t, () => { boostBtn = false; bb.classList.remove("on"); }));
+$("ga-ab").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); ability(); });
 
 function updateInput(dt) {
   const me = W.snakes.get(W.me);
@@ -340,28 +574,137 @@ function updateInput(dt) {
   }
 }
 setInterval(() => { if (net && net.kind === "online") net.send({ t: "ping", c: performance.now() }); }, 5000);
+// spectators tell the server where they are looking, so it sends the snakes there
+setInterval(() => { if (net && !W.me) net.send({ t: "cam", x: Math.round(cam.x), y: Math.round(cam.y) }); }, 250);
 
-/* ---------------- skin picker ---------------- */
+/* ---------------- sound cosmetics ---------------- */
+function boostSound() {
+  const k = prefs.cos[3] | 0;
+  if (k === 1) PA.tone({ freq: 220, to: 880, type: "sawtooth", dur: .18, vol: .04 });
+  else if (k === 2) { PA.tone({ freq: 1568, type: "sine", dur: .25, vol: .05 }); PA.tone({ freq: 2093, type: "sine", dur: .3, vol: .04, delay: .05 }); }
+  else if (k === 3) PA.tone({ freq: 160, to: 45, type: "sine", dur: .35, vol: .12 });
+  else PA.sfx("whoosh", { vol: 0.25 });
+}
+
+/* ---------------- skin picker + style ---------------- */
 function paintSkinPicker() {
   const c = $("ga-skin-c").getContext("2d");
   c.clearRect(0, 0, 240, 68);
   const pal = SKIN[skin];
-  c.lineCap = "round"; c.lineJoin = "round";
-  c.beginPath();
-  for (let x = 20; x <= 200; x += 4) c.lineTo(x, 34 + Math.sin(x / 26) * 12);
-  c.strokeStyle = pal[0]; c.lineWidth = 22; c.shadowColor = pal[0]; c.shadowBlur = 14; c.stroke();
-  c.shadowBlur = 0; c.setLineDash([12, 12]); c.strokeStyle = pal[1]; c.lineWidth = 14; c.stroke(); c.setLineDash([]);
-  c.fillStyle = pal[0]; c.beginPath(); c.arc(204, 34 + Math.sin(204 / 26) * 12, 13, 0, TAU); c.fill();
-  c.fillStyle = "#fff"; c.beginPath(); c.arc(208, 28, 4.5, 0, TAU); c.arc(208, 40, 4.5, 0, TAU); c.fill();
-  c.fillStyle = "#000"; c.beginPath(); c.arc(210, 28, 2.2, 0, TAU); c.arc(210, 40, 2.2, 0, TAU); c.fill();
-  $("ga-skin-n").textContent = "Skin " + (skin + 1);
+  const path = [];
+  for (let x = 204; x >= 20; x -= 4) path.push(x, 34 + Math.sin(x / 26) * 12);
+  c.save(); c.shadowColor = pal[0]; c.shadowBlur = 10;
+  strokeBody(c, path, pal, 11, { offset: 0, glow: false });
+  c.restore();
+  drawHead(c, 204, 34 + Math.sin(204 / 26) * 12, Math.cos(204 / 26) * 0.4, 12, pal, 0);
+  $("ga-skin-n").innerHTML = esc(SKIN_NAMES[skin]) + (skin >= 12 ? "<em>Unlocked skin</em>" : "");
 }
-function setSkin(d) { skin = (skin + d + SKINS) % SKINS; try { localStorage.setItem("ga_skin", skin); } catch (e) {} paintSkinPicker(); PA.sfx("click"); }
+function setSkin(d) {
+  let s = skin;
+  for (let i = 0; i < SKINS_V2; i++) { s = (s + d + SKINS_V2) % SKINS_V2; if (SKIN_XP[s] <= xp) break; }
+  skin = s; store.set("ga_skin", skin); paintSkinPicker(); PA.sfx("click");
+}
 $("ga-skin-prev").onclick = () => setSkin(-1);
 $("ga-skin-next").onclick = () => setSkin(1);
 paintSkinPicker();
-addEventListener("pa:report", () => {});
-setInterval(() => { if (PA.state !== "play") $("ga-skin").classList.remove("off"); }, 500);
+setInterval(() => {
+  if (PA.state !== "play") { $("ga-skin").classList.remove("off"); $("ga-start-extra").classList.remove("off"); }
+}, 500);
+
+function unlocksBetween(a, b) {
+  const out = [];
+  SKIN_XP.forEach((v, i) => { if (v > a && v <= b) out.push(SKIN_NAMES[i] + " skin"); });
+  for (const [list, label] of [[TRAILS, "trail"], [BURSTS, "burst"], [FRAMES, "frame"], [BOOSTS, "boost sound"]]) for (const [n, v] of list) if (v > a && v <= b) out.push(n + " " + label);
+  return out;
+}
+function openSheet(id) { $(id).hidden = false; PA.sfx("click"); }
+document.querySelectorAll(".ga-sheet").forEach((el) => {
+  el.addEventListener("click", (e) => { if (e.target === el || e.target.closest("[data-close]")) { el.hidden = true; stopGuides(); } });
+});
+addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".ga-sheet").forEach((el) => { if (!el.hidden) { el.hidden = true; stopGuides(); } }); });
+function paintStyle() {
+  const all = [...SKIN_XP, ...TRAILS.map((x) => x[1]), ...BURSTS.map((x) => x[1]), ...FRAMES.map((x) => x[1]), ...BOOSTS.map((x) => x[1])].sort((a, b) => a - b);
+  const next = all.find((v) => v > xp);
+  $("ga-xp-t").textContent = "Glow XP " + xp.toLocaleString() + (next ? " · next unlock at " + next.toLocaleString() : " · everything unlocked");
+  const prev = all.filter((v) => v <= xp).pop() || 0;
+  $("ga-xp-bar").style.width = next ? Math.round((xp - prev) / (next - prev) * 100) + "%" : "100%";
+  const row = (title, list, idx, onPick) => `<div class="ga-row">${title}</div><div class="ga-pick">` + list.map(([n, v], i) =>
+    `<button type="button" data-k="${idx}" data-i="${i}" class="${(idx === "skin" ? skin : prefs.cos[idx]) === i ? "on" : ""}" ${v > xp ? "disabled" : ""}>${esc(n)}${v > xp ? " · " + v.toLocaleString() + " XP" : ""}</button>`).join("") + "</div>";
+  $("ga-style-rows").innerHTML =
+    row("Skin", SKIN_NAMES.map((n, i) => [n, SKIN_XP[i]]), "skin") +
+    row("Trail", TRAILS, 0) + row("Death burst", BURSTS, 1) + row("Name frame", FRAMES, 2) + row("Boost sound", BOOSTS, 3);
+}
+$("ga-style-rows").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-k]");
+  if (!b || b.disabled) return;
+  const k = b.dataset.k, i = +b.dataset.i;
+  if (k === "skin") { skin = i; store.set("ga_skin", skin); paintSkinPicker(); }
+  else { prefs.cos[+k] = i; store.set("ga_cos", prefs.cos); if (+k === 3) boostSound(); }
+  PA.sfx("click"); paintStyle();
+});
+$("ga-style-btn").onclick = () => { paintStyle(); openSheet("ga-style"); };
+
+/* ---------------- guides ---------------- */
+let guideRuns = [];
+function stopGuides() { guideRuns.forEach((r) => r.stop()); guideRuns = []; }
+$("ga-how-btn").onclick = () => {
+  const grid = $("ga-how-grid");
+  grid.innerHTML = GUIDE_ORDER.map((id) => `<div class="ga-tile"><canvas width="440" height="260" data-g="${id}"></canvas><p><b>${GUIDES[id].title}</b>${GUIDES[id].caption}</p></div>`).join("");
+  $("ga-opt-tips").checked = prefs.tips; $("ga-opt-rm").checked = prefs.rm;
+  openSheet("ga-how");
+  stopGuides();
+  grid.querySelectorAll("canvas").forEach((c) => guideRuns.push(playGuide(c, c.dataset.g, psprites, prefs.rm)));
+};
+$("ga-opt-tips").onchange = (e) => { prefs.tips = e.target.checked; store.set("ga_tips", prefs.tips); };
+$("ga-opt-rm").onchange = (e) => { prefs.rm = e.target.checked; store.set("ga_rm", prefs.rm); $("ga-how-btn").onclick(); };
+let tipRun = null, tipTo = 0;
+/** slide in a guide the first time a player meets something (never pauses the game) */
+function tip(id, force) {
+  if (!id || !prefs.tips || !GUIDES[id]) return;
+  if (prefs.seen[id] && !force) return;
+  prefs.seen[id] = 1; store.set("ga_seen", prefs.seen);
+  if (tipRun) tipRun.stop();
+  $("ga-tip-t").textContent = GUIDES[id].title; $("ga-tip-s").textContent = GUIDES[id].caption;
+  tipRun = playGuide($("ga-tip-c"), id, psprites, prefs.rm);
+  $("ga-tip").classList.add("on");
+  clearTimeout(tipTo);
+  tipTo = setTimeout(() => { $("ga-tip").classList.remove("on"); setTimeout(() => { if (tipRun) { tipRun.stop(); tipRun = null; } }, 400); }, 4500);
+}
+let tipScan = 0;
+function scanForTips(now) {
+  if (now - tipScan < 500 || !W.me) return; tipScan = now;
+  const me = W.snakes.get(W.me); if (!me) return;
+  const near = (x, y) => (x - me.x) ** 2 + (y - me.y) ** 2 < 700 * 700;
+  for (const p of W.portals.values()) if (near(p.x, p.y)) return tip("portals");
+  for (const f of W.food.values()) if (f.k && near(f.x, f.y)) return tip(f.k === PK.EVO ? "evo" : f.k === PK.KEY ? "portals" : f.k === PK.BOUNTY ? null : PK_GUIDE[f.k]);
+  for (const s of W.snakes.values()) if (s.evo && s.id !== W.me && near(s.x, s.y)) return tip(EVO_GUIDE[s.evo]);
+}
+
+/* ---------------- auto quality ----------------
+ * q.glow: soft glow strokes · q.fx: particles and trails · q.res: canvas resolution
+ * Steps down after 2 s under 50 FPS, steps back up after 10 s of steady frames.
+ */
+const q = { level: +(qs.get("q") || 0), glow: true, fx: true, res: 1 };
+let slowFor = 0, fastFor = 0, resApplied = 1;
+function applyQuality() {
+  q.glow = q.level < 1; q.fx = q.level < 2; q.res = q.level >= 3 ? 0.75 : 1;
+  fx.max = q.level >= 2 ? 300 : 600;
+  if (q.res !== resApplied) { resApplied = q.res; view.fit(); }
+}
+addEventListener("resize", () => { if (resApplied !== 1) fixRes(); });
+const fit0 = view.fit;
+view.fit = () => { fit0(); fixRes(); };
+function fixRes() {
+  const c = view.canvas;
+  c.width = Math.floor(view.w * view.dpr * resApplied); c.height = Math.floor(view.h * view.dpr * resApplied);
+}
+function watchFps(dt) {
+  if (!dt) return;
+  if (dt > 1 / 50) { slowFor += dt; fastFor = 0; } else { fastFor += dt; slowFor = Math.max(0, slowFor - dt * 0.5); }
+  if (slowFor > 2 && q.level < 3) { q.level++; slowFor = 0; applyQuality(); }
+  else if (fastFor > 10 && q.level > 0 && !qs.get("q")) { q.level--; fastFor = 0; applyQuality(); }
+}
+applyQuality();
 
 /* ---------------- camera ---------------- */
 let cam = { x: 0, y: 0, z: 1 }, camHold = null, alpha = 0, spectate = 0, spectateT = 0;
@@ -371,97 +714,200 @@ function onScreen(x, y, pad) {
   const hw = view.w / 2 / cam.z + pad, hh = view.h / 2 / cam.z + pad;
   return x > cam.x - hw && x < cam.x + hw && y > cam.y - hh && y < cam.y + hh;
 }
+function viewScale(me) {
+  // >1 sees more: Lens +40%, Firefly +25% (they don't stack past the Lens), Blackout −30%
+  const t = W.tick;
+  let k = 1;
+  const lens = W.st && W.st[2] > t, fire = me && me.evo === 7;
+  if (lens) k = 1.4; else if (fire) k = 1.25;
+  if (W.mod === "blackout" && !fire) k *= 0.7;
+  return k;
+}
+let zoomK = 1;
 function updateCamera(dt) {
   let target = null, r = 12;
   const me = W.snakes.get(W.me);
   if (me) { target = lerpHead(me); r = radiusFor(me.m); }
   else if (camHold && performance.now() < camHold.until) target = camHold;
   else {
-    // spectate: drift between the top snakes
+    // spectate: drift between the top snakes (their rough spot comes from the minimap feed)
     spectateT -= dt;
-    if (!W.snakes.has(spectate) || spectateT <= 0) {
-      const top = [...W.snakes.values()].sort((a, b) => b.m - a.m).slice(0, 4);
-      if (top.length) spectate = top[(Math.random() * top.length) | 0].id;
+    if ((!W.meta.has(spectate)) || spectateT <= 0) {
+      const top = W.lb.slice(0, 4);
+      if (top.length) spectate = top[(Math.random() * top.length) | 0][0];
       spectateT = 9;
     }
     const s = W.snakes.get(spectate);
     if (s) { target = lerpHead(s); r = radiusFor(s.m); }
+    else { const e = W.map.find((m) => m[0] === spectate); if (e) target = { x: e[1], y: e[2] }; }
   }
   if (target) {
     const k = me ? 1 - Math.pow(0.0005, dt) : 1 - Math.pow(0.08, dt);
     cam.x += (target.x - cam.x) * k; cam.y += (target.y - cam.y) * k;
   }
+  zoomK += (viewScale(me) - zoomK) * Math.min(1, dt * 1.5);
   const base = Math.min(view.w, view.h) / 950;
-  const zt = Math.max(0.42, base * (1.15 - Math.min(0.55, (r - 10) / 70))) * (view.w < 600 ? 0.9 : 1);
+  const zt = Math.max(0.42, base * (1.15 - Math.min(0.55, (r - 10) / 70))) * (view.w < 600 ? 0.9 : 1) / zoomK;
   cam.z += (zt - cam.z) * Math.min(1, dt * 2);
 }
 
 /* ---------------- rendering ---------------- */
-function drawSnake(s, t, isMe) {
-  const pal = SKIN[s.skin];
-  const m = s.pm + (s.m - s.pm) * alpha;
-  const r = radiusFor(m), L = lengthFor(m);
-  const head = lerpHead(s);
-  const p = s.pts;
-  // assemble the visible polyline from the interpolated head back to length L
+const palOf = (s) => (s.evo ? EVO_PAL[s.evo] : SKIN[s.skin] || SKIN[0]);
+const angDelta = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+function bodyPath(head, p, L) {
   const path = [head.x, head.y];
   let acc = 0, lx = head.x, ly = head.y;
   for (let i = p.length - 4; i >= 0; i -= 2) {
     const x = p[i], y = p[i + 1], d = Math.hypot(x - lx, y - ly);
-    if (acc + d >= L) { const k = (L - acc) / (d || 1); path.push(lx + (x - lx) * k, ly + (y - ly) * k); break; }
+    if (acc + d >= L) { const k = (L - acc) / (d || 1); path.push(lx + (x - lx) * k, ly + (y - ly) * k); acc = L; break; }
     acc += d; path.push(x, y); lx = x; ly = y;
   }
+  path.acc = acc;
+  return path;
+}
+function drawSnake(s, t, isMe, now) {
+  const pal = palOf(s);
+  const m = s.pm + (s.m - s.pm) * alpha;
+  const r = radiusFor(m) * (s.evo === 2 ? 1.35 : 1), L = lengthFor(m);
+  const head = lerpHead(s);
+  const path = bodyPath(head, s.pts, L);
   // cull when no part is on screen
   let vis = false;
   for (let i = 0; i < path.length; i += 16) if (onScreen(path[i], path[i + 1], r * 2)) { vis = true; break; }
   if (!vis && !onScreen(path[path.length - 2], path[path.length - 1], r * 2)) return;
 
-  ctx.lineCap = "round"; ctx.lineJoin = "round";
-  ctx.beginPath();
-  ctx.moveTo(path[path.length - 2], path[path.length - 1]);
-  for (let i = path.length - 4; i >= 0; i -= 2) ctx.lineTo(path[i], path[i + 1]);
-  // glow
-  ctx.globalCompositeOperation = "lighter";
-  ctx.strokeStyle = pal[0];
-  ctx.globalAlpha = s.boost ? 0.32 + Math.sin(t * 30) * 0.08 : 0.12;
-  ctx.lineWidth = r * (s.boost ? 3.4 : 2.8);
-  ctx.stroke();
-  ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = 1;
-  // edge + body
-  ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.lineWidth = r * 2 + 3; ctx.stroke();
-  ctx.strokeStyle = pal[0]; ctx.lineWidth = r * 2; ctx.stroke();
-  // stripes that travel with the body
-  ctx.setLineDash([r * 1.1, r * 1.3]);
-  ctx.lineDashOffset = -acc;
-  ctx.strokeStyle = pal[1]; ctx.globalAlpha = 0.85; ctx.lineWidth = r * 1.35; ctx.stroke();
-  ctx.setLineDash([]);
-  // spine highlight
-  ctx.globalAlpha = 0.5; ctx.strokeStyle = pal[2]; ctx.lineWidth = r * 0.35; ctx.stroke();
-  ctx.globalAlpha = 1;
+  const f = s.flags, prot = f & 128, active = f & 4, phased = s.evo === 3 && active;
+  // trail cosmetic: a few particles off the tail, drawn under bodies
+  if (q.fx && s.cos && s.cos[0] && now - s.trailT > 90) {
+    s.trailT = now;
+    const tx = path[path.length - 2], ty = path[path.length - 1], st = s.cos[0];
+    fx.burst(tx, ty, st === 1 ? { n: 1, color: pal[2], speed: 40, life: .3, size: 2.5, shape: "spark" } : st === 2 ? { n: 1, colors: ["#ffc2e0", "#ffd6f3"], speed: 25, life: .3, size: 4 } : { n: 1, color: pal[0], speed: 30, life: .3, size: 3, shape: "square" });
+  }
+  let alphaB = prot ? 0.45 + Math.sin(t * 20) * 0.1 : phased ? 0.3 + Math.sin(t * 25) * 0.08 : 1;
+  strokeBody(ctx, path, pal, r, { t, offset: path.acc, boost: s.boost, evo: s.evo, alpha: alphaB, glow: q.glow });
 
   // head
   const a = s.pa + angDelta(s.pa, s.a) * alpha;
-  ctx.save();
-  ctx.translate(head.x, head.y); ctx.rotate(a);
-  ctx.fillStyle = pal[0];
-  ctx.beginPath(); ctx.ellipse(r * 0.15, 0, r * 1.12, r * 1.02, 0, 0, TAU); ctx.fill();
   const look = isMe && PA.state === "play" ? angDelta(a, aim) * 0.5 : 0;
-  for (const side of [-1, 1]) {
-    const ex = r * 0.45, ey = side * r * 0.48;
-    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, r * 0.38, 0, TAU); ctx.fill();
-    ctx.fillStyle = "#0a0a14"; ctx.beginPath(); ctx.arc(ex + Math.cos(look) * r * 0.16, ey + Math.sin(look) * r * 0.16, r * 0.2, 0, TAU); ctx.fill();
+  drawHead(ctx, head.x, head.y, a, r, pal, look, alphaB);
+  // status rings on the head: Ward (hexagon), Surge (chevrons), Eel tell (flicker), Magnet field
+  if (f & 2) {
+    ctx.strokeStyle = "#5ef2ff"; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.8;
+    ctx.beginPath(); for (let i = 0; i < 6; i++) { const q2 = i * Math.PI / 3 + t; ctx.lineTo(head.x + Math.cos(q2) * r * 1.9, head.y + Math.sin(q2) * r * 1.9); } ctx.closePath(); ctx.stroke();
+    ctx.globalAlpha = 1;
   }
-  ctx.restore();
-  // name tag
+  if (f & 8) {
+    ctx.strokeStyle = "#ffe14d"; ctx.lineWidth = 3; ctx.globalAlpha = 0.7 + Math.sin(t * 20) * 0.3;
+    for (const k of [1.6, 2.3]) { const bx = head.x - Math.cos(a) * r * k, by = head.y - Math.sin(a) * r * k; ctx.beginPath(); ctx.moveTo(bx + Math.cos(a + 2.4) * r * .7, by + Math.sin(a + 2.4) * r * .7); ctx.lineTo(bx, by); ctx.lineTo(bx + Math.cos(a - 2.4) * r * .7, by + Math.sin(a - 2.4) * r * .7); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+  if (s.tell > now) { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.globalAlpha = 0.5 + Math.sin(t * 60) * 0.5; ctx.beginPath(); ctx.arc(head.x, head.y, r * 2.1, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; }
+  if (s.evo === 5) { ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.35; ctx.setLineDash([6, 8]); ctx.lineDashOffset = -t * 30; ctx.beginPath(); ctx.arc(head.x, head.y, (radiusFor(m) + 26) * 2.5, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
+  if (s.evo === 6 && active) {
+    ctx.globalCompositeOperation = "lighter";
+    const gr = ctx.createLinearGradient(head.x - Math.cos(a) * r * 9, head.y - Math.sin(a) * r * 9, head.x, head.y);
+    gr.addColorStop(0, "rgba(255,61,0,0)"); gr.addColorStop(1, "rgba(255,179,71,.85)");
+    ctx.strokeStyle = gr; ctx.lineWidth = r * 1.6; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(head.x - Math.cos(a) * r * 9, head.y - Math.sin(a) * r * 9); ctx.lineTo(head.x, head.y); ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+  }
+  if (s.glowT > now) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = s.glowC; ctx.globalAlpha = (s.glowT - now) / 150 * 0.6; ctx.beginPath(); ctx.arc(head.x, head.y, r * 2.4, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
+  // name tag (+ evolution glyph and name frame)
   if (!isMe && cam.z > 0.5) {
-    ctx.font = `700 ${Math.max(11, 12 / cam.z * 0.9)}px Manrope, sans-serif`;
+    const fs = Math.max(11, 12 / cam.z * 0.9);
+    ctx.font = `700 ${fs}px Manrope, sans-serif`;
     ctx.textAlign = "center";
-    ctx.fillStyle = "rgba(230,236,255,.75)";
-    ctx.fillText(s.name, head.x, head.y - r - 12 / cam.z);
+    const label = (s.evo ? EVO_GLYPH[s.evo] + " " : "") + s.name, ty = head.y - r - 12 / cam.z;
+    const fr = s.cos && s.cos[2];
+    if (fr) {
+      const w = ctx.measureText(label).width + fs;
+      ctx.strokeStyle = FRAME_COL[fr]; ctx.lineWidth = 1.5 / cam.z; ctx.globalAlpha = 0.8;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(head.x - w / 2, ty - fs, w, fs * 1.35, fs * 0.6) : ctx.rect(head.x - w / 2, ty - fs, w, fs * 1.35); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = s.evo ? EVO_PAL[s.evo][2] : "rgba(230,236,255,.75)";
+    ctx.fillText(label, head.x, ty);
   }
 }
-const angDelta = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+function drawVenom(s, now) {
+  if (!s.venom.length) return;
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < s.venom.length; i += 3) {
+    const age = (now - s.venom[i + 2]) / (T.VENOM_LIFE * FRAME_MS);
+    if (age > 1 || !onScreen(s.venom[i], s.venom[i + 1], 30)) continue;
+    ctx.globalAlpha = (1 - age) * 0.45;
+    ctx.fillStyle = "#9dff3c";
+    ctx.beginPath(); ctx.arc(s.venom[i], s.venom[i + 1], 11 + age * 4, 0, TAU); ctx.fill();
+    ctx.globalAlpha = (1 - age) * 0.8; ctx.fillStyle = "#6a1fd1";
+    ctx.beginPath(); ctx.arc(s.venom[i], s.venom[i + 1], 3.5, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+}
+
+let dwell = 0, dwellStart = 0, humT = 0;
+function drawPortals(t, now) {
+  const me = W.snakes.get(W.me);
+  let nearest = 1e9, inside = null;
+  for (const [id, p] of W.portals) {
+    if (me) { const d = Math.hypot(p.x - me.x, p.y - me.y); if (d < nearest) nearest = d; if (d < T.PORTAL_R) inside = p; }
+    if (!onScreen(p.x, p.y, 120)) continue;
+    const left = (p.exp - tnow()) / TICK_HZ;
+    let a = p.born ? Math.min(1, (now - p.born) / 500) : 1;
+    if (p.gone) a = Math.max(0, 1 - (now - p.gone) / 400);
+    if (left < 3) a *= 0.5 + Math.sin(t * 14) * 0.3;
+    if (p.uses === 1) a *= 0.75 + Math.sin(t * 9) * 0.25;
+    drawPortal(ctx, p.x, p.y, T.PORTAL_R, t, { uses: p.uses, alpha: a, still: prefs.rm });
+    void id;
+  }
+  // my dwell: the ring tightens around my head (mirrors the server's 0.35 s rule)
+  if (me && inside && !me.boost && !(W.st && W.tick < W.st[6]) && PA.state === "play") {
+    if (!dwellStart) dwellStart = now;
+    dwell = Math.min(1, (now - dwellStart) / (T.DWELL * FRAME_MS));
+    const h = lerpHead(me), r = radiusFor(me.m);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(h.x, h.y, r * 1.6 + (1 - dwell) * 50, -Math.PI / 2, -Math.PI / 2 + dwell * TAU); ctx.stroke();
+    ctx.globalAlpha = 1;
+  } else { dwell = 0; dwellStart = 0; }
+  // the hum gets louder as you approach and rises while you charge
+  if (me && nearest < 450 && now - humT > 520) {
+    humT = now;
+    PA.tone({ freq: 110 + dwell * 220, to: 118 + dwell * 240, type: "sine", dur: .5, vol: 0.035 * (1 - nearest / 450) + dwell * 0.03 });
+  }
+  // arrival flares
+  W.flares = W.flares.filter((fl) => fl.until > now);
+  for (const fl of W.flares) {
+    const k = (now - fl.t0) / (fl.until - fl.t0);
+    if (onScreen(fl.x, fl.y, 100)) {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "#5ef2ff"; ctx.lineWidth = 4; ctx.globalAlpha = 1 - k;
+      ctx.beginPath(); ctx.arc(fl.x, fl.y, 20 + k * 90, 0, TAU); ctx.stroke();
+      ctx.fillStyle = "#ffffff"; ctx.globalAlpha = (1 - k) * 0.5;
+      ctx.beginPath(); ctx.arc(fl.x, fl.y, 26 * (1 - k) + 6, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+    }
+  }
+}
+function drawDecoys(t, now) {
+  for (const d of W.decoys.values()) {
+    if (!onScreen(d.pts[0], d.pts[1], 400) && !onScreen(d.pts[d.pts.length - 2], d.pts[d.pts.length - 1], 400)) continue;
+    const left = (d.until - now) / 1000;
+    const path = []; for (let i = d.pts.length - 2; i >= 0; i -= 2) path.push(d.pts[i], d.pts[i + 1]);
+    strokeBody(ctx, path, EVO_PAL[4], d.r, { dashed: true, t, alpha: left < 1.2 ? 0.5 + Math.sin(t * 16) * 0.3 : 1 });
+  }
+}
+function drawArrivalArrows(now) {
+  // a small arrow at the screen edge for an arrival flare just out of sight
+  for (const fl of W.flares) {
+    if (onScreen(fl.x, fl.y, 0) || !onScreen(fl.x, fl.y, 900)) continue;
+    const p = worldToScreen(fl), cx = view.w / 2, cy = view.h / 2;
+    const a = Math.atan2(p.y - cy, p.x - cx);
+    const ex = cx + Math.cos(a) * (view.w / 2 - 30), ey = cy + Math.sin(a) * (view.h / 2 - 30);
+    const x = Math.max(24, Math.min(view.w - 24, ex)), y = Math.max(24, Math.min(view.h - 24, ey));
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+    ctx.fillStyle = "#5ef2ff"; ctx.globalAlpha = 0.6 + Math.sin(now / 60) * 0.3;
+    ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-8, -9); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
 
 function render(t) {
   const now = performance.now();
@@ -473,12 +919,13 @@ function render(t) {
   }
   alpha = Math.max(0, Math.min(1, (now - lastApply) / FRAME_MS));
   const dt = Math.min(0.05, (now - (render.last || now)) / 1000); render.last = now;
+  if (document.visibilityState === "visible" && !qs.has("q")) watchFps(dt);
   updateInput(dt);
   updateCamera(dt);
   fx.update(dt); texts.update(dt);
 
-  const w = view.w, h = view.h;
-  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  const w = view.w, h = view.h, k = view.dpr * resApplied;
+  ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.fillStyle = "#04050c"; ctx.fillRect(0, 0, w, h);
   const sh = PA.shakeOffset();
   ctx.save();
@@ -496,62 +943,131 @@ function render(t) {
   ctx.fillStyle = hexPattern; ctx.fillRect(cam.x - w / cam.z, cam.y - h / cam.z, (w / cam.z) * 2, (h / cam.z) * 2);
   ctx.restore();
   // border
-  ctx.lineWidth = 14; ctx.strokeStyle = "#ff3d7f"; ctx.shadowColor = "#ff3d7f"; ctx.shadowBlur = 40;
+  ctx.lineWidth = 14; ctx.strokeStyle = "#ff3d7f";
+  if (q.glow) { ctx.shadowColor = "#ff3d7f"; ctx.shadowBlur = 40; }
   ctx.globalAlpha = 0.75 + Math.sin(t * 2) * 0.15;
   ctx.beginPath(); ctx.arc(0, 0, W.worldR, 0, TAU); ctx.stroke();
   ctx.shadowBlur = 0; ctx.globalAlpha = 1;
 
-  // food
+  drawPortals(t, now);
+
+  // food (power pellets are stamped from their own sprites, slightly bigger, gently spinning)
   ctx.globalCompositeOperation = "lighter";
   for (const [id, f] of W.food) {
-    let x = f.x, y = f.y, k = 1;
+    let x = f.x, y = f.y, kk = 1;
     if (f.eat) {
-      const e = W.snakes.get(f.by), q = (now - f.eat) / 160;
-      if (!e || q >= 1) { W.food.delete(id); continue; }
-      const hh = lerpHead(e); x += (hh.x - x) * q; y += (hh.y - y) * q; k = 1 - q;
+      const e = W.snakes.get(f.by), qq = (now - f.eat) / 160;
+      if (!e || qq >= 1) { W.food.delete(id); continue; }
+      const hh = lerpHead(e); x += (hh.x - x) * qq; y += (hh.y - y) * qq; kk = 1 - qq;
     }
-    if (!onScreen(x, y, 30)) continue;
+    if (!onScreen(x, y, 40)) continue;
     const born = f.born ? Math.min(1, (now - f.born) / 400) : 1;
+    if (f.k) {
+      const s = (f.k === PK.EVO ? 34 + Math.sin(t * 4) * 4 : f.k === PK.BOUNTY ? 30 : 22) * kk * born;
+      ctx.save(); ctx.translate(x, y); if (!prefs.rm && f.k !== PK.EVO) ctx.rotate(Math.sin(t * 2 + id) * 0.3);
+      ctx.drawImage(psprites[f.k], -s, -s, s * 2, s * 2); ctx.restore();
+      continue;
+    }
     const pulse = 1 + Math.sin(t * 3 + id) * 0.15;
-    const s = (8 + f.v * 2.4) * pulse * k * born * (f.v >= 12 ? 1.6 : 1);
+    const s = (8 + Math.min(12, f.v) * 2.4) * pulse * kk * born * (f.v >= 12 ? 1.6 : 1);
     ctx.drawImage(sprites[f.c & 7], x - s, y - s, s * 2, s * 2);
   }
   ctx.globalCompositeOperation = "source-over";
 
-  // snakes: everyone else first, you on top
+  drawDecoys(t, now);
+  // snakes: everyone else first, you on top; Viper venom under bodies
   const list = [...W.snakes.values()].sort((a, b) => a.m - b.m);
-  for (const s of list) if (s.id !== W.me) drawSnake(s, t, false);
+  for (const s of list) if (s.evo === 1) drawVenom(s, now);
+  for (const s of list) if (s.id !== W.me) drawSnake(s, t, false, now);
   const me = W.snakes.get(W.me);
-  if (me) drawSnake(me, t, true);
+  if (me) drawSnake(me, t, true, now);
   fx.draw(ctx); texts.draw(ctx);
   ctx.restore();
 
+  // Blackout: fog beyond a soft circle (a Firefly sees through it)
+  if (W.mod === "blackout" && !(me && me.evo === 7)) {
+    const fg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2, w / 2, h / 2, Math.min(w, h) * 0.7);
+    fg.addColorStop(0, "rgba(2,3,8,0)"); fg.addColorStop(1, "rgba(2,3,8,.93)");
+    ctx.fillStyle = fg; ctx.fillRect(0, 0, w, h);
+  }
   // vignette
   const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
   vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.55)");
   ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+  drawArrivalArrows(now);
 
   if (me) {
     $("ga-len").textContent = Math.round(me.m);
     PA.music && PA.music.intensity && PA.music.intensity(Math.min(1, me.m / 600));
   }
-  drawMini();
+  drawMini(now);
+  drawHud(now, me);
+  scanForTips(now);
 }
+
+/* ---------------- HUD: power-up row + ability pip ---------------- */
+let hudT = 0, powKey = "";
+function drawHud(now, me) {
+  if (now - hudT < 100) return; hudT = now;
+  const st = W.st, t = tnow();
+  const row = [];
+  if (me && st) {
+    if (st[0] > t) row.push(["»", PK_COL[1], (st[0] - t) / T.SURGE, "Surge"]);
+    if (st[1] > t) row.push(["⬡", PK_COL[2], (st[1] - t) / T.WARD, "Ward"]);
+    if (st[2] > t) row.push(["◉", PK_COL[3], (st[2] - t) / T.LENS, "Lens"]);
+    if (st[3]) row.push(["⚷", PK_COL[4], 1, "Key"]);
+    if (st[5] > t) row.push(["☠", "#9dff3c", (st[5] - t) / T.SLOW, "Poisoned"]);
+  }
+  const key = row.map((r) => r[0] + (r[2] * 20 | 0)).join("");
+  if (key !== powKey) {
+    powKey = key;
+    $("ga-pow").innerHTML = row.map((r) => `<span style="--c:${r[1]};--k:${Math.max(0, Math.min(1, r[2])).toFixed(3)}" title="${r[3]}"><i>${r[0]}</i></span>`).join("");
+  }
+  const ab = $("ga-ab");
+  const evo = me ? me.evo : 0;
+  ab.classList.toggle("on", !!evo && PA.state === "play");
+  if (evo) {
+    const c = $("ga-ab-c").getContext("2d"), pal = EVO_PAL[evo];
+    c.clearRect(0, 0, 116, 116);
+    c.fillStyle = "rgba(6,9,22,.8)"; c.beginPath(); c.arc(58, 58, 54, 0, TAU); c.fill();
+    let ready = 1;
+    if (EVO_ACTIVE[evo] && st) {
+      const total = evo === 3 ? T.EEL_CD : evo === 4 ? T.SPLIT_CD : T.COMET_CD;
+      ready = Math.max(0, Math.min(1, 1 - (st[4] - t) / total));
+    }
+    c.strokeStyle = pal[0]; c.lineWidth = 8; c.globalAlpha = ready >= 1 ? 1 : 0.6;
+    c.beginPath(); c.arc(58, 58, 48, -Math.PI / 2, -Math.PI / 2 + ready * TAU); c.stroke();
+    c.globalAlpha = 1;
+    c.fillStyle = ready >= 1 ? pal[0] : "#8b93b8"; c.font = "800 40px Manrope, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText(EVO_GLYPH[evo], 58, 56);
+    ab.title = EVO_NAMES[evo] + (EVO_ACTIVE[evo] ? " · double-tap boost" : "");
+  }
+}
+
 let miniT = 0;
-function drawMini() {
-  const now = performance.now();
+function drawMini(now) {
   if (now - miniT < 120) return; miniT = now;
   const c = mini, R = 130, k = (R - 6) / W.worldR;
   c.clearRect(0, 0, 260, 260);
   c.save(); c.translate(130, 130);
   c.strokeStyle = "rgba(255,61,127,.6)"; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, R - 4, 0, TAU); c.stroke();
-  for (const s of W.snakes.values()) {
-    const me = s.id === W.me;
-    c.fillStyle = me ? "#ffe08a" : SKIN[s.skin][0];
-    c.globalAlpha = me ? 1 : 0.6;
-    const sz = me ? 7 : 2 + Math.min(6, Math.sqrt(s.m) / 5);
-    c.beginPath(); c.arc(s.x * k, s.y * k, sz, 0, TAU); c.fill();
-  }
+  // portals and the Evolution Pellet
+  c.lineWidth = 2;
+  for (const p of W.portals.values()) { c.strokeStyle = "#9b7bff"; c.beginPath(); c.arc(p.x * k, p.y * k, 5, 0, TAU); c.stroke(); }
+  for (const f of W.food.values()) if (f.k === PK.EVO) { c.fillStyle = "#ffffff"; c.save(); c.translate(f.x * k, f.y * k); c.rotate(Math.PI / 4); c.fillRect(-4, -4, 8, 8); c.restore(); }
+  const blink = Math.sin(now / 160) > 0;
+  const drawn = new Set();
+  const dot = (id, x, y, m) => {
+    const meta = W.meta.get(id); if (!meta) return;
+    const me = id === W.me;
+    if (meta.evo === 7 && !me && !blink) return; // Fireflies blink on everyone's minimap
+    c.fillStyle = me ? "#ffe08a" : meta.evo ? EVO_PAL[meta.evo][0] : SKIN[meta.skin][0];
+    c.globalAlpha = me ? 1 : meta.evo === 7 ? 1 : 0.6;
+    const sz = me ? 7 : (meta.evo === 7 ? 4 : 0) + 2 + Math.min(6, Math.sqrt(m) / 5);
+    c.beginPath(); c.arc(x * k, y * k, sz, 0, TAU); c.fill();
+  };
+  for (const s of W.snakes.values()) { drawn.add(s.id); dot(s.id, s.x, s.y, s.m); }
+  for (const e of W.map) if (!drawn.has(e[0])) dot(e[0], e[1], e[2], e[3]);
   c.globalAlpha = 0.9; c.strokeStyle = "rgba(255,255,255,.4)"; c.lineWidth = 1.5;
   const hw = view.w / 2 / cam.z * k, hh = view.h / 2 / cam.z * k;
   c.strokeRect(cam.x * k - hw, cam.y * k - hh, hw * 2, hh * 2);
@@ -559,7 +1075,8 @@ function drawMini() {
 }
 
 PA.loop(null, render);
-window.__ga = { W, get net() { return net; }, get queue() { return queue.length; } };
+window.__ga = { W, q, get net() { return net; }, get queue() { return queue.length; }, get sim() { return net && net.sim; }, tip, get xp() { return xp; } };
 setInterval(paintBoard, 1000);
+showMod();
 </script>
 </body></html>

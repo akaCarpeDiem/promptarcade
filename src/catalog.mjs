@@ -27,15 +27,17 @@ export const GAMES = [
     genre: "Multiplayer", tags: ["multiplayer", "io", "arcade"], difficulty: "Mid", accent: "#5ef2ff", accent2: "#ff5ca8",
     unit: "length",
     tagline: "A live multiplayer snake arena. Eat, grow, and cut off everyone else.",
-    about: "Glide through a glowing hex arena with players from everywhere — and a pack of surprisingly cunning bots. Eat light to grow, boost to cut in front of rivals, and turn their wreckage into your next meal. If the live server is quiet or unreachable, you drop straight into an offline match against bots.",
+    about: "Glide through a glowing hex arena with players from everywhere — and a pack of surprisingly cunning bots. Eat light to grow, boost to cut in front of rivals, and turn their wreckage into your next meal. Grab rare power-ups, slip through portals, and if you get lucky, evolve into a Viper, an Eel, a Comet or four other rare forms for the rest of your life. Every day brings a new twist, and Glow XP unlocks looks-only skins and trails. If the live server is quiet or unreachable, you drop straight into an offline match against bots.",
     credit: CLAUDE_NEW,
     brief: "Make a multiplayer .io-style snake arena with smart bots, a live leaderboard, minimap and skins — and have it fall back to an offline match when the server isn't there.",
     tech: [
       "One simulation file runs on both the Cloudflare Durable Object server and in your browser",
-      "20 Hz authoritative ticks in a compact binary frame (about 400 bytes per tick)",
+      "20 Hz authoritative ticks; each player is sent only the snakes near them, about 300 bytes a tick",
+      "Evolutions, power-ups and portal states ride in spare bits of bytes the frame already had",
       "Bodies are rebuilt client-side from head positions, so only heads go over the wire",
       "Spatial hashing for collisions and bot vision; bots hunt, feed and dodge with a sampled fan of rays",
-      "Interpolated rendering with stripes that travel along the body via dash offsets"
+      "Interpolated rendering with stripes that travel along the body via dash offsets",
+      "The how-to-play guides are live loops drawn by the game's own renderer, not videos"
     ]
   },
   {

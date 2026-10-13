@@ -2,6 +2,8 @@
  * One DO instance ("lobby") runs the authoritative 20 Hz simulation for everyone connected.
  * The game client connects to wss://arena.promptarcade.games/room and falls back to an
  * offline bot match by itself if this Worker is missing, full or unreachable.
+ * Clients that ask for /room?v=2 get a separate DO ("lobby2") running the upgraded rules and
+ * nearby-only frames; everyone else stays in the original "lobby", unchanged.
  */
 import { Room } from "../../../src/play/arena/room.js";
 
@@ -10,10 +12,15 @@ const ALLOWED = [/^https:\/\/(www\.)?promptarcade\.games$/, /^https:\/\/[a-z0-9-
 export class ArenaRoom {
   constructor(state, env) {
     this.state = state;
-    this.room = new Room({ bots: Number(env.ARENA_BOTS || 14) });
+    this.env = env;
+    this.room = null;
   }
   async fetch(request) {
     if (request.headers.get("Upgrade") !== "websocket") return new Response("Expected WebSocket", { status: 426 });
+    if (!this.room) {
+      const v2 = new URL(request.url).searchParams.get("v") === "2";
+      this.room = new Room({ bots: Number(this.env.ARENA_BOTS || 14), proto: v2 ? 2 : 1 });
+    }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     server.accept();
@@ -35,7 +42,7 @@ export default {
     if (url.pathname !== "/room") return new Response("Not found", { status: 404 });
     const origin = request.headers.get("Origin") || "";
     if (origin && !ALLOWED.some((r) => r.test(origin))) return new Response("Forbidden", { status: 403 });
-    const id = env.ARENA.idFromName("lobby");
+    const id = env.ARENA.idFromName(url.searchParams.get("v") === "2" ? "lobby2" : "lobby");
     return env.ARENA.get(id).fetch(request);
   }
 };
