@@ -69,7 +69,15 @@ ${head}
   <nav class="nav-links" aria-label="Main">${NAV.map(([h, t]) => `<a href="${h}"${cur(h)}>${t}</a>`).join("")}</nav>
   <div class="nav-right">
     <button class="search-btn" type="button" aria-label="Search games">${ICON.search}<span>Search</span><kbd>/</kbd></button>
-    <a class="pass-chip" href="/me/" aria-label="My Arcade Pass"><span class="lv"><span>1</span></span><span class="txt">My Arcade</span><span class="fl"></span></a>
+    <div class="pass-wrap">
+      <a class="pass-chip" href="/me/" aria-label="My Arcade Pass" aria-describedby="pass-pop"><span class="lv"><span>1</span></span><span class="txt">My Arcade</span><span class="fl"></span></a>
+      <div class="pass-pop" id="pass-pop" role="tooltip">
+        <div class="pp-head"><span class="pp-k">Arcade Pass</span><span class="pp-lv">Level <b>1</b></span></div>
+        <div class="pp-bar"><i></i></div>
+        <div class="pp-xp">0 XP</div>
+        <p class="pp-sync">Sign in to sync your progress and play across multiple devices. <a href="/me/#account">Sign in on My Arcade</a></p>
+      </div>
+    </div>
     <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false">${ICON.menu}</button>
   </div>
 </div></header>

@@ -8,9 +8,11 @@ import { encodeFrame, encodeFrame2, makeViewer, viewFor } from "./proto.js";
 const MAX_HUMANS = 40;
 const BLOCK = /(n[i1]gg|f[a@]gg?[o0]t|r[e3]t[a@]rd|k[i1]ke|sp[i1]c\b|ch[i1]nk|tr[a@]nn|wh[o0]re|c[u\*]nt|h[i1]tl[e3]r|n[a@]z[i1])/i;
 
-export function cleanName(n) {
+/* `blocked` is the server's full name filter (functions/_shared/namemod.js regexCheck), passed in
+ * by the Worker so this file, which also ships to the browser, stays free of server imports. */
+export function cleanName(n, blocked) {
   n = String(n || "").replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 16);
-  if (!n || BLOCK.test(n.replace(/[\s._-]/g, ""))) return "Player";
+  if (!n || BLOCK.test(n.replace(/[\s._-]/g, "")) || (blocked && blocked(n))) return "Player";
   return n;
 }
 
@@ -52,7 +54,7 @@ export class Room {
     if (m.t === "join") {
       if (c.snake && this.sim.snakes.has(c.snake)) return;
       if (this.humans() >= MAX_HUMANS) { this.send(c, JSON.stringify({ t: "full" })); return; }
-      c.name = cleanName(m.name);
+      c.name = cleanName(m.name, this.opts.nameBlocked);
       c.skin = (m.skin | 0) >>> 0;
       c.snake = this.sim.addPlayer(c.name, c.skin, this.v2 ? m.cos : undefined);
       this.send(c, JSON.stringify({ t: "you", id: c.snake }));

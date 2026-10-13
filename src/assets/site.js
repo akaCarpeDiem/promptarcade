@@ -42,10 +42,18 @@
     el.querySelector(".lv span").textContent = L;
     const s = liveStreak(p);
     el.querySelector(".fl").textContent = s > 1 ? "🔥" + s : "";
-    el.title = `Arcade Pass level ${L} · ${fmt(p.xp)} XP` + (s ? ` · ${s}-day streak` : "");
+    const pop = $(".pass-pop");
+    if (!pop) { el.title = `Arcade Pass level ${L} · ${fmt(p.xp)} XP` + (s ? ` · ${s}-day streak` : ""); return; }
+    $(".pp-lv b", pop).textContent = L;
+    $(".pp-bar i", pop).style.setProperty("--p", Math.round((p.xp - a) / (b - a) * 100) + "%");
+    $(".pp-xp", pop).textContent = `${fmt(p.xp)} XP · ${fmt(b - p.xp)} to level ${L + 1}` + (s > 1 ? `\n🔥 ${s}-day streak` : "");
+    // The sign-in nudge shows only to people who are not signed in.
+    const signedIn = !!(W.paPlayer && W.paPlayer.email && W.paPlayer.email());
+    $(".pp-sync", pop).hidden = signedIn;
   }
   paintPassChip();
   addEventListener("storage", (e) => { if (e.key === "pa_pass_v1") { paintPassChip(); paintBests(); } });
+  addEventListener("pa:account", paintPassChip);
   addEventListener("message", (e) => { if (e.origin === location.origin && e.data && (e.data.type === "pa-pass" || e.data.type === "pa-score")) { setTimeout(() => { paintPassChip(); paintBests(); }, 60); } });
 
   /* ---------- reveal on scroll ---------- */
