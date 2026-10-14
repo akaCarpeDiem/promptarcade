@@ -67,7 +67,22 @@ for (const f of fs.readdirSync(path.join(OUT, "games/play"))) {
   let h = read(p);
   h = h.replace(/<script[^>]*static\.cloudflareinsights\.com[^>]*><\/script>/g, "");
   h = h.replace(/(src|href)="(\/games\/play\/pa-(?:score|gate|kit|data)\.js)(?:\?v=[^"]*)?"/g, (m, a, u) => `${a}="${u}?v=${v(u.slice(1))}"`);
-  if (!h.includes("gtag/js?id=G-L394D0L4NL")) h = h.replace(/<head[^>]*>/i, (m) => m + "\n" + GA_TAG);
+  // Play files only run inside the iframe on /games/<slug>/, which already carries GA, so no
+  // second GA tag here (it double-counted page views). They are noindexed and point search
+  // engines at the game page instead.
+  h = h.replace(/<!-- Google tag \(gtag\.js\) -->/g, "").replace(/<script async src="https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=G-L394D0L4NL"><\/script><script>window\.dataLayer[^<]*<\/script>/g, "");
+  const game = GAMES.find((g) => g.slug === f.replace(/\.html$/, ""));
+  if (game && !h.includes('rel="canonical"')) {
+    const attr = (t) => String(t).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const head = [
+      `<meta name="robots" content="noindex"/>`,
+      `<link rel="canonical" href="${SITE.url}/games/${game.slug}/"/>`,
+      `<meta name="description" content="${attr(game.tagline)}"/>`,
+      `<link rel="icon" href="/favicon.svg" type="image/svg+xml"/>`,
+      `<link rel="icon" href="/icons/icon-32.png" sizes="32x32" type="image/png"/>`,
+    ].join("\n");
+    h = h.replace(/<\/title>/i, (m) => m + "\n" + head);
+  }
   if (!h.includes(ADSENSE_TAG)) h = h.replace(/<\/head>/i, ADSENSE_TAG + "\n</head>");
   fs.writeFileSync(p, h);
 }
