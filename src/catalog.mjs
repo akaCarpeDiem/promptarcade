@@ -14,7 +14,7 @@ export const SITE = {
   url: "https://promptarcade.games",
   email: "support@promptarcade.games",
   tagline: "Every game here was made by AI, from prompts.",
-  description: "Free browser games built entirely by AI models from plain-English prompts — a multiplayer snake arena, a survivors-style roguelite, physics puzzles, a daily word game, a 3D tower stacker and more. Global leaderboards, daily challenges, no account needed.",
+  description: "Free browser games built entirely by AI from plain-English prompts — a multiplayer snake arena, a roguelite, a daily word game and more. No account needed.",
   launched: "2026-10-11"
 };
 
