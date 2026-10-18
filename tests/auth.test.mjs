@@ -25,40 +25,40 @@ let ip = 0;
 const newPlayer = async (name) => createPlayer(env, DB, { name, ipHash: "ip" + ++ip });
 
 test("emails are cleaned and checked", () => {
-  assert.equal(cleanEmail("  Logan@Example.COM "), "logan@example.com");
+  assert.equal(cleanEmail("  User@Example.COM "), "user@example.com");
   assert.equal(cleanEmail("nope"), "");
   assert.equal(cleanEmail("a@b"), "");
   assert.equal(cleanEmail("x<script>@evil.com"), "");
 });
 
 test("first sign-in turns this browser's player into the account and gives a device key", async () => {
-  const p = await newPlayer("Logan");
+  const p = await newPlayer("Tester");
   assert.ok(p.ok, JSON.stringify(p));
-  sqlite.prepare("INSERT INTO scores (slug, name, score, player_id) VALUES ('glowline-arena', 'Logan', 500, ?)").run(p.playerId);
-  const s = await startLogin(env, DB, { email: "logan@example.com", ipHash: "ipA", origin: "https://promptarcade.games" }, send);
+  sqlite.prepare("INSERT INTO scores (slug, name, score, player_id) VALUES ('glowline-arena', 'Tester', 500, ?)").run(p.playerId);
+  const s = await startLogin(env, DB, { email: "user@example.com", ipHash: "ipA", origin: "https://promptarcade.games" }, send);
   assert.ok(s.ok);
-  assert.match(lastCode("logan@example.com"), /^\d{6}$/);
-  const v = await verifyLogin(env, DB, { email: "LOGAN@example.com", code: lastCode("logan@example.com"), playerId: p.playerId, playerToken: p.playerToken, ipHash: "ipA" });
+  assert.match(lastCode("user@example.com"), /^\d{6}$/);
+  const v = await verifyLogin(env, DB, { email: "USER@example.com", code: lastCode("user@example.com"), playerId: p.playerId, playerToken: p.playerToken, ipHash: "ipA" });
   assert.ok(v.ok, JSON.stringify(v));
   assert.equal(v.playerId, p.playerId);
   assert.equal(v.existing, false);
   assert.notEqual(v.playerToken, p.playerToken);
   assert.ok(await authPlayer(DB, v.playerId, v.playerToken), "device key works");
   assert.equal(await authPlayer(DB, p.playerId, p.playerToken), null, "old browser key retired");
-  assert.equal(await accountFor(DB, p.playerId), "logan@example.com");
+  assert.equal(await accountFor(DB, p.playerId), "user@example.com");
   // a used code can't be used twice
-  const again = await verifyLogin(env, DB, { email: "logan@example.com", code: lastCode("logan@example.com"), ipHash: "ipA" });
+  const again = await verifyLogin(env, DB, { email: "user@example.com", code: lastCode("user@example.com"), ipHash: "ipA" });
   assert.equal(again.ok, false);
 });
 
 test("a second device signs in to the same player, its scores move over, renames work, sign-out forgets only that device", async () => {
   const phone = await newPlayer("PhoneGuy");
   sqlite.prepare("INSERT INTO scores (slug, name, score, player_id) VALUES ('block-bloom', 'PhoneGuy', 900, ?)").run(phone.playerId);
-  await startLogin(env, DB, { email: "logan@example.com", ipHash: "ipB" }, send);
-  const v = await verifyLogin(env, DB, { email: "logan@example.com", code: lastCode("logan@example.com"), playerId: phone.playerId, playerToken: phone.playerToken, ipHash: "ipB" });
+  await startLogin(env, DB, { email: "user@example.com", ipHash: "ipB" }, send);
+  const v = await verifyLogin(env, DB, { email: "user@example.com", code: lastCode("user@example.com"), playerId: phone.playerId, playerToken: phone.playerToken, ipHash: "ipB" });
   assert.ok(v.ok && v.existing && v.merged);
-  assert.equal(v.name, "Logan");
-  const acct = sqlite.prepare("SELECT player_id FROM accounts WHERE email = 'logan@example.com'").get().player_id;
+  assert.equal(v.name, "Tester");
+  const acct = sqlite.prepare("SELECT player_id FROM accounts WHERE email = 'user@example.com'").get().player_id;
   assert.equal(v.playerId, acct);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM scores WHERE player_id = ?").get(acct).n, 2, "phone score joined the account");
   const r = await renamePlayer(env, DB, { id: v.playerId, token: v.playerToken, name: "Carpe", ipHash: "ipB" });
@@ -112,7 +112,7 @@ test("progress merges so two devices never overwrite each other", async () => {
   assert.equal(m.ga_xp, 1200);
   assert.deepEqual(m.pa_scores_neon.map((r) => r.score), [30, 10]);
   // stored through the endpoint helper too
-  const acct = sqlite.prepare("SELECT player_id FROM accounts WHERE email = 'logan@example.com'").get().player_id;
+  const acct = sqlite.prepare("SELECT player_id FROM accounts WHERE email = 'user@example.com'").get().player_id;
   await syncState(DB, acct, laptop);
   const r = await syncState(DB, acct, phone);
   assert.equal(r.state.pa_pass_v1.runs, 50);
