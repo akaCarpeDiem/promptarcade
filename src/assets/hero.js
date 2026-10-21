@@ -77,8 +77,9 @@ void main(){
   cv.classList.add("on");
 })();
 
-/* The arcade cabinet: attract mode cycles the games on its screen with a channel-change burst,
-   while the joystick and buttons twitch as if someone were playing. The joystick (or the arrow
+/* The arcade cabinet: attract mode cycles the games on its screen with a channel-change burst.
+   Each change is driven by the joystick: it pushes left, the screen flips to the next game, and
+   it springs back. In between, the buttons get mashed as if someone were playing. The joystick (or the arrow
    keys while it has focus) picks a game; the buttons and the screen open it. */
 (() => {
   const cab = document.querySelector("[data-cab]");
@@ -129,25 +130,31 @@ void main(){
 
   const press = (b, ms = 120) => { b.classList.add("down"); setTimeout(() => b.classList.remove("down"), ms); };
   const tilt = (d, ms) => { cab.dataset.stick = d; if (ms) setTimeout(() => { if (cab.dataset.stick === d) cab.dataset.stick = ""; }, ms); };
-  const step = (d) => { tilt(d > 0 ? "r" : "l", 220); show(i + d); restart(); };
+  // left moves on to the next game (the same push attract mode makes), right goes back one
+  const step = (dir) => { tilt(dir, 260); show(i + (dir === "l" ? 1 : -1)); restart(); };
 
   // attract mode: someone "playing" the demo
   function fidget() {
     if (!paused && !document.hidden) {
       const r = Math.random();
-      if (r < 0.55) tilt("lrud"[Math.floor(Math.random() * 4)], 160 + Math.random() * 260);
-      else if (r < 0.9) press(btns[Math.floor(Math.random() * btns.length)]);
+      if (r < 0.75) press(btns[Math.floor(Math.random() * btns.length)]);
       score += 10 * (1 + Math.floor(Math.random() * 25));
       scoreEl.textContent = String(score).padStart(6, "0");
     }
     setTimeout(fidget, 180 + Math.random() * 420);
   }
-  function restart() { clearInterval(timer); if (!reduce) timer = setInterval(() => { if (!paused && !document.hidden) show(i + 1); }, 4600); }
+  // attract-mode advance: the stick pushes left, the game changes at full tilt, then it springs back
+  function advance() {
+    if (paused || document.hidden) return;
+    tilt("l", 620);
+    setTimeout(() => show(i + 1), 220);
+  }
+  function restart() { clearInterval(timer); if (!reduce) timer = setInterval(advance, 4600); }
 
-  cab.querySelector(".cab-left").addEventListener("click", () => step(-1));
-  cab.querySelector(".cab-right").addEventListener("click", () => step(1));
+  cab.querySelector(".cab-left").addEventListener("click", () => step("l"));
+  cab.querySelector(".cab-right").addEventListener("click", () => step("r"));
   cab.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); step(e.key === "ArrowLeft" ? -1 : 1); }
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); step(e.key === "ArrowLeft" ? "l" : "r"); }
   });
   play.addEventListener("pointerdown", () => btns.slice(0, 3).forEach((b) => press(b, 200)));
   cab.addEventListener("pointerenter", () => { paused = true; });

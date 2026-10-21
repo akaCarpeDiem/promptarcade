@@ -92,8 +92,8 @@ export function cabinet(list) {
     <div class="cab-hud" aria-hidden="true"><span>1UP <b data-cab-score>000000</b></span><span>GAME <b data-cab-n>01</b>/${String(list.length).padStart(2, "0")}</span></div>
     <div class="cab-osd" aria-live="polite"><b data-cab-title>${esc(first.title)}</b><span data-cab-classic>${first.classic ? `Twist on ${esc(first.classic.toLowerCase())}` : "Arcade original"}</span></div>
   </div>
-  <button class="cab-hit cab-left" type="button" aria-label="Previous game"></button>
-  <button class="cab-hit cab-right" type="button" aria-label="Next game"></button>
+  <button class="cab-hit cab-left" type="button" aria-label="Next game"></button>
+  <button class="cab-hit cab-right" type="button" aria-label="Previous game"></button>
   <a class="cab-hit cab-play" href="/games/${first.slug}/#play" aria-label="Play ${esc(first.title)}" data-cab-play></a>
 </div>`;
 }

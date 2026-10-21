@@ -153,9 +153,9 @@ button{font:inherit;color:inherit}
 .cab-svg .bulb{fill:#fff3c4;filter:drop-shadow(0 0 3px #ffd36b);animation:bulb 1.2s steps(1) infinite}
 .cab-svg .bulb.b1{animation-delay:-.4s}.cab-svg .bulb.b2{animation-delay:-.8s}
 @keyframes bulb{0%{opacity:1}33%{opacity:.25}}
-.cab-svg .stick{transform-box:view-box;transform-origin:250px 588px;transition:transform .14s var(--ease)}
-.cab[data-stick="l"] .stick{transform:rotate(-17deg)}
-.cab[data-stick="r"] .stick{transform:rotate(17deg)}
+.cab-svg .stick{transform-box:view-box;transform-origin:250px 588px;transition:transform .26s cubic-bezier(.3,1.6,.5,1)}
+.cab[data-stick="l"] .stick{transform:rotate(-24deg)}
+.cab[data-stick="r"] .stick{transform:rotate(24deg)}
 .cab[data-stick="u"] .stick{transform:translateY(-3px) scaleY(1.04)}
 .cab[data-stick="d"] .stick{transform:translateY(3px) scaleY(.92)}
 .cab-svg .cbtn .cap{transition:transform .08s}
