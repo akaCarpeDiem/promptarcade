@@ -1,7 +1,8 @@
 // The home page arcade cabinet: an SVG cabinet with a live HTML screen laid over it.
 // The screen cycles through the games (src/assets/hero.js drives it); the joystick picks a game
-// and the buttons play it. The SVG's viewBox is 600×1000, and the screen sits at
-// x 196–524, y 176–422, which is where the CSS places .cab-screen.
+// and the buttons play it. The cabinet is drawn on a 600×1000 canvas, but the viewBox shows only
+// the top 690 (marquee, screen and control panel) so the screen can be big; the CSS fades out the
+// cut edge. The screen sits at x 196–524, y 176–422, which is where the CSS places .cab-screen.
 import { esc } from "./html.mjs";
 
 const BULBS = (y) => Array.from({ length: 17 }, (_, i) => `<circle class="bulb b${i % 3}" cx="${176 + i * 23}" cy="${y}" r="4"/>`).join("");
@@ -50,7 +51,7 @@ const FRONT_ART = `<g clip-path="url(#cab-lowclip)">
 
 const BUTTONS = [[364, 584, "c1"], [404, 580, "c2"], [444, 584, "c3"], [376, 606, "c4"], [416, 602, "c5"], [456, 606, "c6"]];
 
-const SVG = `<svg class="cab-svg" viewBox="0 0 600 1000" aria-hidden="true" focusable="false">
+const SVG = `<svg class="cab-svg" viewBox="0 0 600 690" aria-hidden="true" focusable="false">
 <defs>
   <linearGradient id="cab-front" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#17173f"/><stop offset=".5" stop-color="#1d1d4d"/><stop offset="1" stop-color="#121236"/></linearGradient>
   <linearGradient id="cab-side" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#07071a"/><stop offset="1" stop-color="#0f0f2c"/></linearGradient>
