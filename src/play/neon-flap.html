@@ -18,7 +18,7 @@ canvas{display:block;position:fixed;inset:0}
 <script>
 window.paConfig = {
   slug: "neon-flap", title: "Neon Flap", native: true, music: "synthwave", unit: "points",
-  controls: [["Space / ↑ / W", "Flap"], ["Tap / click", "Flap anywhere"]]
+  controls: [["Space", "Flap"], ["↑ / W", "Flap the top twin"], ["↓ / S / Space", "Flap the bottom twin"], ["Tap top / bottom half", "Flap that twin"]]
 };
 </script>
 <script src="/games/play/pa-score.js?v=e650da0b4c"></script>
@@ -32,7 +32,7 @@ window.paConfig = {
 
   let W = 0, H = 0, S = 1, DPR = 1;
   let scroll = 0, speed = 0, simT = 0;
-  let bird = null, gates = [], city = [], stars = [], trail = [];
+  let gates = [], city = [], stars = [];
   let score = 0, gatesPassed = 0, coinsGot = 0, nearMisses = 0, comboNear = 0;
   let flapCd = 0, spawnX = 0, overT = 0, overSent = false, started = false;
   let bgGrad = null;
@@ -54,7 +54,8 @@ window.paConfig = {
     return clamp(baseGap() - gatesPassed * 2.8, minGap(), baseGap());
   }
   function scrollSpeed() {
-    return (220 + gatesPassed * 5 + score * 0.015) * S;
+    // The split sky runs a little slower so two flyers stay fair.
+    return (220 + gatesPassed * 5 + score * 0.015) * S * (mode === "twin" ? 0.86 : 1);
   }
 
   function layout(v) {
@@ -126,21 +127,44 @@ window.paConfig = {
     }
   }
 
-  function resetBird() {
-    bird = {
-      y: H * 0.46, vy: 0, rot: 0, wing: 0,
-      alive: true, glow: 1
-    };
+  // The twist: twin flyers. After the opening gates the flyer splits in two and so does the sky:
+  // one twin in each half, each with its own gates and its own flap button. Every ten gate pairs they
+  // merge back for a short breather, then split again.
+  const SOLO_FIRST = 6, TWIN_RUN = 10, SOLO_RUN = 4, SPACING = 280, TRANS_GAP = 620, TRANS_TIME = 0.7;
+  const TWIN_COL = ["#ff7eb6", "#8ee9ff", "#ff7eb6"];
+  let birds = [], markers = [], spawnIdx = 0, mode = "solo", trans = null, splits = 0, twinGates = 0, keyHintT = 0, crashed = null;
+
+  const midY = () => (ceilY() + floorY()) / 2;
+  function laneBounds(lane) {
+    const pad = 5 * S;
+    if (lane === 1) return [ceilY(), midY() - pad];
+    if (lane === 2) return [midY() + pad, floorY()];
+    return [ceilY(), floorY()];
+  }
+  function modeAt(i) {
+    if (i < SOLO_FIRST) return "solo";
+    return (i - SOLO_FIRST) % (TWIN_RUN + SOLO_RUN) < TWIN_RUN ? "twin" : "solo";
+  }
+  function gapFor(lane) {
+    if (!lane) return gapForRun();
+    const [a, b] = laneBounds(lane), lh = b - a;
+    return clamp(lh * 0.56 - twinGates * 0.9, Math.max(lh * 0.38, birdR() * 5.4), lh * 0.56);
+  }
+
+  function newBird(y, lane) {
+    return { y, vy: 0, rot: 0, wing: 0, alive: true, glow: 1, lane, trail: [], fromY: y, ty: y, hover: 0 };
   }
 
   function reset() {
     scroll = 0; simT = 0; speed = scrollSpeed();
     score = 0; gatesPassed = 0; coinsGot = 0; nearMisses = 0; comboNear = 0;
-    gates = []; trail = []; flapCd = 0; overT = 0; overSent = false; started = false;
-    spawnX = W + 80 * S;
+    gates = []; markers = []; flapCd = 0; overT = 0; overSent = false; started = false;
+    spawnIdx = 0; mode = "solo"; trans = null; splits = 0; twinGates = 0; keyHintT = 0; crashed = null;
     fx.clear(); texts.clear();
-    resetBird();
-    for (let i = 0; i < 4; i++) spawnGate(spawnX + i * (280 + rand(-20, 40)) * S);
+    birds = [newBird(H * 0.46, 0)];
+    spawnX = W + 80 * S;
+    spawnNext(spawnX);
+    for (let i = 0; i < 3; i++) spawnNext(spawnX + (SPACING + rand(-20, 40)) * S);
     PA.music.intensity(0);
     hud.classList.add("on");
     paintHud();
@@ -152,25 +176,33 @@ window.paConfig = {
     PA.stat("s-coins", coinsGot);
   }
 
-  function spawnGate(x) {
-    const gh = gapForRun();
-    const margin = gh / 2 + 60 * S;
-    const gapY = rand(margin, H - margin);
-    const move = gatesPassed > 2 && Math.random() < 0.55 + Math.min(0.35, gatesPassed * 0.02);
+  function spawnGate(x, lane) {
+    const [lt, lb] = laneBounds(lane);
+    const gh = gapFor(lane);
+    const m = gh / 2 + (lane ? 16 : 60) * S;
+    const gmin = lt + m, gmax = Math.max(lt + m, lb - m);
+    const gapY = rand(gmin, gmax);
+    const move = gatesPassed > 2 && Math.random() < (lane ? 0.3 + Math.min(0.3, twinGates * 0.01) : 0.55 + Math.min(0.35, gatesPassed * 0.02));
+    const vy = lane ? 28 : 48;
     gates.push({
-      x,
-      gapY,
-      gapH: gh,
-      gapVy: move ? rand(-48, 48) * S : 0,
-      gapMin: margin,
-      gapMax: H - margin,
-      wobble: rand(TAU),
-      passed: false,
-      scored: false,
-      nearAward: false,
+      x, lane, gapY, gapH: gh,
+      gapVy: move && gmax > gmin ? rand(-vy, vy) * S : 0,
+      gapMin: gmin, gapMax: gmax,
+      wobble: rand(TAU), scored: false, nearAward: false,
       coins: makeCoins(x, gapY, gh)
     });
+  }
+  function spawnNext(x) {
+    const m = modeAt(spawnIdx), prev = spawnIdx ? modeAt(spawnIdx - 1) : m;
+    if (m !== prev) {
+      // Leave a clear stretch for the split or merge to happen in.
+      markers.push({ x: x - 40 * S, to: m });
+      x += TRANS_GAP * S;
+    }
+    if (m === "twin") { spawnGate(x, 1); spawnGate(x + SPACING * S * 0.5, 2); }
+    else spawnGate(x, 0);
     spawnX = x;
+    spawnIdx++;
   }
 
   function makeCoins(gx, gy, gh) {
@@ -190,46 +222,81 @@ window.paConfig = {
     return out;
   }
 
-  function flap() {
-    if (PA.state !== "play" || !bird || !bird.alive || overT > 0) return;
-    if (flapCd > 0) return;
-    flapCd = 0.07;
+  function beginTransition(to) {
+    if (to === mode) return;
+    mode = to;
+    if (to === "twin") {
+      splits++;
+      const y = birds[0].y, [a1, b1] = laneBounds(1), [a2, b2] = laneBounds(2);
+      birds = [newBird(y, 1), newBird(y, 2)];
+      birds[0].ty = (a1 + b1) / 2; birds[1].ty = (a2 + b2) / 2;
+      texts.add(W / 2, H * 0.5, "SPLIT!", { color: "#fff", size: 34, life: 1.1, vy: -20 });
+      keyHintT = splits === 1 ? 4.5 : 2;
+      PA.sfx("power");
+      PA.flash("rgba(142,233,255,.18)", 240);
+    } else {
+      const ys = birds.map(b => b.y);
+      birds = [newBird(ys[0], 0)];
+      birds[0].ty = midY(); birds[0].ghost = ys[1];
+      texts.add(W / 2, H * 0.5, "MERGE", { color: COL.near, size: 30, life: 1, vy: -20 });
+      score += 50;
+      texts.add(playerX(), midY() - 40 * S, "+50", { color: COL.near, size: 18, life: 0.9, vy: -30 });
+      PA.sfx("levelup", { pitch: 1.1 });
+      paintHud();
+    }
+    for (const b of birds) { b.fromY = b.y; b.vy = 0; }
+    trans = { t: 0 };
+    fx.burst(playerX(), birds[0].y, { n: 26, colors: [COL.bird, COL.gate, "#fff"], speed: 200, life: 0.5, size: 2.4, shape: "spark" });
+  }
+
+  function birdFor(lane) { return birds.find(b => b.lane === lane) || null; }
+
+  function flap(lane) {
+    if (PA.state !== "play" || overT > 0 || trans) return;
+    const b = mode === "solo" ? birds[0] : birdFor(lane === 1 ? 1 : 2);
+    if (!b || !b.alive) return;
+    if (b.cd > 0) return;
+    b.cd = 0.07;
     started = true;
-    bird.vy = -420 * S;
-    bird.wing = 1;
-    bird.glow = 1.4;
-    PA.sfx("whoosh", { pitch: 1.05 + Math.min(0.25, gatesPassed * 0.01), vary: 0.04 });
-    PA.tone({ freq: 520, to: 880, type: "triangle", dur: 0.07, vol: 0.06 });
-    fx.burst(playerX(), bird.y + 6 * S, { n: 6, speed: 90, life: 0.35, size: 2.2, color: COL.bird, vy: 30, spread: Math.PI * 0.8, angle: Math.PI / 2 });
+    b.vy = -(mode === "solo" ? 420 : 360) * S;
+    b.hover = 0;
+    b.wing = 1;
+    b.glow = 1.4;
+    PA.sfx("whoosh", { pitch: (b.lane === 1 ? 1.25 : 1.05) + Math.min(0.25, gatesPassed * 0.01), vary: 0.04 });
+    PA.tone({ freq: b.lane === 1 ? 700 : 520, to: b.lane === 1 ? 1100 : 880, type: "triangle", dur: 0.07, vol: 0.06 });
+    fx.burst(playerX(), b.y + 6 * S, { n: 6, speed: 90, life: 0.35, size: 2.2, color: TWIN_COL[b.lane], vy: 30, spread: Math.PI * 0.8, angle: Math.PI / 2 });
   }
 
   PA.onKey((e) => {
+    if (e.repeat) return;
     const k = e.key, c = e.code;
-    if ((k === " " || c === "Space" || k === "ArrowUp" || c === "KeyW" || k === "w" || k === "W") && !e.repeat) {
-      e.preventDefault();
-      flap();
-    }
+    const top = k === "ArrowUp" || c === "KeyW" || k === "w" || k === "W" || c === "KeyF" || k === "f" || k === "F";
+    const bot = k === " " || c === "Space" || k === "ArrowDown" || c === "KeyS" || k === "s" || k === "S" || c === "KeyJ" || k === "j" || k === "J";
+    if (top || bot) { e.preventDefault(); flap(top ? 1 : 2); }
   });
 
   view.canvas.addEventListener("pointerdown", (e) => {
     if (e.target.closest && e.target.closest(".pa-tb,.pa-layer,#pa-gate,.pa-touch")) return;
     e.preventDefault();
-    flap();
+    const p = view.toLocal(e.clientX, e.clientY);
+    flap(p.y < midY() ? 1 : 2);
   });
 
   PA.onStart(reset);
 
-  function kill() {
-    if (!bird || !bird.alive) return;
-    bird.alive = false;
+  function kill(b) {
+    if (!b || !b.alive || overT > 0) return;
+    b.alive = false;
+    crashed = b;
     overT = 0.85;
     PA.shake(16, 0.5);
     PA.hitstop(110);
     PA.flash("rgba(255,126,182,.45)", 320);
     PA.sfx("explode");
-    fx.burst(playerX(), bird.y, { n: 48, colors: [COL.bird, COL.gate, COL.gateAlt, "#fff"], speed: 260, life: 0.75, size: 3.2, shape: "spark" });
-    fx.burst(playerX(), bird.y, { n: 20, color: COL.bird, speed: 120, life: 0.55, size: 4, gravity: 420 });
-    texts.add(playerX(), bird.y - 20 * S, "CRASH", { color: COL.bird, size: 28, life: 0.9, vy: -30 });
+    const col = TWIN_COL[b.lane];
+    fx.burst(playerX(), b.y, { n: 48, colors: [col, COL.gate, COL.gateAlt, "#fff"], speed: 260, life: 0.75, size: 3.2, shape: "spark" });
+    fx.burst(playerX(), b.y, { n: 20, color: col, speed: 120, life: 0.55, size: 4, gravity: 420 });
+    texts.add(playerX(), b.y - 20 * S, "CRASH", { color: col, size: 28, life: 0.9, vy: -30 });
   }
 
   function circleRect(cx, cy, r, rx, ry, rw, rh) {
@@ -239,21 +306,30 @@ window.paConfig = {
     return dx * dx + dy * dy < r * r;
   }
 
-  function collideGate(g) {
+  function pillarSpan(g) {
+    const top = g.lane === 2 ? midY() : 0, bot = g.lane === 1 ? midY() : H;
+    return [top, g.gapY - g.gapH / 2, g.gapY + g.gapH / 2, bot];
+  }
+
+  function collideGate(g, b) {
     const r = birdR() * 0.92;
     const px = playerX();
-    const topH = g.gapY - g.gapH / 2;
-    const botY = g.gapY + g.gapH / 2;
+    const [top, gt, gb, bot] = pillarSpan(g);
     const gx = g.x - gateW() / 2;
     const gw = gateW();
-    if (circleRect(px, bird.y, r, gx, 0, gw, topH)) return true;
-    if (circleRect(px, bird.y, r, gx, botY, gw, H - botY)) return true;
+    if (circleRect(px, b.y, r, gx, top, gw, gt - top)) return true;
+    if (circleRect(px, b.y, r, gx, gb, gw, bot - gb)) return true;
     return false;
   }
 
   function updateGates(dt) {
     const dx = speed * dt;
     scroll += dx;
+    spawnX -= dx;
+    for (let i = markers.length - 1; i >= 0; i--) {
+      markers[i].x -= dx;
+      if (markers[i].x <= playerX() && overT <= 0) { beginTransition(markers[i].to); markers.splice(i, 1); }
+    }
     for (let i = gates.length - 1; i >= 0; i--) {
       const g = gates[i];
       g.x -= dx;
@@ -265,11 +341,13 @@ window.paConfig = {
         }
         g.wobble += dt * 2.2;
       }
+      const b = trans ? null : (g.lane ? birdFor(g.lane) : (mode === "solo" ? birds[0] : null));
       for (const c of g.coins) {
         if (c.got) continue;
         c.x -= dx;
         c.ph += dt * 5;
-        const d = PA.dist(playerX(), bird.y, c.x, c.y);
+        if (!b || !b.alive) continue;
+        const d = PA.dist(playerX(), b.y, c.x, c.y);
         if (d < birdR() + c.r) {
           c.got = true;
           coinsGot++;
@@ -280,23 +358,25 @@ window.paConfig = {
           paintHud();
         }
       }
-      if (bird.alive && collideGate(g)) kill();
+      if (b && b.alive && overT <= 0 && collideGate(g, b)) kill(b);
 
       const px = playerX();
-      if (!g.scored && px > g.x) {
+      if (!g.scored && px > g.x && overT <= 0) {
         g.scored = true;
         gatesPassed++;
-        score += 10;
+        if (g.lane) twinGates++;
+        const pts = g.lane ? 15 : 10;
+        score += pts;
         PA.sfx("blip", { pitch: 1 + gatesPassed * 0.03 });
-        texts.add(g.x, g.gapY - g.gapH * 0.35, "+10", { color: COL.gate, size: 18, life: 0.7, vy: -35 });
+        texts.add(g.x, g.gapY - g.gapH * 0.35, "+" + pts, { color: g.lane === 1 ? COL.gate : COL.gate, size: 18, life: 0.7, vy: -35 });
         PA.music.intensity(Math.min(1, gatesPassed / 28));
         paintHud();
       }
-      if (!g.nearAward && g.scored && bird.alive) {
+      if (!g.nearAward && g.scored && b && b.alive && overT <= 0) {
         g.nearAward = true;
         const top = g.gapY - g.gapH / 2;
         const bot = g.gapY + g.gapH / 2;
-        const edge = Math.min(Math.abs(bird.y - top), Math.abs(bird.y - bot));
+        const edge = Math.min(Math.abs(b.y - top), Math.abs(b.y - bot));
         const nearLim = 22 * S;
         if (edge < nearLim && edge > birdR() * 0.35) {
           nearMisses++;
@@ -304,21 +384,20 @@ window.paConfig = {
           const bonus = 12 + comboNear * 3;
           score += bonus;
           PA.sfx("combo", { pitch: 1 + comboNear * 0.06 });
-          texts.add(px, bird.y - 28 * S, "NEAR +" + bonus, { color: COL.near, size: 17, life: 0.85, vy: -40 });
-          fx.burst(px, bird.y, { n: 8, color: COL.near, speed: 70, life: 0.4, size: 2 });
+          texts.add(px, b.y - 28 * S, "NEAR +" + bonus, { color: COL.near, size: 17, life: 0.85, vy: -40 });
+          fx.burst(px, b.y, { n: 8, color: COL.near, speed: 70, life: 0.4, size: 2 });
           paintHud();
         } else comboNear = 0;
       }
       if (g.x < -gateW() * 2) gates.splice(i, 1);
     }
-    const last = gates[gates.length - 1];
-    if (last && last.x < W - 300 * S) spawnGate(last.x + (280 + rand(-15, 35)) * S);
+    if (spawnX < W - 300 * S) spawnNext(spawnX + (SPACING + rand(-15, 35)) * S);
   }
 
   function update(dt, t) {
     simT += dt;
     fx.update(dt); texts.update(dt);
-    if (flapCd > 0) flapCd -= dt;
+    if (keyHintT > 0) keyHintT -= dt;
     speed = scrollSpeed();
 
     const playing = PA.state === "play";
@@ -329,44 +408,67 @@ window.paConfig = {
 
     if (overT > 0) {
       overT -= dt;
-      bird.vy += 980 * S * dt;
-      bird.y += bird.vy * dt;
-      bird.rot = clamp(bird.vy / 520, -0.4, 1.2);
+      const b = crashed;
+      if (b) {
+        b.vy += 980 * S * dt;
+        b.y += b.vy * dt;
+        b.rot = clamp(b.vy / 520, -0.4, 1.2);
+      }
       if (overT <= 0 && !overSent) {
         overSent = true;
         hud.classList.remove("on");
         PA.sfx("gameover");
         PA.gameOver(score, {
           title: "Lights out",
-          stats: [["Gates", gatesPassed], ["Coins", coinsGot], ["Near misses", nearMisses]]
+          stats: [["Gates", gatesPassed], ["Twin gates", twinGates], ["Splits", splits], ["Coins", coinsGot], ["Near misses", nearMisses]]
         });
       }
       return;
     }
 
-    if (!bird.alive) return;
-
-    if (started) {
-      bird.vy += 920 * S * dt;
-      bird.y += bird.vy * dt;
-      bird.rot = clamp(bird.vy / 480, -0.55, 1.05);
-      bird.wing = Math.max(0, bird.wing - dt * 7);
-      bird.glow = 1 + (bird.glow - 1) * Math.exp(-6 * dt);
-    } else {
-      bird.y += Math.sin(t * 2.4) * 0.35;
-      bird.rot = Math.sin(t * 2.4) * 0.08;
+    if (trans) {
+      trans.t += dt;
+      const k = PA.ease.inOut(clamp(trans.t / TRANS_TIME, 0, 1));
+      for (const b of birds) { b.y = b.fromY + (b.ty - b.fromY) * k; b.rot = 0; b.vy = 0; }
+      if (birds[0].ghost != null) birds[0].ghostY = birds[0].ghost + (birds[0].ty - birds[0].ghost) * k;
+      // Each twin hovers until its first flap (or a short grace runs out), so a split is never a cheap death.
+      if (trans.t >= TRANS_TIME) { trans = null; for (const b of birds) { b.ghost = null; b.vy = 0; b.hover = mode === "twin" ? (splits === 1 ? 2.4 : 1.4) : 0.6; b.baseY = b.y; } }
     }
 
-    trail.push({ x: playerX(), y: bird.y, life: 0.35 });
-    if (trail.length > 24) trail.shift();
-    for (let i = trail.length - 1; i >= 0; i--) {
-      trail[i].life -= dt;
-      if (trail[i].life <= 0) trail.splice(i, 1);
+    for (const b of birds) {
+      if (b.cd > 0) b.cd -= dt;
+      if (!trans && b.hover > 0) {
+        b.hover -= dt;
+        b.y = b.baseY + Math.sin(simT * 5 + b.lane) * 4 * S;
+        b.rot = 0;
+        if (b.hover <= 0) b.vy = 0;
+      } else if (!trans) {
+        if (started) {
+          b.vy += (mode === "solo" ? 920 : 860) * S * dt;
+          b.y += b.vy * dt;
+          b.rot = clamp(b.vy / 480, -0.55, 1.05);
+          b.wing = Math.max(0, b.wing - dt * 7);
+          b.glow = 1 + (b.glow - 1) * Math.exp(-6 * dt);
+        } else {
+          b.y += Math.sin(t * 2.4) * 0.35;
+          b.rot = Math.sin(t * 2.4) * 0.08;
+        }
+      }
+      b.trail.push({ x: playerX(), y: b.y, life: 0.35 });
+      if (b.trail.length > 24) b.trail.shift();
+      for (let i = b.trail.length - 1; i >= 0; i--) {
+        b.trail[i].life -= dt;
+        if (b.trail[i].life <= 0) b.trail.splice(i, 1);
+      }
+      if (!trans) {
+        const [lt, lb] = laneBounds(b.lane);
+        if (b.y - birdR() < lt || b.y + birdR() > lb) kill(b);
+      }
     }
 
-    if (bird.y - birdR() < ceilY() || bird.y + birdR() > floorY()) kill();
-
-    updateGates(dt);
+    // Nothing scrolls in until the first flap, so the run starts when you do.
+    if (started) updateGates(dt);
+    else scroll += 40 * S * dt;
   }
 
   function drawStars(t) {
@@ -424,8 +526,7 @@ window.paConfig = {
   function drawGate(g, t) {
     const gx = g.x;
     const gw = gateW();
-    const topH = g.gapY - g.gapH / 2;
-    const botY = g.gapY + g.gapH / 2;
+    const [spanTop, topH, botY, spanBot] = pillarSpan(g);
     const col = Math.sin(g.wobble) > 0 ? COL.gate : COL.gateAlt;
     const pulse = 0.55 + 0.25 * Math.sin(t * 4 + g.x * 0.02);
 
@@ -449,8 +550,8 @@ window.paConfig = {
       else ctx.fillRect(gx - gw / 2 - 4 * S, y, gw + 8 * S, capH);
       ctx.restore();
     }
-    pillar(0, topH, true);
-    pillar(botY, H - botY, false);
+    pillar(spanTop, topH - spanTop, true);
+    pillar(botY, spanBot - botY, false);
 
     ctx.save();
     ctx.strokeStyle = "rgba(255,255,255,.08)";
@@ -480,36 +581,37 @@ window.paConfig = {
     }
   }
 
-  function drawBird(t) {
+  function drawBird(bird, y, alpha) {
     if (!bird) return;
     const px = playerX();
     const r = birdR();
+    const main = TWIN_COL[bird.lane], core = bird.lane === 1 ? "#d8f8ff" : COL.birdCore;
     ctx.save();
-    ctx.translate(px, bird.y);
+    ctx.translate(px, y);
     ctx.rotate(bird.rot);
-    for (let i = 0; i < trail.length; i++) {
-      const tr = trail[i];
+    if (alpha == null) for (let i = 0; i < bird.trail.length; i++) {
+      const tr = bird.trail[i];
       const k = tr.life / 0.35;
       ctx.globalAlpha = k * 0.25;
-      ctx.fillStyle = COL.bird;
+      ctx.fillStyle = main;
       ctx.beginPath();
-      ctx.arc(tr.x - px, tr.y - bird.y, r * 0.55 * k, 0, TAU);
+      ctx.arc(tr.x - px, tr.y - y, r * 0.55 * k, 0, TAU);
       ctx.fill();
     }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
     ctx.globalCompositeOperation = "lighter";
-    ctx.shadowColor = COL.bird;
+    ctx.shadowColor = main;
     ctx.shadowBlur = 22 * S * bird.glow;
     const body = ctx.createRadialGradient(-r * 0.2, -r * 0.25, 0, 0, 0, r * 1.2);
     body.addColorStop(0, "#fff");
-    body.addColorStop(0.25, COL.birdCore);
-    body.addColorStop(0.55, COL.bird);
-    body.addColorStop(1, "rgba(255,126,182,0)");
+    body.addColorStop(0.25, core);
+    body.addColorStop(0.55, main);
+    body.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = body;
     ctx.beginPath();
     ctx.ellipse(0, 0, r * 1.15, r * 0.88, 0, 0, TAU);
     ctx.fill();
-    ctx.fillStyle = COL.gate;
+    ctx.fillStyle = bird.lane === 1 ? COL.bird : COL.gate;
     ctx.beginPath();
     ctx.moveTo(r * 0.55, -r * 0.15);
     ctx.lineTo(r * 1.35, -r * (0.55 + bird.wing * 0.35));
@@ -554,6 +656,35 @@ window.paConfig = {
     ctx.setLineDash([]);
   }
 
+  function drawSplit(t) {
+    // The glowing divide between the two skies.
+    const k = mode === "twin" ? (trans ? clamp(trans.t / TRANS_TIME, 0, 1) : 1) : (trans ? 1 - clamp(trans.t / TRANS_TIME, 0, 1) : 0);
+    if (k <= 0) return;
+    const y = midY(), half = W / 2 * PA.ease.outCubic(k);
+    ctx.save();
+    const grd = ctx.createLinearGradient(0, y - 18 * S, 0, y + 18 * S);
+    grd.addColorStop(0, "rgba(142,233,255,0)"); grd.addColorStop(0.5, "rgba(196,166,255," + (0.18 * k) + ")"); grd.addColorStop(1, "rgba(255,126,182,0)");
+    ctx.fillStyle = grd; ctx.fillRect(W / 2 - half, y - 18 * S, half * 2, 36 * S);
+    ctx.strokeStyle = COL.gateAlt; ctx.shadowColor = COL.gateAlt; ctx.shadowBlur = 16 * S;
+    ctx.globalAlpha = (0.7 + 0.2 * Math.sin(t * 6)) * k; ctx.lineWidth = 2.5 * S;
+    ctx.beginPath(); ctx.moveTo(W / 2 - half, y); ctx.lineTo(W / 2 + half, y); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawKeyHints(t) {
+    if ((keyHintT <= 0 && !birds.some(b => b.hover > 0)) || mode !== "twin" || overT > 0) return;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, Math.max(keyHintT, ...birds.map(b => b.hover))) * (0.7 + 0.3 * Math.sin(t * 5));
+    ctx.font = "600 " + Math.round(14 * S) + "px 'JetBrains Mono', monospace";
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    for (const b of birds) {
+      const label = PA.isTouch ? (b.lane === 1 ? "TAP TOP HALF" : "TAP BOTTOM HALF") : (b.lane === 1 ? "W / ↑" : "SPACE / ↓");
+      ctx.fillStyle = TWIN_COL[b.lane];
+      ctx.fillText(label, playerX() + 30 * S, b.y);
+    }
+    ctx.restore();
+  }
+
   function drawHint(t) {
     if (started || PA.state !== "play" || overT > 0) return;
     const a = 0.55 + 0.35 * Math.sin(t * 3);
@@ -578,16 +709,24 @@ window.paConfig = {
     for (const g of gates) {
       if (g.x > -gateW() && g.x < W + gateW()) drawGate(g, t);
     }
-    drawBird(t);
+    drawSplit(t);
+    for (const b of birds) {
+      drawBird(b, b.y);
+      if (b.ghost != null && b.ghostY != null) drawBird({ ...b, lane: 1 }, b.ghostY, 0.8);
+    }
     fx.draw(ctx);
     texts.draw(ctx);
     drawHint(t);
+    drawKeyHints(t);
   }
 
   window.__nflap = () => ({
     score, gates: gatesPassed, coins: coinsGot, nearMisses,
-    alive: !!(bird && bird.alive && overT <= 0),
-    y: bird ? bird.y : 0, vy: bird ? bird.vy : 0,
+    alive: birds.length > 0 && birds.every(b => b.alive) && overT <= 0,
+    mode, splits, twinGates, trans: !!trans,
+    birds: birds.map(b => ({ lane: b.lane, y: b.y, vy: b.vy })),
+    gateList: gates.map(g => ({ x: g.x, lane: g.lane, gapY: g.gapY, gapH: g.gapH })),
+    y: birds[0] ? birds[0].y : 0, vy: birds[0] ? birds[0].vy : 0,
     gateCount: gates.length, scroll, speed
   });
 

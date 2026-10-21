@@ -190,57 +190,57 @@ export const GAMES = [
   {
     slug: "void-rocks", title: "Void Rocks", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#c49bff", accent2: "#5ef2ff", unit: "points",
-    classic: "Vector rock shooter", twist: "Glowing vector art with real inertia and screen wrap, saucers that hunt you, and a hyperspace escape.",
-    tagline: "A glowing vector rock shooter with inertia and saucers.",
-    about: "A glowing vector rock shooter. Thrust, drift and blast rocks into smaller rocks, outgun the saucers, and hyperspace out of trouble when it gets crowded.",
+    classic: "Vector rock shooter", twist: "A tractor tether: grab a rock, whirl it round your ship as a wrecking ball, then fling it through the field for chain multipliers.",
+    tagline: "A vector rock shooter where the rocks are your best weapon.",
+    about: "A glowing vector rock shooter with a tractor tether. Split the big rocks with your gun, then grab a small one and it whirls round your ship as a wrecking ball, smashing whatever it touches and soaking up saucer fire. Let go and it flies the way you're facing, ploughing through the field: every rock it hits raises the chain multiplier. Thrust, drift and hyperspace out of trouble when it gets crowded.",
     credit: CLAUDE_CURSOR,
     brief: "A vector-style rock shooter with inertia, screen wrap, splitting rocks, saucers, hyperspace and waves.",
-    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, saucers and waves, then glow rendering, audio and touch clusters.",
-    tech: ["Inertia and screen wrap", "Splitting rocks and saucers", "Glow vector rendering"]
+    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, saucers and waves, then glow rendering, audio and touch clusters. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
+    tech: ["Inertia and screen wrap", "Tether that winds up as it whirls; throws aim along the ship's nose", "Thrown rocks pierce the field and count a chain multiplier", "Glow vector rendering"]
   },
   {
     slug: "star-siege", title: "Star Siege", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#ff7eb6", accent2: "#7dffb0", unit: "points",
-    classic: "Alien invasion", twist: "Eroding pixel shields and power-ups, and a formation that speeds up as you thin it out.",
-    tagline: "Hold the line against a marching alien formation.",
-    about: "Hold the line against a marching alien formation. Shoot through the ranks before they land, use the shields while they last, and tag the mothership for a bonus.",
+    classic: "Alien invasion", twist: "Colour lasers: a hit on the wrong colour paints the alien yours, and a hit on a match chain-pops the whole touching cluster.",
+    tagline: "Paint the invasion, then pop it in chains.",
+    about: "A marching alien formation in four colours, and a laser that carries one of them. Hit an alien of a different colour and you paint it yours. Hit one that matches and every touching alien of that colour detonates in a chain, worth more the bigger the cluster. Switch colours to find the big clusters, paint bridges to join them, and pop them before the formation lands.",
     credit: CLAUDE_CURSOR,
     brief: "A fixed-shooter invasion game: marching formation, three alien types, eroding shields, mothership and faster waves.",
-    process: "Built by an AI coding agent from a multi-step brief: the formation march and shooting first, then shields, waves and power-ups, then pixel sprites, audio and touch controls.",
-    tech: ["Eroding pixel shields", "Speed-up as the formation thins", "Touch drag with auto fire"]
+    process: "Built by an AI coding agent from a multi-step brief: the formation march and shooting first, then shields and waves, then pixel sprites, audio and touch controls. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
+    tech: ["Flood fill through touching same-colour aliens, popped in a ripple", "A fourth colour joins from wave 3", "Eroding pixel shields", "Touch drag with auto fire"]
   },
   {
     slug: "prism-breaker", title: "Prism Breaker", added: "2026-09-20",
     genre: "Arcade", tags: ["arcade", "breakout"], difficulty: "Mid", accent: "#6ec8ff", accent2: "#c49bff", unit: "points",
-    classic: "Brick breaker", twist: "Combos for chaining hits without touching the paddle, plus multiball, lasers and steel bricks.",
-    tagline: "A glassy neon brick-breaker with power-ups and combos.",
-    about: "A glassy neon brick-breaker. Angle shots off your paddle, chain combos without touching it, and catch power-ups for multiball, lasers and a wider paddle.",
+    classic: "Brick breaker", twist: "Spin: the paddle's motion at contact puts spin on the ball, so shots curve in flight round steel guards, and bent breaks score double.",
+    tagline: "A neon brick-breaker where the ball curves.",
+    about: "A glassy neon brick-breaker with spin. Move the paddle as the ball touches it and the ball leaves spinning, bending in flight the way you swept. Curve shots round the steel guards that wall off each layout, and any brick broken on a bend scores double. Chain combos without touching the paddle, catch multiball, lasers and a wider paddle, and the six layouts loop faster each time round.",
     credit: CLAUDE_CURSOR,
     brief: "A brick-breaker with handcrafted layouts, multi-hit and steel bricks, power-ups, combos and a speed ramp.",
-    process: "Built by an AI coding agent from a multi-step brief: physics and paddle control first, then layouts and power-ups, then effects, audio and touch drag.",
-    tech: ["Paddle-angle ball control", "Multiball, lasers and wide paddle", "Handcrafted layouts"]
+    process: "Built by an AI coding agent from a multi-step brief: physics and paddle control first, then layouts and power-ups, then effects, audio and touch drag. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
+    tech: ["Spin from the paddle's measured speed; the ball's velocity turns a little every frame", "Six layouts with steel guards, looping faster", "Multiball, lasers and wide paddle"]
   },
   {
     slug: "fusion-2048", title: "Fusion 2048", added: "2026-09-20",
     genre: "Puzzle", tags: ["puzzle"], difficulty: "Simple", accent: "#5ef2ff", accent2: "#ff7eb6", unit: "points",
-    classic: "Sliding tiles", twist: "Glowing fusion effects and sound that climbs with every merge as you push past 2048.",
-    tagline: "Slide and fuse glowing tiles past 2048.",
-    about: "Slide glowing tiles and fuse equal numbers into bigger ones. Plan your corners, build chains and see how far past 2048 you can push.",
+    classic: "Sliding tiles", twist: "Chain reactions: a fused tile that lands next to its twin fuses again for a multiplier, while lead blocks drop in and wall off lines.",
+    tagline: "Slide, fuse and set off chain reactions past 2048.",
+    about: "Slide glowing tiles and fuse equal numbers into bigger ones, but a freshly fused tile that lands touching its twin fuses again on its own, and again, each link worth more. Set up cascades for big chains. Every few moves a lead block drops onto the board: tiles can't pass it, so it splits its row and column in two until it crumbles.",
     credit: CLAUDE_CURSOR,
     brief: "A 2048 sliding-tile game (the original is open source under MIT) with tweened slides, merge particles and escalating sound.",
-    process: "Built by an AI coding agent from a short multi-step brief: board rules first, then animation and juice, then swipe input.",
-    tech: ["Tweened slides and merges", "Swipe input", "Escalating sound"]
+    process: "Built by an AI coding agent from a short multi-step brief: board rules first, then animation and juice, then swipe input. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
+    tech: ["Chain reactions resolved as their own animated steps", "Lead cells split each line into runs that slide separately", "Tweened slides and merges", "Swipe input"]
   },
   {
     slug: "neon-flap", title: "Neon Flap", added: "2026-09-20",
-    genre: "Arcade", tags: ["arcade", "one-button"], difficulty: "Simple", accent: "#ff7eb6", accent2: "#8ee9ff", unit: "points",
-    classic: "One-tap flyer", twist: "Moving laser gates, coins to grab and near-miss bonuses for shaving the edges.",
-    tagline: "One button, one glowing flyer, endless laser gates.",
-    about: "One button, one glowing flyer, endless laser gates over a neon city. Flap through the gaps, grab coins and shave the edges for near-miss bonuses.",
+    genre: "Arcade", tags: ["arcade", "reflex"], difficulty: "Mid", accent: "#ff7eb6", accent2: "#8ee9ff", unit: "points",
+    classic: "One-tap flyer", twist: "The flyer splits in two: one twin in each half of the sky, each with its own gates and its own flap button.",
+    tagline: "One flyer becomes two. Fly both at once.",
+    about: "A glowing flyer over a neon city, and after the first six gates it splits in two. The sky divides down the middle: the cyan twin flies the top half and the pink twin the bottom, each with its own gates, and each with its own button. The gates are staggered so your taps alternate. Every ten gate pairs the twins merge back for a breather, then split again.",
     credit: CLAUDE_CURSOR,
     brief: "A one-button flyer with moving gates, shrinking gaps, coins and near-miss bonuses.",
-    process: "Built by an AI coding agent from a short multi-step brief: flight feel first, then gate patterns and difficulty, then parallax art and effects.",
-    tech: ["Parallax city", "Near-miss detection", "Moving gates"]
+    process: "Built by an AI coding agent from a short multi-step brief: flight feel first, then gate patterns and difficulty, then parallax art and effects. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
+    tech: ["Two lanes with their own gates, staggered half a gap apart", "Split and merge markers ride the gate stream", "Parallax city", "Near-miss detection"]
   }
 ];
 
@@ -257,6 +257,7 @@ export const RETIRED = {
 
 /* What's-new feed (newest first). */
 export const NEWS = [
+  { date: "2026-10-21", title: "Five classics get a real twist", body: "Void Rocks now has a tractor tether: whirl a rock round your ship and fling it for chain kills. Star Siege lasers carry a colour, so you paint aliens and pop matching clusters. Prism Breaker balls take spin off the paddle and curve round steel. Fusion 2048 sets off chain reactions while lead blocks wall off the board. And Neon Flap splits into twin flyers, one in each half of the sky." },
   { date: "2026-10-21", title: "Classics with a twist", body: "PromptArcade is now an arcade of prompt-made classics with a twist: well-known games remade by AI, each changed enough to play differently. Every game page now says which classic it remakes and what the twist is, and games that aren't remakes have their own Originals shelf. The home page has a new arcade cabinet that plays through the shelf." },
   { date: "2026-10-11", title: "PromptArcade 3.0", body: "A full redesign and eight new games made with Claude Opus 5.5 — including a live multiplayer snake arena, a survivors-style roguelite, a daily word game and a daily dungeon. Plus the Arcade Pass: XP, badges, streaks and daily quests that follow you across every game." },
   { date: "2026-10-11", title: "Retired the one-prompt plates", body: "The early single-prompt experiments and two remakes have been retired so the shelf is all full builds. Old links now land on the games that replaced them." },
