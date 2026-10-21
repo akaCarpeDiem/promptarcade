@@ -25,7 +25,7 @@ html,body{margin:0;height:100%;background:#03040b;color:#eef0ff;overflow:hidden;
 <script>
 window.paConfig = {
   slug: "nebula-drop", title: "Nebula Drop", native: true, music: "space", unit: "points",
-  controls: [["Mouse / touch", "Aim the drop"], ["Click / tap / Space", "Drop"], ["← →", "Aim with keys"]]
+  controls: [["Mouse / touch", "Aim round the rim"], ["Click / tap / Space", "Drop"], ["← →", "Circle the rim with keys"]]
 };
 </script>
 <script src="/games/play/pa-score.js"></script>
@@ -39,8 +39,9 @@ const $ = (id) => document.getElementById(id);
 let view = null, ctx = null;
 const fx = new PA.Particles(1200), texts = new PA.Texts();
 
-/* jar in logical units */
-const JW = 420, JH = 640, TOP_LINE = 92, GRAV = 1650;
+/* The twist: no jar. Everything falls toward a star at the centre of a round well, from wherever
+   you drop it on the rim, so the pile grows outward in every direction. Logical units. */
+const JW = 700, JH = 700, CX = 350, CY = 350, R_WELL = 318, R_DANGER = 268, R_CORE = 24, GRAV = 1500;
 const TIERS = [
   { name: "Stardust", r: 15, c: ["#fff7c2", "#ffd36b"] },
   { name: "Pebble", r: 20, c: ["#b9c2d8", "#59627a"] },
@@ -104,7 +105,7 @@ const nebula = (() => {
 
 /* ---------- state ---------- */
 let S = 1, ox = 0, oy = 0;
-let bodies = [], nextId = 1, aimX = JW / 2, curTier = 0, nextTier = 0, dropCd = 0, score = 0, best = 0, combo = 0, comboT = 0;
+let bodies = [], nextId = 1, aimA = -Math.PI / 2, curTier = 0, nextTier = 0, dropCd = 0, score = 0, best = 0, combo = 0, comboT = 0;
 let dangerT = 0, over = false, biggest = 0, merges = 0, waves = [], running = false, keyAim = 0, startT = 0;
 try { best = +localStorage.getItem("nd_best") || 0; } catch (e) {}
 $("nd-best").textContent = best.toLocaleString();
@@ -113,12 +114,14 @@ function layout(v) {
   v = v || view;
   const w = v.w, h = v.h;
   const sideW = w > h * 0.9 ? 190 : 0;
-  S = Math.min((w - sideW - 30) / (JW + 40), (h - 30) / (JH + 120));
-  ox = (w - sideW - JW * S) / 2 + (sideW ? 0 : 0);
-  oy = (h - JH * S) / 2 + 40 * S;
+  // portrait: the panels sit in a strip along the top and the well fills the space below
+  const topH = sideW ? 0 : 150;
+  S = Math.min((w - sideW - 20) / JW, (h - (sideW ? 20 : topH + 20)) / JH);
+  ox = (w - sideW - JW * S) / 2;
+  oy = sideW ? (h - JH * S) / 2 : topH + (h - topH - JH * S) / 2;
   const side = $("nd-side");
-  if (sideW) { side.style.left = (ox + JW * S + 24) + "px"; side.style.top = (oy) + "px"; side.style.right = ""; side.style.flexDirection = "column"; side.style.transform = ""; }
-  else { side.style.left = "8px"; side.style.top = "56px"; side.style.flexDirection = "column"; side.style.transform = "scale(.8)"; side.style.transformOrigin = "top left"; }
+  if (sideW) { side.style.left = (ox + JW * S + 24) + "px"; side.style.top = (oy) + "px"; side.style.right = ""; side.style.flexDirection = "column"; side.style.alignItems = ""; side.style.transform = ""; }
+  else { side.style.left = "8px"; side.style.top = "56px"; side.style.flexDirection = "row"; side.style.alignItems = "flex-start"; side.style.transform = "scale(.72)"; side.style.transformOrigin = "top left"; }
 }
 view = PA.canvas($("c"), { onResize: layout });
 ctx = view.ctx;
@@ -130,7 +133,10 @@ function reset() {
   fx.clear(); texts.clear();
   paintScore(); paintNext(); paintLadder();
 }
-function paintScore() { PA.stat($("nd-score").parentElement, score.toLocaleString()); $("nd-score").textContent = score.toLocaleString(); }
+function paintScore() {
+  PA.stat($("nd-score").parentElement, score.toLocaleString()); $("nd-score").textContent = score.toLocaleString();
+  if (score > best) $("nd-best").textContent = score.toLocaleString();
+}
 function paintNext() {
   const c = $("nd-next-c").getContext("2d"); c.clearRect(0, 0, 120, 120);
   const r = TIERS[nextTier].r; const k = Math.min(1, 50 / r);
@@ -146,11 +152,12 @@ function addBody(t, x, y, vx, vy) {
   const b = { id: nextId++, t, r: TIERS[t].r, x, y, vx: vx || 0, vy: vy || 0, rot: Math.random() * TAU, w: 0, born: performance.now(), settled: 0, m: TIERS[t].r * TIERS[t].r };
   bodies.push(b); return b;
 }
+function spawnPoint(r) { const d = R_WELL - r - 2; return [CX + Math.cos(aimA) * d, CY + Math.sin(aimA) * d]; }
 function drop() {
   if (!running || dropCd > 0 || over) return;
   const r = TIERS[curTier].r;
-  const x = Math.max(r, Math.min(JW - r, aimX));
-  addBody(curTier, x, TOP_LINE - 50, 0, 120).dropped = true;
+  const [x, y] = spawnPoint(r);
+  addBody(curTier, x, y, -Math.cos(aimA) * 140, -Math.sin(aimA) * 140).dropped = true;
   PA.sfx("whoosh", { pitch: 1.6 - curTier * .08, vol: .5 });
   curTier = nextTier; nextTier = randTier(); dropCd = 0.48;
   paintNext();
@@ -160,7 +167,12 @@ function drop() {
 function step(dt) {
   const SUB = 8, h = dt / SUB;
   for (let s = 0; s < SUB; s++) {
-    for (const b of bodies) { b.vy += GRAV * h; b.x += b.vx * h; b.y += b.vy * h; }
+    // Gravity points at the core instead of down.
+    for (const b of bodies) {
+      const dx = CX - b.x, dy = CY - b.y, d = Math.hypot(dx, dy) || 1;
+      b.vx += dx / d * GRAV * h; b.vy += dy / d * GRAV * h;
+      b.x += b.vx * h; b.y += b.vy * h;
+    }
     // pairwise contacts
     for (let i = 0; i < bodies.length; i++) {
       const a = bodies[i]; if (a.dead) continue;
@@ -185,16 +197,24 @@ function step(dt) {
         }
       }
     }
-    // jar walls
+    // the core star and the rim of the well
     for (const b of bodies) {
-      if (b.x < b.r) { b.x = b.r; if (b.vx < 0) b.vx *= -0.2; }
-      if (b.x > JW - b.r) { b.x = JW - b.r; if (b.vx > 0) b.vx *= -0.2; }
-      if (b.y > JH - b.r) { b.y = JH - b.r; if (b.vy > 0) b.vy *= -0.15; b.vx *= 0.985; b.w = b.vx / b.r; }
+      const dx = b.x - CX, dy = b.y - CY, d = Math.hypot(dx, dy) || 0.001, nx = dx / d, ny = dy / d;
+      const vn = b.vx * nx + b.vy * ny;
+      if (d < R_CORE + b.r) {
+        b.x = CX + nx * (R_CORE + b.r); b.y = CY + ny * (R_CORE + b.r);
+        if (vn < 0) { b.vx -= vn * nx * 1.15; b.vy -= vn * ny * 1.15; }
+        const tx = -ny, ty = nx, vt = b.vx * tx + b.vy * ty;
+        b.vx -= tx * vt * 0.015; b.vy -= ty * vt * 0.015; b.w = vt / b.r;
+      } else if (d > R_WELL - b.r) {
+        b.x = CX + nx * (R_WELL - b.r); b.y = CY + ny * (R_WELL - b.r);
+        if (vn > 0) { b.vx -= vn * nx * 1.2; b.vy -= vn * ny * 1.2; }
+      }
     }
     bodies = bodies.filter((b) => !b.dead);
   }
   for (const b of bodies) {
-    b.vx *= 0.999; b.rot += (b.w + b.vx / (b.r * 6)) * dt;
+    b.vx *= 0.996; b.vy *= 0.996; b.rot += (b.w + b.vx / (b.r * 6)) * dt;
     const sp = Math.hypot(b.vx, b.vy);
     b.settled = sp < 40 ? b.settled + dt : 0;
   }
@@ -233,11 +253,11 @@ function merge(a, b) {
 
 /* ---------- input ---------- */
 let pointerIn = false;
-function toJarX(cx) { return (cx - ox) / S; }
-addEventListener("pointermove", (e) => { aimX = toJarX(e.clientX); pointerIn = true; keyAim = 0; });
+function aimAt(cx, cy) { const x = (cx - ox) / S - CX, y = (cy - oy) / S - CY; if (x * x + y * y > 400) aimA = Math.atan2(y, x); }
+addEventListener("pointermove", (e) => { aimAt(e.clientX, e.clientY); pointerIn = true; keyAim = 0; });
 addEventListener("pointerdown", (e) => {
   if (e.target.closest && e.target.closest("button,#pa-gate,.pa-layer,.pa-tb")) return;
-  aimX = toJarX(e.clientX);
+  aimAt(e.clientX, e.clientY);
   if (e.pointerType !== "mouse") { pointerIn = true; } else drop();
 });
 addEventListener("pointerup", (e) => {
@@ -251,16 +271,16 @@ PA.onKey((e) => { if (e.code === "Space" || e.code === "Enter" || e.code === "Ar
 function update(dt) {
   if (PA.state !== "play" || !running) return;
   const k = (PA.down("ArrowRight", "KeyD") ? 1 : 0) - (PA.down("ArrowLeft", "KeyA") ? 1 : 0);
-  if (k) { aimX += k * 420 * dt; keyAim = 1; }
-  aimX = Math.max(0, Math.min(JW, aimX));
+  if (k) { aimA += k * 2.4 * dt; keyAim = 1; }
   dropCd -= dt; comboT -= dt;
   step(dt);
   for (const w of waves) w.t += dt;
   waves = waves.filter((w) => w.t < .6);
   // danger: a resting body sticking above the line
   let danger = false;
-  for (const b of bodies) if (!b.dropped || performance.now() - b.born > 1200) { if (b.y - b.r < TOP_LINE && b.settled > 0.25) danger = true; }
-  for (const b of bodies) if (b.dropped && b.y > TOP_LINE + b.r) b.dropped = false;
+  const reach = (b) => Math.hypot(b.x - CX, b.y - CY) + b.r;
+  for (const b of bodies) if (!b.dropped || performance.now() - b.born > 1200) { if (reach(b) > R_DANGER && b.settled > 0.25) danger = true; }
+  for (const b of bodies) if (b.dropped && reach(b) < R_DANGER - 4) b.dropped = false;
   dangerT = danger ? dangerT + dt : Math.max(0, dangerT - dt * 2);
   if (dangerT > 2.2 && !over) finish();
   fx.update(dt); texts.update(dt);
@@ -286,29 +306,31 @@ function render(t) {
   const sh = PA.shakeOffset();
   ctx.save();
   ctx.translate(ox + sh.x, oy + sh.y); ctx.scale(S, S);
-  // jar
-  const jg = ctx.createLinearGradient(0, 0, 0, JH);
-  jg.addColorStop(0, "rgba(120,130,255,.03)"); jg.addColorStop(1, "rgba(120,130,255,.12)");
-  ctx.fillStyle = jg; roundRect(-6, 0, JW + 12, JH + 6, 18); ctx.fill();
-  ctx.strokeStyle = "rgba(170,180,255,.45)"; ctx.lineWidth = 3; ctx.shadowColor = "#7b8cff"; ctx.shadowBlur = 20;
-  ctx.beginPath(); ctx.moveTo(-6, -10); ctx.lineTo(-6, JH - 12); ctx.quadraticCurveTo(-6, JH + 6, 12, JH + 6); ctx.lineTo(JW - 12, JH + 6); ctx.quadraticCurveTo(JW + 6, JH + 6, JW + 6, JH - 12); ctx.lineTo(JW + 6, -10); ctx.stroke();
+  // the well: a glowing rim, the danger ring and the core star
+  const wg = ctx.createRadialGradient(CX, CY, R_CORE, CX, CY, R_WELL);
+  wg.addColorStop(0, "rgba(255,200,120,.10)"); wg.addColorStop(.35, "rgba(120,130,255,.06)"); wg.addColorStop(1, "rgba(120,130,255,.14)");
+  ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(CX, CY, R_WELL + 6, 0, TAU); ctx.fill();
+  ctx.strokeStyle = "rgba(170,180,255,.5)"; ctx.lineWidth = 3; ctx.shadowColor = "#7b8cff"; ctx.shadowBlur = 20;
+  ctx.beginPath(); ctx.arc(CX, CY, R_WELL + 6, 0, TAU); ctx.stroke();
   ctx.shadowBlur = 0;
-  // danger line
+  ctx.strokeStyle = "rgba(170,180,255,.08)"; ctx.lineWidth = 1;
+  for (let k = 1; k <= 3; k++) { ctx.beginPath(); ctx.arc(CX, CY, R_CORE + (R_DANGER - R_CORE) * k / 4, 0, TAU); ctx.stroke(); }
   const dk = Math.min(1, dangerT / 2.2);
   ctx.setLineDash([10, 10]); ctx.lineDashOffset = -t * 30;
   ctx.strokeStyle = dk > 0 ? `rgba(255,${120 - dk * 100},${140 - dk * 120},${.5 + dk * .5 * (Math.sin(t * 20) * .5 + .5)})` : "rgba(255,120,160,.28)";
-  ctx.lineWidth = 2 + dk * 2; ctx.beginPath(); ctx.moveTo(0, TOP_LINE); ctx.lineTo(JW, TOP_LINE); ctx.stroke(); ctx.setLineDash([]);
+  ctx.lineWidth = 2 + dk * 2; ctx.beginPath(); ctx.arc(CX, CY, R_DANGER, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+  const cg = ctx.createRadialGradient(CX, CY, 0, CX, CY, R_CORE * 2.6);
+  cg.addColorStop(0, "#fff"); cg.addColorStop(.3, "#ffe08a"); cg.addColorStop(.42, "rgba(255,150,60,.6)"); cg.addColorStop(1, "rgba(255,120,60,0)");
+  ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(CX, CY, R_CORE * (2.6 + Math.sin(t * 3) * .1), 0, TAU); ctx.fill();
 
-  // aim guide + held body
+  // aim guide + held body on the rim
   if (running && PA.state === "play") {
-    const r = TIERS[curTier].r, x = Math.max(r, Math.min(JW - r, aimX));
-    const gy = TOP_LINE - 50;
-    const lg = ctx.createLinearGradient(0, gy, 0, JH);
-    lg.addColorStop(0, "rgba(255,255,255,.22)"); lg.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = lg; ctx.fillRect(x - 1, gy, 2, JH - gy);
-    const ready = dropCd <= 0 ? 1 : .45;
-    ctx.globalAlpha = ready;
-    ctx.save(); ctx.translate(x, gy); ctx.rotate(t * .4); ctx.drawImage(SPR[curTier], -r, -r, r * 2, r * 2); ctx.restore();
+    const r = TIERS[curTier].r, [x, y] = spawnPoint(r);
+    const lg = ctx.createLinearGradient(x, y, CX, CY);
+    lg.addColorStop(0, "rgba(255,255,255,.3)"); lg.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.strokeStyle = lg; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(CX, CY); ctx.stroke();
+    ctx.globalAlpha = dropCd <= 0 ? 1 : .45;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(t * .4); ctx.drawImage(SPR[curTier], -r, -r, r * 2, r * 2); ctx.restore();
     ctx.globalAlpha = 1;
   }
   // bodies
@@ -341,7 +363,7 @@ function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.a
 PA.onStart(reset);
 PA.loop(update, render);
 paintLadder(); paintNext();
-window.__nd = { get bodies() { return bodies; }, drop, set aim(v) { aimX = v; }, get score() { return score; } };
+window.__nd = { get bodies() { return bodies; }, drop, set aim(v) { aimA = v; }, get danger() { return dangerT; }, get over() { return over; }, get score() { return score; } };
 })();
 </script>
 </body></html>

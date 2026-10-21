@@ -23,6 +23,16 @@ html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 50% -1
 .wg-t.hit{background:linear-gradient(160deg,#3ff7d6,#16b89c);border-color:transparent;color:#03241e;box-shadow:0 0 22px rgba(46,230,197,.45)}
 .wg-t.near{background:linear-gradient(160deg,#c9a8ff,#8a5cf0);border-color:transparent;color:#1d0b3d;box-shadow:0 0 18px rgba(180,140,255,.35)}
 .wg-t.miss{background:#20243c;border-color:transparent;color:#8d93b8}
+.wg-t.lock{border-color:rgba(46,230,197,.55);color:#c8fff3;box-shadow:inset 0 0 14px rgba(46,230,197,.18)}
+.wg-row.off .wg-t{border-style:dashed;border-color:rgba(169,180,255,.07);background:transparent}
+#wg-chain{display:flex;align-items:center;gap:6px;margin:2px 0 6px;font:800 12px 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase}
+#wg-chain .lk{min-width:66px;padding:.3rem .5rem;border-radius:9px;border:1px solid rgba(169,180,255,.2);color:#6f77a6;text-align:center;background:rgba(255,255,255,.03)}
+#wg-chain .lk.now{border-color:var(--near);color:#e6dbff;box-shadow:0 0 14px rgba(180,140,255,.3)}
+#wg-chain .lk.ok{background:linear-gradient(160deg,#3ff7d6,#16b89c);border-color:transparent;color:#03241e}
+#wg-chain .lk.bad{border-color:rgba(255,107,138,.5);color:#ff9fb4}
+#wg-chain i{font-style:normal;color:#5b6185}
+#wg-left{font:700 11px 'JetBrains Mono',monospace;letter-spacing:.12em;color:#a9b4ff;text-transform:uppercase;margin-bottom:4px}
+#wg-left b{color:#fff}
 .wg-row.win .wg-t{animation:wgw .6s both}
 @keyframes wgw{40%{transform:translateY(-14px) scale(1.06)}70%{transform:translateY(3px)}}
 #wg-keys{width:min(560px,100%);display:flex;flex-direction:column;gap:7px;margin-top:8px}
@@ -31,7 +41,7 @@ html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 50% -1
 .wg-k:active{transform:scale(.94)}
 .wg-k.wide{max-width:72px;flex:1.5;font-size:11px;letter-spacing:.06em}
 .wg-k.hit{background:#17b89c;color:#02231d}.wg-k.near{background:#8a5cf0}.wg-k.miss{background:#161a2e;color:#5b6185}
-#wg-toast{position:fixed;left:50%;top:96px;transform:translateX(-50%);z-index:60;background:#fff;color:#0a0b18;font:800 14px Manrope,sans-serif;padding:.55rem 1rem;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+#wg-toast{position:fixed;left:50%;top:150px;transform:translateX(-50%);z-index:60;background:#fff;color:#0a0b18;font:800 14px Manrope,sans-serif;padding:.55rem 1rem;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none}
 #wg-toast.on{opacity:1}
 #wg-res{position:fixed;inset:0;z-index:55;display:grid;place-items:center;background:rgba(5,6,16,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:16px}
 #wg-res[hidden]{display:none}
@@ -39,6 +49,7 @@ html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 50% -1
 @keyframes wgin{from{opacity:0;transform:translateY(18px) scale(.97)}}
 .wg-card h2{margin:.1em 0;font:800 26px Unbounded,Manrope,sans-serif;background:linear-gradient(90deg,var(--hit),var(--near));-webkit-background-clip:text;background-clip:text;color:transparent}
 .wg-card .word{font:800 13px 'JetBrains Mono',monospace;letter-spacing:.3em;color:#cfd5ff;margin:.2em 0 1em}
+.wg-dist-h{font:700 10px 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#9aa3d6;text-align:left;margin:0 0 6px}
 .wg-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px}
 .wg-stats div b{display:block;font:800 24px 'JetBrains Mono',monospace}
 .wg-stats div small{font-size:10px;color:#9aa3d6;text-transform:uppercase;letter-spacing:.08em}
@@ -51,10 +62,12 @@ html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 50% -1
 .wg-btn.ghost{background:rgba(255,255,255,.07);color:#fff;border:1px solid rgba(255,255,255,.16)}
 .wg-next{font:600 12px 'JetBrains Mono',monospace;color:#9aa3d6;margin-top:12px}
 .wg-rank{font-size:12.5px;color:#cfd5ff;margin:-4px 0 12px;min-height:1em}
-@media (max-height:640px){#wg{padding-top:50px}#wg-grid{height:min(100%,330px)}}
+@media (max-height:640px){#wg{padding-top:50px}#wg-grid{height:min(100%,300px)}#wg-chain{margin:0 0 3px}#wg-left{display:none}}
 </style></head><body>
 <div id="wg">
   <div id="wg-head"><span>Daily <b id="wg-num">#1</b></span><button class="wg-pill" id="wg-mode" type="button">Daily</button><button class="wg-pill" id="wg-hard" type="button" title="Hard mode: revealed hints must be used">Hard</button><button class="wg-pill" id="wg-stats-btn" type="button">Stats</button></div>
+  <div id="wg-chain" aria-label="Today's chain"></div>
+  <div id="wg-left"><b id="wg-left-n">12</b> guesses for the whole chain</div>
   <div id="wg-board"><div id="wg-grid" role="grid" aria-label="Guesses"></div></div>
   <div id="wg-keys" aria-label="Keyboard"></div>
 </div>
@@ -64,6 +77,7 @@ html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 50% -1
   <div class="word" id="wg-res-w"></div>
   <div class="wg-rank" id="wg-res-rank"></div>
   <div class="wg-stats"><div><b id="st-p">0</b><small>Played</small></div><div><b id="st-w">0</b><small>Win %</small></div><div><b id="st-s">0</b><small>Streak</small></div><div><b id="st-m">0</b><small>Best</small></div></div>
+  <div class="wg-dist-h">Links solved</div>
   <div class="wg-dist" id="wg-dist"></div>
   <div class="wg-btns"><button class="wg-btn" id="wg-share" type="button">Share result</button><button class="wg-btn ghost" id="wg-practice" type="button">Practice round</button><button class="wg-btn ghost" id="wg-close" type="button">Close</button></div>
   <div class="wg-next" id="wg-next"></div>
@@ -71,7 +85,7 @@ html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 50% -1
 <script>
 window.paConfig = {
   slug: "wordglow", title: "Wordglow", native: true, typing: true, music: "lofi", unit: "points",
-  controls: [["Type / tap", "Enter a five-letter word"], ["Enter", "Submit"], ["Backspace", "Delete"]]
+  controls: [["Type / tap", "Enter a five-letter word"], ["Enter", "Submit"], ["Backspace", "Delete"], ["The chain", "Three words a day — each starts with the last letter of the one before. Twelve guesses cover all three."]]
 };
 </script>
 <script src="/games/play/pa-score.js"></script>
@@ -86,19 +100,47 @@ const EPOCH = new Date(2026, 9, 11); // puzzle #1
 function dayIndex(d = new Date()) { const a = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return Math.round((a - EPOCH) / 864e5); }
 const today = dayIndex();
 const dailyNo = today + 1;
-const dailyWord = answers[((today % answers.length) + answers.length) % answers.length];
+
+/* ---------- the chain: three words, each starting with the last letter of the one before ---------- */
+const LINKS = 3, BUDGET = 12;
+const byFirst = {}; for (const w of answers) (byFirst[w[0]] = byFirst[w[0]] || []).push(w);
+// a link may only end on a letter that plenty of answers start with, so chains don't all funnel through Y or X
+const roomy = (w) => (byFirst[w[4]] || []).length >= 25;
+function hash(n) { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 9); n ^= n >>> 4; n = Math.imul(n, 0x27d4eb2d); return (n ^ (n >>> 15)) >>> 0; }
+function buildChain(startIdx, seed) {
+  const len = answers.length;
+  for (let k = 0; k < len; k++) {
+    const first = answers[(startIdx + k) % len];
+    if (!roomy(first)) continue;
+    const chain = [first];
+    for (let l = 1; l < LINKS; l++) {
+      const prev = chain[l - 1], last = l === LINKS - 1;
+      const pool = (byFirst[prev[4]] || []).filter((w) => !chain.includes(w) && (last || roomy(w)));
+      if (!pool.length) break;
+      chain.push(pool[hash(seed * 31 + l * 7 + k) % pool.length]);
+    }
+    if (chain.length === LINKS) return chain;
+  }
+  return answers.slice(0, LINKS);
+}
+const dailyChain = buildChain(((today % answers.length) + answers.length) % answers.length, today + 1000);
 
 /* ---------- persistence ---------- */
 const KEY = "wg_v1";
 const store = (() => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } })();
 store.stats = store.stats || { played: 0, wins: 0, streak: 0, best: 0, dist: [0, 0, 0, 0, 0, 0], lastWin: null, lastPlayed: null };
+store.stats.links = store.stats.links || [0, 0, 0, 0];
 store.hard = !!store.hard;
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} };
 // streak breaks if you missed yesterday
 if (store.stats.lastWin != null && store.stats.lastWin < today - 1 && store.stats.streak) { store.stats.streak = 0; save(); }
+// a saved daily from before the chain arrived is a different puzzle: drop it (stats already counted it)
+if (store.daily && store.daily.v !== 2) { delete store.daily; save(); }
 
-let mode = "daily", word = dailyWord, rows = [], cur = "", done = false, busy = false;
-const state = {}; // letter -> hit/near/miss
+let mode = "daily", chain = dailyChain, stage = 0, word = chain[0], rows = [], all = [], cur = "", done = false, busy = false, lock = 0;
+const state = {}; // letter -> hit/near/miss for the current word
+const used = () => all.length;
+const left = () => BUDGET - used();
 
 /* ---------- build grid + keyboard ---------- */
 const grid = $("wg-grid");
@@ -131,11 +173,28 @@ function toast(msg, ms = 1600) { const t = $("wg-toast"); t.textContent = msg; t
 function rowEl(i) { return grid.children[i]; }
 function paintCur() {
   const r = rowEl(rows.length); if (!r) return;
-  [...r.children].forEach((t, i) => { t.textContent = cur[i] || ""; t.classList.toggle("filled", !!cur[i]); });
+  [...r.children].forEach((t, i) => { t.textContent = cur[i] || ""; t.classList.toggle("filled", !!cur[i]); t.classList.toggle("lock", i < lock); });
+}
+function paintChain() {
+  const el = $("wg-chain"); el.innerHTML = "";
+  chain.forEach((w, i) => {
+    if (i) { const a = document.createElement("i"); a.textContent = "→"; el.appendChild(a); }
+    const d = document.createElement("span"); d.className = "lk";
+    const solved = i < stage || (done && i === stage && rows.length && rows[rows.length - 1].guess === w);
+    if (solved) { d.classList.add("ok"); d.textContent = w; }
+    else if (done) { d.classList.add("bad"); d.textContent = w; }
+    else if (i === stage) { d.classList.add("now"); d.textContent = (i ? w[0] : "?") + "····"; }
+    else d.textContent = "·····";
+    el.appendChild(d);
+  });
+  $("wg-left-n").textContent = Math.max(0, left());
+  // rows this word can still use: the rest of the shared budget, at most six
+  const avail = Math.min(6, rows.length + Math.max(0, left()));
+  [...grid.children].forEach((r, i) => r.classList.toggle("off", i >= avail));
 }
 function press(k) {
   if (done || busy || PA.state !== "play") return;
-  if (k === "Backspace") { cur = cur.slice(0, -1); paintCur(); return; }
+  if (k === "Backspace") { if (cur.length > lock) { cur = cur.slice(0, -1); paintCur(); } return; }
   if (k === "Enter") return submit();
   if (cur.length < 5 && /^[a-z]$/.test(k)) { cur += k; paintCur(); PA.sfx("click", { pitch: 0.9 + cur.length * 0.08, vol: .4 }); }
 }
@@ -160,21 +219,24 @@ function submit() {
   if (!valid.has(cur)) { shake(r); toast("Not in the word list"); PA.sfx("thud"); return; }
   if (store.hard) { const h = hardCheck(cur); if (h) { shake(r); toast(h); return; } }
   const res = score(cur, word);
-  rows.push({ guess: cur, res });
+  rows.push({ guess: cur, res }); all.push(cur);
   reveal(r, cur, res, true);
-  const g = cur; cur = "";
-  if (mode === "daily") { store.daily = { day: today, rows: rows.map((x) => x.guess), hard: store.hard }; save(); }
+  const g = cur; cur = lock ? word.slice(0, lock) : "";
+  if (mode === "daily") { store.daily = { v: 2, day: today, rows: all.slice(), hard: store.hard }; save(); }
   busy = true;
   setTimeout(() => {
     busy = false;
-    if (g === word) finish(true);
-    else if (rows.length >= 6) finish(false);
+    if (g === word && stage < LINKS - 1 && left() <= 0) { stage++; word = chain[stage]; finish(false); }
+    else if (g === word) { if (stage < LINKS - 1) nextLink(true); else finish(true); }
+    else if (left() <= 0 || rows.length >= 6) finish(false);
+    else { paintChain(); paintCur(); }
   }, 5 * 230 + 350);
+  $("wg-left-n").textContent = Math.max(0, left());
 }
 function shake(r) { r.classList.remove("shake"); void r.offsetWidth; r.classList.add("shake"); }
 function reveal(r, guess, res, animate) {
   [...r.children].forEach((t, i) => {
-    t.textContent = guess[i];
+    t.textContent = guess[i]; t.classList.remove("lock");
     const go = () => {
       t.classList.add(res[i]); t.classList.remove("filled");
       const kb = $("wg-keys").querySelector(`[data-k="${guess[i]}"]`);
@@ -186,36 +248,52 @@ function reveal(r, guess, res, animate) {
     else go();
   });
 }
+// solved a link: celebrate, then open the next word with its first letter locked in
+function nextLink(animate) {
+  const solved = word;
+  if (animate) {
+    const r = rowEl(rows.length - 1); [...r.children].forEach((t, i) => { t.style.animationDelay = i * 90 + "ms"; }); r.classList.add("win");
+    PA.sfx("power", { pitch: 1 + stage * 0.15 });
+    toast(`Link ${stage + 1} glows — next word starts with ${solved[4].toUpperCase()}`, 1900);
+  }
+  const go = () => {
+    stage++; word = chain[stage]; clearBoard(); lock = 1; cur = word[0]; paintCur(); paintChain();
+  };
+  if (animate) { busy = true; setTimeout(() => { busy = false; go(); }, 1300); } else go();
+}
 function finish(won) {
   done = true;
-  const n = rows.length;
-  if (won) { const r = rowEl(n - 1); [...r.children].forEach((t, i) => { t.style.animationDelay = i * 90 + "ms"; }); r.classList.add("win"); PA.sfx("levelup"); }
+  const n = used(), links = stage + (won ? 1 : 0);
+  if (won) { const r = rowEl(rows.length - 1); [...r.children].forEach((t, i) => { t.style.animationDelay = i * 90 + "ms"; }); r.classList.add("win"); PA.sfx("levelup"); }
   else { toast(word.toUpperCase(), 3000); PA.sfx("lose"); }
+  paintChain();
   let reportScore = 0;
   if (mode === "daily") {
     const s = store.stats;
     if (s.lastPlayed !== today) {
       s.played++; s.lastPlayed = today;
-      if (won) { s.wins++; s.streak = s.lastWin === today - 1 ? s.streak + 1 : 1; s.lastWin = today; s.best = Math.max(s.best, s.streak); s.dist[n - 1]++; }
+      s.links[links]++;
+      if (won) { s.wins++; s.streak = s.lastWin === today - 1 ? s.streak + 1 : 1; s.lastWin = today; s.best = Math.max(s.best, s.streak); }
       else s.streak = 0;
-      store.daily.result = won ? n : 0;
+      store.daily.result = links; store.daily.done = true;
       save();
-      if (won) reportScore = s.streak * 100 + (7 - n) * 15 + (store.hard ? 25 : 0);
+      if (won) reportScore = s.streak * 100 + (BUDGET - n) * 15 + (store.hard ? 25 : 0);
     }
   }
   setTimeout(() => showResults(won, reportScore), won ? 1100 : 1700);
-  if (window.paXP) window.paXP.award("wordglow", { score: reportScore, won, guesses: n, daily: mode === "daily" });
+  if (window.paXP) window.paXP.award("wordglow", { score: reportScore, won, guesses: n, links, daily: mode === "daily" });
 }
+function chainWon() { return done && stage === LINKS - 1 && rows.length && rows[rows.length - 1].guess === word; }
 function showResults(won, reportScore) {
-  const s = store.stats;
-  $("wg-res-h").textContent = mode === "practice" ? (won ? "Nice practice!" : "So close") : won ? ["Genius!", "Brilliant!", "Glowing!", "Sharp!", "Solid!", "Phew!"][rows.length - 1] : "Out of tries";
-  $("wg-res-w").textContent = (won ? "" : "THE WORD WAS ") + word.toUpperCase();
+  const s = store.stats, n = used();
+  $("wg-res-h").textContent = mode === "practice" ? (won ? "Nice practice!" : "So close") : won ? (n <= 6 ? "Genius!" : n <= 8 ? "Brilliant!" : n <= 10 ? "Glowing!" : "Phew!") : done ? "The chain snapped" : "Today's chain";
+  $("wg-res-w").textContent = done ? chain.map((w) => w.toUpperCase()).join(" → ") + (won ? ` · ${n}/${BUDGET}` : "") : "";
   $("st-p").textContent = s.played; $("st-w").textContent = s.played ? Math.round(s.wins / s.played * 100) : 0;
   $("st-s").textContent = s.streak; $("st-m").textContent = s.best;
-  const mx = Math.max(1, ...s.dist);
-  $("wg-dist").innerHTML = s.dist.map((v, i) => `<div>${i + 1}<i class="${mode === "daily" && done && rows.length === i + 1 && won ? "me" : ""}" style="width:${Math.max(8, v / mx * 100)}%">${v}</i></div>`).join("");
+  const mx = Math.max(1, ...s.links), mine = mode === "daily" && done ? stage + (won ? 1 : 0) : -1;
+  $("wg-dist").innerHTML = s.links.map((v, i) => `<div>${i}<i class="${i === mine ? "me" : ""}" style="width:${Math.max(8, v / mx * 100)}%">${v}</i></div>`).join("");
   $("wg-share").style.display = done && (mode === "daily" || won) ? "" : "none";
-  $("wg-practice").style.display = done || store.daily?.result != null ? "" : "none";
+  $("wg-practice").style.display = done || store.daily?.done ? "" : "none";
   $("wg-res-rank").textContent = "";
   $("wg-res").hidden = false;
   tickNext();
@@ -234,11 +312,15 @@ function tickNext() {
   if (!$("wg-res").hidden) setTimeout(tickNext, 1000);
 }
 function shareText() {
-  const n = rows.length, won = rows.length && rows[rows.length - 1].guess === word;
+  const won = chainWon(), links = stage + (won ? 1 : 0);
   const em = { hit: "🟦", near: "🟪", miss: "⬛" };
-  const head = mode === "daily" ? `Wordglow #${dailyNo} ${won ? n : "X"}/6${store.hard ? "*" : ""}` : `Wordglow practice ${won ? n : "X"}/6`;
+  // replay the guesses link by link so the grid shows where each word fell
+  const blocks = []; let st = 0, block = [];
+  for (const g of all) { block.push(score(g, chain[st]).map((x) => em[x]).join("")); if (g === chain[st]) { blocks.push(block); block = []; st++; } }
+  if (block.length) blocks.push(block);
+  const head = mode === "daily" ? `Wordglow #${dailyNo} · ${links}/${LINKS} links · ${won ? used() : "X"}/${BUDGET}${store.hard ? "*" : ""}` : `Wordglow practice · ${links}/${LINKS} links`;
   const streak = mode === "daily" && store.stats.streak > 1 ? ` · 🔥${store.stats.streak}` : "";
-  return head + streak + "\n" + rows.map((r) => r.res.map((x) => em[x]).join("")).join("\n") + "\npromptarcade.games/games/wordglow/";
+  return head + streak + "\n" + blocks.map((b) => b.join("\n")).join("\n🔗\n") + "\npromptarcade.games/games/wordglow/";
 }
 $("wg-share").onclick = async () => {
   const text = shareText();
@@ -247,13 +329,13 @@ $("wg-share").onclick = async () => {
 };
 $("wg-close").onclick = () => { $("wg-res").hidden = true; };
 $("wg-practice").onclick = () => { $("wg-res").hidden = true; startPractice(); };
-$("wg-stats-btn").onclick = () => { showResults(done && rows[rows.length - 1]?.guess === word, 0); };
+$("wg-stats-btn").onclick = () => { showResults(chainWon(), 0); };
 $("wg-hard").onclick = () => {
-  if (rows.length && !done) { toast("Hard mode can only change between puzzles"); return; }
+  if (all.length && !done) { toast("Hard mode can only change between puzzles"); return; }
   store.hard = !store.hard; save(); paintHead(); toast(store.hard ? "Hard mode on" : "Hard mode off");
 };
 $("wg-mode").onclick = () => {
-  if (mode === "daily") { if (store.daily?.day === today && store.daily.result != null) startPractice(); else toast("Finish today's daily first"); }
+  if (mode === "daily") { if (store.daily?.day === today && store.daily.done) startPractice(); else toast("Finish today's daily first"); }
   else startDaily();
 };
 function paintHead() {
@@ -262,27 +344,36 @@ function paintHead() {
   $("wg-mode").classList.toggle("on", mode === "practice");
   $("wg-hard").classList.toggle("on", store.hard);
 }
+// wipes the board for the current word (the chain and the shared budget carry on)
 function clearBoard() {
-  rows = []; cur = ""; done = false; busy = false;
+  rows = []; cur = ""; lock = 0;
   for (const k in state) delete state[k];
   [...grid.children].forEach((r) => { r.className = "wg-row"; [...r.children].forEach((t) => { t.className = "wg-t"; t.textContent = ""; t.style.animationDelay = ""; }); });
   $("wg-keys").querySelectorAll(".wg-k").forEach((b) => b.classList.remove("hit", "near", "miss"));
 }
+function begin(c) {
+  chain = c; stage = 0; word = chain[0]; all = []; done = false; busy = false;
+  clearBoard(); paintHead(); paintChain();
+}
 function startDaily() {
-  mode = "daily"; word = dailyWord; clearBoard(); paintHead();
+  mode = "daily"; begin(dailyChain);
   if (store.daily && store.daily.day === today) {
-    // restore today's progress
-    for (const g of store.daily.rows) { const res = score(g, word); rows.push({ guess: g, res }); reveal(rowEl(rows.length - 1), g, res, false); }
-    if (store.daily.result != null) { done = true; setTimeout(() => showResults(store.daily.result > 0, 0), 300); }
+    // restore today's progress, link by link
+    for (const g of store.daily.rows) {
+      const res = score(g, word); rows.push({ guess: g, res }); all.push(g); reveal(rowEl(rows.length - 1), g, res, false);
+      if (g === word && stage < LINKS - 1) nextLink(false);
+    }
+    if (store.daily.done) { done = true; paintChain(); setTimeout(() => showResults(chainWon(), 0), 300); }
+    else paintChain();
   }
 }
 function startPractice() {
-  mode = "practice"; clearBoard(); paintHead();
-  let w; do { w = answers[(Math.random() * answers.length) | 0]; } while (w === dailyWord);
-  word = w;
+  mode = "practice";
+  let c; do { c = buildChain((Math.random() * answers.length) | 0, (Math.random() * 1e9) | 0); } while (c[0] === dailyChain[0]);
+  begin(c);
 }
-PA.onStart(() => { if (mode === "daily" && done) startPractice(); else if (!rows.length) startDaily(); });
+PA.onStart(() => { if (mode === "daily" && done) startPractice(); else if (!all.length) startDaily(); });
 startDaily();
-window.__wg = { get word() { return word; }, press };
+window.__wg = { get word() { return word; }, get chain() { return chain; }, get stage() { return stage; }, get left() { return left(); }, press };
 </script>
 </body></html>

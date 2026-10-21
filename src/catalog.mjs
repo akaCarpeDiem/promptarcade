@@ -68,12 +68,13 @@ export const GAMES = [
     slug: "nebula-drop", title: "Nebula Drop", added: "2026-10-11", featured: 3,
     genre: "Puzzle", tags: ["puzzle", "physics", "merge"], difficulty: "Simple", accent: "#b48cff", accent2: "#5ef2ff",
     unit: "points",
-    classic: "Merge and drop", twist: "Real circle physics and an eleven-step climb from stardust to a black hole, with chain reactions worth the most.",
-    tagline: "Drop celestial bodies into the jar. Two of a kind fuse into something bigger.",
-    about: "Stardust becomes pebbles, pebbles become moons, moons become worlds — all the way up to a black hole. A physics merge puzzle where every drop nudges the pile and chain reactions are worth the most. Don't let the jar overflow.",
+    classic: "Merge and drop", twist: "There's no jar: you launch from the rim of a round gravity well and everything falls toward a star in the middle, so the pile grows outward in every direction.",
+    tagline: "Launch bodies into a gravity well. Two of a kind fuse into something bigger.",
+    about: "Stardust becomes pebbles, pebbles become moons, moons become worlds, all the way up to a black hole. Instead of dropping into a jar you aim from anywhere round the rim and everything falls toward the star at the centre, so the pile builds outward like a little planet. Chain reactions are worth the most. If the pile reaches the danger ring and stays there, the run is over.",
     credit: CLAUDE_NEW,
     brief: "A merge-and-drop physics puzzle with a space theme: two matching bodies fuse into the next tier, eleven tiers ending in a black hole.",
     tech: [
+      "Radial gravity toward a central star, with a circular rim and a danger ring instead of a jar",
       "Custom circle physics: 8 substeps, positional correction, impulses with friction and spin",
       "Every planet sprite is painted procedurally — craters, bands, rings, coronas",
       "Combo multiplier for merge chains, shockwaves and screen shake that scale with tier"
@@ -83,12 +84,13 @@ export const GAMES = [
     slug: "wordglow", title: "Wordglow", added: "2026-10-11", featured: 4,
     genre: "Daily", tags: ["daily", "word", "puzzle"], difficulty: "Simple", accent: "#2ee6c5", accent2: "#b48cff",
     unit: "streak points", daily: true,
-    classic: "Five-letter word", twist: "Your daily streak climbs a global leaderboard, with hard mode and unlimited practice after the daily.",
-    tagline: "One five-letter word a day. Six tries. Keep your streak glowing.",
-    about: "A fresh five-letter word every day — the same one for everyone. Guess in six tries, share your glowing grid with friends, and keep a streak going. Practice rounds are unlimited once the daily is done. Your leaderboard score grows with your streak.",
+    classic: "Five-letter word", twist: "Each day is a chain of three words, and each word starts with the last letter of the one before. Twelve guesses cover the whole chain, so the guesses you save on one word carry over to the next.",
+    tagline: "Three linked words a day. Twelve guesses. Keep your streak glowing.",
+    about: "Every day brings a chain of three five-letter words, the same chain for everyone. Solve the first word and its last letter becomes the locked first letter of the next. You get twelve guesses for the whole chain, and no more than six on any one word, so a quick solve buys time for a harder one later. Share your glowing grid, keep a streak going, and play unlimited practice chains once the daily is done.",
     credit: CLAUDE_NEW,
     brief: "A daily five-letter word game with streaks, stats, hard mode, practice mode and a shareable result grid.",
     tech: [
+      "Each day's three-word chain is picked by a seeded walk through the answer list, and it steers away from letters few words start with",
       "1,800+ answers picked from open word-frequency data with names, places and slang filtered out",
       "Duplicate-letter-correct scoring and an enforced hard mode",
       "Progress, streaks and stats saved locally; the daily rolls over at your local midnight"
@@ -113,14 +115,15 @@ export const GAMES = [
     slug: "gridstorm", title: "Gridstorm", added: "2026-10-11", featured: 6,
     genre: "Shooter", tags: ["shooter", "twin-stick", "arcade"], difficulty: "Advanced", accent: "#5ef2ff", accent2: "#ffe68a",
     unit: "points",
-    classic: "Twin-stick arena", twist: "Gravity wells bend your bullets, and the whole grid ripples with every explosion.",
-    tagline: "A twin-stick shooter on a grid that ripples with every explosion.",
-    about: "Move with one hand, aim with the other, and survive an escalating storm of geometric enemies — dodgers that sidestep your shots, splitters, armored snakes and gravity wells that bend bullets and swallow everything nearby. Collect gems to climb the multiplier.",
+    classic: "Twin-stick arena", twist: "Every kill sends out a shockwave along the grid, and the ring blows up whatever it reaches, so packed swarms go off in chain reactions worth more with every link.",
+    tagline: "A twin-stick shooter where every kill sends out a chain-reaction shockwave.",
+    about: "Move with one hand, aim with the other, and survive an escalating storm of geometric enemies — dodgers that sidestep your shots, splitters, armored snakes and gravity wells that bend bullets and swallow everything nearby. Every kill sends a shockwave through the grid, and anything the ring reaches explodes and sends out its own. Let them bunch up, then set off the whole pack. Collect gems to climb the multiplier.",
     credit: CLAUDE_NEW,
     brief: "A neon twin-stick arena shooter with a warping spring-mass background grid, several enemy behaviours, bombs and a score multiplier.",
     tech: [
       "1,500-point spring-mass grid simulated every frame and pushed by explosions",
       "Gravity wells that pull the grid, your ship, enemies and bullets",
+      "Kill shockwaves run along the spring grid and chain from enemy to enemy, with points that scale with chain depth",
       "Additive-blend vector rendering with dual-stroke glow — no shaders needed"
     ]
   },
@@ -144,14 +147,15 @@ export const GAMES = [
     slug: "skystack", title: "Skystack 3D", added: "2026-10-11", featured: 8,
     genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#7dffb0", accent2: "#6ec8ff",
     unit: "floors",
-    classic: "Tower stacker", twist: "Real 3D: overhangs slice off and tumble away, and a chain of perfect drops grows the slab back.",
-    tagline: "Stack sliding slabs as high as you can. One button, real 3D.",
-    about: "Drop each sliding slab onto the tower. Whatever hangs over the edge is sliced off and tumbles away, so the tower narrows with every miss. Land a perfect drop to keep its size — chain them and it grows back.",
+    classic: "Tower stacker", twist: "Wind: from the fifth floor up the tower sways, and the higher it gets the more the top swings. The slab slides on a fixed track, so you drop it where the top is right now.",
+    tagline: "Stack sliding slabs on a tower that sways in the wind. One button, real 3D.",
+    about: "Drop each sliding slab onto the tower. Whatever hangs over the edge is sliced off and tumbles away, so the tower narrows with every miss. Once you're five floors up the wind picks up and the tower starts to sway, a little at first and then a lot. The slab's track stays still while the top moves under it, so you're timing two motions at once. Land a perfect drop to keep the slab's size, and chain perfect drops to grow it back.",
     credit: CLAUDE_NEW,
     brief: "A one-button 3D tower-stacking game in three.js with slicing, falling debris, perfect-drop combos and shifting colours.",
     tech: [
       "three.js with an orthographic isometric camera and soft shadows",
       "Overhangs are cut into separate meshes that fall and spin away",
+      "Wind sway bends the tower more toward the top and grows with height, while the stack is still stored in straight, unswayed positions",
       "The palette and sky gradient drift as the tower climbs"
     ]
   },
@@ -257,7 +261,7 @@ export const RETIRED = {
 
 /* What's-new feed (newest first). */
 export const NEWS = [
-  { date: "2026-10-21", title: "Five classics get a real twist", body: "Void Rocks now has a tractor tether: whirl a rock round your ship and fling it for chain kills. Star Siege lasers carry a colour, so you paint aliens and pop matching clusters. Prism Breaker balls take spin off the paddle and curve round steel. Fusion 2048 sets off chain reactions while lead blocks wall off the board. And Neon Flap splits into twin flyers, one in each half of the sky." },
+  { date: "2026-10-21", title: "Nine classics get a real twist", body: "Void Rocks now has a tractor tether: whirl a rock round your ship and fling it for chain kills. Star Siege lasers carry a colour, so you paint aliens and pop matching clusters. Prism Breaker balls take spin off the paddle and curve round steel. Fusion 2048 sets off chain reactions while lead blocks wall off the board. Neon Flap splits into twin flyers, one in each half of the sky. Wordglow is now a daily chain of three linked words that share twelve guesses. Nebula Drop swaps the jar for a round gravity well. Gridstorm kills send out shockwaves that chain through the swarm. And the Skystack tower sways in the wind as it climbs." },
   { date: "2026-10-21", title: "Classics with a twist", body: "PromptArcade is now an arcade of prompt-made classics with a twist: well-known games remade by AI, each changed enough to play differently. Every game page now says which classic it remakes and what the twist is, and games that aren't remakes have their own Originals shelf. The home page has a new arcade cabinet that plays through the shelf." },
   { date: "2026-10-11", title: "PromptArcade 3.0", body: "A full redesign and eight new games made with Claude Opus 5.5 — including a live multiplayer snake arena, a survivors-style roguelite, a daily word game and a daily dungeon. Plus the Arcade Pass: XP, badges, streaks and daily quests that follow you across every game." },
   { date: "2026-10-11", title: "Retired the one-prompt plates", body: "The early single-prompt experiments and two remakes have been retired so the shelf is all full builds. Old links now land on the games that replaced them." },
