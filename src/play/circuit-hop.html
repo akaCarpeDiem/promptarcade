@@ -26,8 +26,9 @@ window.paConfig = {
   controls: [
     ["← → / A D", "Run"],
     ["Space / ↑ / W", "Jump"],
-    ["Air + wall + jump", "Wall jump"],
-    ["Touch pads", "Move & jump"]
+    ["Hold jump", "Jump higher"],
+    ["Jump off a wall", "Wall jump"],
+    ["Land on a bot", "Stomp it"]
   ]
 };
 </script>
@@ -41,8 +42,9 @@ window.paConfig = {
   const TILE = 32;
   const COL = {
     bg: "#05070f",
-    wall: "#1a2244",
+    wall: "#141b3a",
     wallEdge: "#8ee9ff",
+    trace: "rgba(126,231,168,.16)",
     chip: "#ffd27a",
     chipCore: "#fff3c4",
     player: "#8ee9ff",
@@ -50,83 +52,194 @@ window.paConfig = {
     enemy: "#ff7eb6",
     laser: "#ff4d6d",
     laserCore: "#ffb3c1",
+    spike: "#ff5e8a",
+    flag: "#7ee7a8",
     portal: "#c4a6ff",
     portalCore: "#8ee9ff"
   };
 
-  const GRAV = 2400;
-  const MOVE = 340;
-  const JUMP_V = -560;
-  const WALL_JUMP_X = 420;
-  const WALL_JUMP_Y = -540;
-  const MAX_FALL = 980;
-  const COYOTE = 0.095;
-  const JUMP_BUF = 0.12;
+  // World units are pixels at zoom 1; the camera zooms so a sector reads the same on any screen.
+  const GRAV = 2300;
+  const FALL_GRAV = 2900;          // a little heavier on the way down: snappier arcs
+  const MOVE = 330;
+  const ACCEL = 3200;
+  const AIR_ACCEL = 2300;
+  const JUMP_V = 640;
+  const JUMP_CUT = 0.45;           // releasing jump early trims the arc
+  const WALL_JUMP_X = 360;
+  const WALL_JUMP_Y = 600;
+  const WALL_SLIDE = 150;
+  const WALL_LOCK = 0.14;          // brief loss of air control after a wall jump
+  const MAX_FALL = 900;
+  const COYOTE = 0.1;
+  const JUMP_BUF = 0.13;
+  const STOMP_V = 520;
   const PW = 20;
   const PH = 28;
+  const BOT_SPEED = 62;
+  const LASER_CYCLE = 2.4;
+  const LASER_ON = 0.58;
 
-  /* Handcrafted sectors — # solid · @ spawn · C chip · E exit · M patrol · H/V laser emitters */
+  /* Handcrafted sectors — # solid · @ spawn · C chip · E exit · M patrol bot · K checkpoint · ^ spikes
+   * H / V laser emitters (beam runs until it meets a wall). Every chip and exit is reachable: see
+   * tests/circuit-hop.test.mjs. */
   const LEVELS = [
     {
       name: "Relay Lane",
       rows: [
-        "##########################################",
-        "#........................................#",
-        "#..C..................................C..#",
-        "#..###..............................#####.",
-        "#.....##...M..........C................#E#",
-        "#.......####...........................#.#",
-        "#...........##.........................#.#",
-        "#.@...........####....######...........#.#",
-        "#......................................#.#",
-        "#......................................#.#",
-        "#......................................#.#",
-        "##########################################"
+        "########################################################################",
+        "#......................................................................#",
+        "#......................................................................#",
+        "#......................................................................#",
+        "#......................................................................#",
+        "#......................................................................#",
+        "#......................................................................#",
+        "#......................................................................#",
+        "#..........................................................CC..........#",
+        "#.............................................CC..........####.........#",
+        "#............CC.......................C...K...........C................#",
+        "#...........####....CC..............#########........####..............#",
+        "#..@....C.C...................M.....#########.....................E....#",
+        "###################....######################....#######################",
+        "###################....######################....#######################",
+        "###################....######################....#######################"
+      ]
+    },
+    {
+      name: "Wall Run",
+      rows: [
+        "################################################################",
+        "#..............................................................#",
+        "#..............................................................#",
+        "#..............................................................#",
+        "#..............................................................#",
+        "#...........................................#..................#",
+        "#............#..............................#.........C.....E..#",
+        "#............#..........C...M....C..........#...################",
+        "#............#...####################.......#.C.#..............#",
+        "#............#...#..........................#...#..............#",
+        "#............#.C.#..........................#H..#..............#",
+        "#............#...#..........................#...#..............#",
+        "#............#...#..........................#.C.#..............#",
+        "#............#.C.#..........................#...#..............#",
+        "#............#...#..........................#...#..............#",
+        "#................#..............................#..............#",
+        "#..@...C.........#....M...C....C......K.........#..............#",
+        "################################################################",
+        "################################################################",
+        "################################################################"
       ]
     },
     {
       name: "Phase Lock",
       rows: [
-        "##########################################",
-        "#E.......................................#",
-        "#.##...##...##...##...##...##...##...##..#",
-        "#........................................#",
-        "#..C..............H....................C.#",
-        "#####.......#######.......#######.......##",
-        "#...#.......#.....#.......#.....#.......#.",
-        "#...#...@...#..V..#.......#..V..#.......#.",
-        "#...#########.....#########.....#########.",
-        "#.............####..M....M...............#.",
-        "#........................................#.",
-        "##########################################"
+        "######################################################################",
+        "#....................................................................#",
+        "#....................................................................#",
+        "#....................................................................#",
+        "#....................................................................#",
+        "#...........................................................####.....#",
+        "#...........................................................####.....#",
+        "#........############################################........V.......#",
+        "#......C.############################################................#",
+        "#.....###############################################.........C......#",
+        "#.............V.......V.......V.......V.......V......................#",
+        "#..####...................................................##....##...#",
+        "#..@.......C......C.......C.......C.......C.......C....K..##^^^^##..E#",
+        "######################################################################",
+        "######################################################################",
+        "######################################################################"
+      ]
+    },
+    {
+      name: "Spike Bus",
+      rows: [
+        "############################################################################",
+        "#..........................................................................#",
+        "#..........................................................................#",
+        "#..........................................................................#",
+        "#..........................................................................#",
+        "#..........................................................................#",
+        "#..........................................................................#",
+        "#..........................................................................#",
+        "#......................................................C...................#",
+        "#...............................................CC....####.................#",
+        "#...........CC.............C....C.........M....####........................#",
+        "#..........####...........###..###......#####..............................#",
+        "#..@......^^^^^^...M...C..^^^^^^^^...K..#####^^^^^^^^.......M...C.^^^^..E..#",
+        "############################################################################",
+        "############################################################################",
+        "############################################################################"
       ]
     },
     {
       name: "Core Dump",
       rows: [
-        "##########################################",
-        "#..C...C...C...C...C...C...C...C...C....#",
-        "#.###.###.###.###.###.###.###.###.###..#",
-        "#....................................M..#",
-        "#.@..........H.........H.........H......E#",
-        "#####.......#####.......#####.......#####",
-        "#...#.......#...#.......#...#.......#...#",
-        "#...#...C...#...#...C...#...#...C...#...#",
-        "#...#########...#########...#########...#",
-        "#.........M............M...............#.",
-        "#......................................#.",
-        "##########################################"
+        "########################################",
+        "#.....................................##",
+        "#.....................................##",
+        "#.....................................##",
+        "#.....................................##",
+        "#.....................................##",
+        "#........................M....C.......##",
+        "#...................###############...##",
+        "#...............C.................#...##",
+        "#.............#####...............#.C.##",
+        "#.........C.......................#...##",
+        "#.......#####.....................#...##",
+        "#..E.C............................#...##",
+        "#.#####...........................#.C.##",
+        "#.................................#...##",
+        "#.................................#...##",
+        "#.................................#...##",
+        "#.................................#...##",
+        "#..............................K...C..##",
+        "#...........................############",
+        "#.......................C.............##",
+        "#.....................#####...........##",
+        "#.................M...................##",
+        "#...............#####.................##",
+        "#...........C.........................##",
+        "#.........#####.......................##",
+        "#..@....C.............................##",
+        "########################################",
+        "########################################",
+        "########################################"
+      ]
+    },
+    {
+      name: "Overclock",
+      rows: [
+        "################################################################################################",
+        "#..............................................................................................#",
+        "#..............................................................................................#",
+        "#..............................................................................................#",
+        "#..............................................................................................#",
+        "#................................############..................................................#",
+        "#................................############..................................................#",
+        "#......................................V.......................................................#",
+        "#...........................#..................................................................#",
+        "#...........................#........M....C............................####....................#",
+        "#...........................#...#############..........................####....................#",
+        "#...........................#...#.......................................V......................#",
+        "#...........................#.C.#...........................................................E..#",
+        "#...........................#...#........................................C................######",
+        "#.........C...........CC....#...#....................M.C......CC.......................C.......#",
+        "#........###....................#...................####............###....###........####.....#",
+        "#..@....^^^^^...M...............#..............K..^^^^^^^^..........###^^^^###...M..C..........#",
+        "#####################....####################################....###############################",
+        "#####################....####################################....###############################",
+        "#####################....####################################....###############################"
       ]
     }
   ];
-
-  let W = 0, H = 0, S = 1, DPR = 1;
-  let levelIdx = 0, levelW = 0, levelH = 0, solids = [];
-  let spawn = { x: 0, y: 0 };
-  let chips = [], enemies = [], lasers = [], exit = null;
+  let W = 0, H = 0, S = 1, DPR = 1, Z = 1;
+  let levelIdx = 0, levelW = 0, levelH = 0, grid = [], solidList = [], spikes = [];
+  let spawn = { x: 0, y: 0 }, checkpoint = null;
+  let chips = [], enemies = [], lasers = [], flags = [], exit = null;
   let player = null, camX = 0, camY = 0;
-  let score = 0, chipsGot = 0, chipsInLevel = 0, simT = 0;
-  let coyote = 0, jumpBuf = 0, wallDir = 0, invuln = 0, banner = null, overSent = false;
+  let score = 0, chipsGot = 0, simT = 0, levelT = 0, deaths = 0, stomps = 0;
+  let coyote = 0, jumpBuf = 0, wallDir = 0, wallLock = 0, invuln = 0, banner = null, overSent = false, jumpHeld = false;
   let totalChipsAll = 0;
 
   const view = PA.canvas(document.getElementById("c"), { onResize: layout });
@@ -138,7 +251,10 @@ window.paConfig = {
   function layout(v) {
     W = v.w; H = v.h; DPR = v.dpr;
     S = clamp(Math.sqrt(W * H) / 820, 0.72, 1.35);
+    // about 14 tiles of height on screen, never so zoomed that a phone sees less than 11 tiles across
+    Z = clamp(Math.min(H / (14 * TILE), W / (11 * TILE)), 0.7, 2.4);
   }
+  const VW = () => W / Z, VH = () => H / Z;
 
   function paintHud() {
     PA.stat("s-score", score.toLocaleString());
@@ -146,46 +262,26 @@ window.paConfig = {
     PA.stat("s-level", (levelIdx + 1) + " · " + (LEVELS[levelIdx] ? LEVELS[levelIdx].name : "—"));
   }
 
+  const isSolid = (tx, ty) => tx < 0 || tx >= grid[0].length || ty < 0 ? true : ty >= grid.length ? false : grid[ty][tx] === 1;
+
   function parseLevel(idx) {
-    const def = LEVELS[idx];
-    const rows = def.rows;
+    const rows = LEVELS[idx].rows;
     levelH = rows.length * TILE;
     levelW = rows[0].length * TILE;
-    solids = [];
-    chips = [];
-    enemies = [];
-    lasers = [];
-    exit = null;
-    chipsInLevel = 0;
+    grid = rows.map((r) => [...r].map((ch) => (ch === "#" ? 1 : 0)));
+    solidList = []; spikes = []; chips = []; enemies = []; lasers = []; flags = [];
+    exit = null; checkpoint = null;
     for (let y = 0; y < rows.length; y++) {
-      const row = rows[y];
-      for (let x = 0; x < row.length; x++) {
-        const ch = row[x];
-        const wx = x * TILE;
-        const wy = y * TILE;
-        if (ch === "#") solids.push({ x: wx, y: wy, w: TILE, h: TILE });
-        else if (ch === "@") spawn = { x: wx + TILE / 2 - PW / 2, y: wy + TILE - PH - 2 };
-        else if (ch === "C") {
-          chips.push({ x: wx + TILE / 2, y: wy + TILE / 2, r: 10 * S, got: false, ph: rand(TAU) });
-          chipsInLevel++;
-        } else if (ch === "E") exit = { x: wx + 4, y: wy + 4, w: TILE - 8, h: TILE - 8, ph: rand(TAU) };
-        else if (ch === "M") {
-          let standY = wy + TILE - 12 * S;
-          for (let sy = y + 1; sy < rows.length; sy++) {
-            if (rows[sy][x] === "#") {
-              standY = sy * TILE - 12 * S;
-              break;
-            }
-          }
-          enemies.push({
-            x: wx + TILE / 2, y: standY, r: 11 * S,
-            vx: 70 * S, minX: wx + 6, maxX: wx + TILE - 6, dir: 1, ph: rand(TAU)
-          });
-        } else if (ch === "H") {
-          lasers.push({ x: wx + TILE / 2, y: wy + TILE / 2, axis: "h", phase: rand(TAU), len: 0 });
-        } else if (ch === "V") {
-          lasers.push({ x: wx + TILE / 2, y: wy + TILE / 2, axis: "v", phase: rand(TAU), len: 0 });
-        }
+      for (let x = 0; x < rows[y].length; x++) {
+        const ch = rows[y][x], wx = x * TILE, wy = y * TILE;
+        if (ch === "#") solidList.push({ x: wx, y: wy, tx: x, ty: y });
+        else if (ch === "@") spawn = { x: wx + (TILE - PW) / 2, y: wy + TILE - PH };
+        else if (ch === "C") chips.push({ x: wx + TILE / 2, y: wy + TILE / 2, r: 10, got: false, ph: rand(TAU) });
+        else if (ch === "E") exit = { x: wx + 2, y: wy - 6, w: TILE - 4, h: TILE + 4, ph: rand(TAU) };
+        else if (ch === "K") flags.push({ x: wx + TILE / 2, y: wy + TILE, on: false, t: 0 });
+        else if (ch === "^") spikes.push({ x: wx, y: wy + TILE * 0.45, w: TILE, h: TILE * 0.55 });
+        else if (ch === "M") enemies.push({ x: wx + TILE / 2, y: wy + TILE - 12, r: 12, dir: enemies.length % 2 ? -1 : 1, ph: rand(TAU), dead: false, squash: 0 });
+        else if (ch === "H" || ch === "V") lasers.push({ x: wx + TILE / 2, y: wy + TILE / 2, axis: ch === "H" ? "h" : "v", phase: lasers.length * 0.8 });
       }
     }
     lasers.forEach(buildLaserBeam);
@@ -193,53 +289,46 @@ window.paConfig = {
 
   function countAllChips() {
     let n = 0;
-    LEVELS.forEach((L) => {
-      L.rows.forEach((row) => {
-        for (let i = 0; i < row.length; i++) if (row[i] === "C") n++;
-      });
-    });
+    LEVELS.forEach((L) => L.rows.forEach((row) => { for (const ch of row) if (ch === "C") n++; }));
     return n;
   }
 
   function buildLaserBeam(L) {
+    const tx = Math.floor(L.x / TILE), ty = Math.floor(L.y / TILE);
     if (L.axis === "h") {
-      let l = L.x, r = L.x;
-      while (l - TILE >= 0 && !tileSolid(l - TILE, L.y)) l -= TILE;
-      while (r + TILE < levelW && !tileSolid(r + TILE, L.y)) r += TILE;
-      L.x1 = l; L.x2 = r; L.y1 = L.y2 = L.y;
+      let l = tx, r = tx;
+      while (!isSolid(l - 1, ty)) l--;
+      while (!isSolid(r + 1, ty)) r++;
+      L.x1 = l * TILE; L.x2 = (r + 1) * TILE; L.y1 = L.y2 = L.y;
     } else {
-      let t = L.y, b = L.y;
-      while (t - TILE >= 0 && !tileSolid(L.x, t - TILE)) t -= TILE;
-      while (b + TILE < levelH && !tileSolid(L.x, b + TILE)) b += TILE;
-      L.x1 = L.x2 = L.x; L.y1 = t; L.y2 = b;
+      let t = ty, b = ty;
+      while (!isSolid(tx, t - 1)) t--;
+      while (b + 1 < grid.length && !isSolid(tx, b + 1)) b++;
+      L.x1 = L.x2 = L.x; L.y1 = t * TILE; L.y2 = (b + 1) * TILE;
     }
   }
 
-  function tileSolid(px, py) {
-    const tx = Math.floor(px / TILE) * TILE;
-    const ty = Math.floor(py / TILE) * TILE;
-    return solids.some((s) => s.x === tx && s.y === ty);
+  function resetPlayer() {
+    const at = checkpoint || spawn;
+    player = { x: at.x, y: at.y, vx: 0, vy: 0, w: PW, h: PH, onGround: false, dead: false, face: 1, squash: 0 };
+    coyote = 0; jumpBuf = 0; wallDir = 0; wallLock = 0; invuln = 0.8;
   }
 
-  function resetPlayer() {
-    player = {
-      x: spawn.x, y: spawn.y, vx: 0, vy: 0,
-      w: PW * S, h: PH * S,
-      onGround: false, dead: false
-    };
-    coyote = 0; jumpBuf = 0; wallDir = 0; invuln = 0.6;
+  function centerCamera(snap) {
+    const vw = VW(), vh = VH();
+    const tx = levelW <= vw ? (levelW - vw) / 2 : clamp(player.x + player.w / 2 - vw / 2 + player.face * vw * 0.08, 0, levelW - vw);
+    const ty = levelH <= vh ? (levelH - vh) / 2 : clamp(player.y + player.h / 2 - vh * 0.55, 0, levelH - vh);
+    if (snap) { camX = tx; camY = ty; return; }
+    return { tx, ty };
   }
 
   function loadLevel(idx, keepScore) {
     levelIdx = idx;
     parseLevel(idx);
     resetPlayer();
-    camX = clamp(player.x + player.w / 2 - W / 2, 0, Math.max(0, levelW - W));
-    camY = clamp(player.y + player.h / 2 - H / 2, 0, Math.max(0, levelH - H));
-    if (!keepScore) {
-      score = 0; chipsGot = 0;
-      chips.forEach((c) => { c.got = false; });
-    }
+    centerCamera(true);
+    levelT = 0;
+    if (!keepScore) { score = 0; chipsGot = 0; deaths = 0; stomps = 0; }
     banner = { text: "Sector " + (idx + 1), sub: LEVELS[idx].name, t: 0, max: 2.2 };
     paintHud();
   }
@@ -247,6 +336,7 @@ window.paConfig = {
   function reset() {
     simT = 0; overSent = false;
     totalChipsAll = countAllChips();
+    fx.clear(); texts.clear();
     loadLevel(0, false);
     hud.classList.add("on");
     PA.music.intensity(0.15);
@@ -255,342 +345,395 @@ window.paConfig = {
   PA.onStart(reset);
 
   PA.touchControls({
-    left: [{ label: "◀", key: "ArrowLeft", code: "ArrowLeft", aria: "Move left" }],
-    right: [{ label: "▶", key: "ArrowRight", code: "ArrowRight", aria: "Move right" }],
-    center: [{ label: "JUMP", key: " ", code: "Space", wide: true, aria: "Jump" }]
+    left: [{ label: "◀", key: "ArrowLeft", code: "ArrowLeft", aria: "Move left" }, { label: "▶", key: "ArrowRight", code: "ArrowRight", aria: "Move right" }],
+    right: [{ label: "JUMP", key: " ", code: "Space", wide: true, aria: "Jump" }]
   });
 
-  function requestJump() {
-    jumpBuf = JUMP_BUF;
-  }
-
+  const JUMP_KEYS = ["Space", " ", "ArrowUp", "KeyW", "w", "W"];
   PA.onKey((e) => {
     if (e.repeat) return;
-    const k = e.key, c = e.code;
-    if (k === " " || c === "Space" || k === "ArrowUp" || c === "KeyW" || k === "w" || k === "W") {
+    if (JUMP_KEYS.indexOf(e.code) >= 0 || JUMP_KEYS.indexOf(e.key) >= 0) {
       e.preventDefault();
-      requestJump();
+      jumpBuf = JUMP_BUF;
     }
   });
 
   function tryJump() {
-    if (!player || player.dead) return;
     if (jumpBuf <= 0) return;
-    const wall = wallDir;
     if (player.onGround || coyote > 0) {
-      player.vy = JUMP_V * S;
+      player.vy = -JUMP_V;
       player.onGround = false;
-      coyote = 0;
-      jumpBuf = 0;
+      player.squash = -0.25;
+      coyote = 0; jumpBuf = 0;
       PA.sfx("whoosh", { pitch: 1.05, vol: 0.55 });
       PA.tone({ freq: 420, to: 620, type: "triangle", dur: 0.06, vol: 0.05 });
-      fx.burst(player.x + player.w / 2, player.y + player.h, { n: 5, color: COL.player, speed: 60, life: 0.25, size: 2, vy: -20 });
-    } else if (wall) {
-      player.vy = WALL_JUMP_Y * S;
-      player.vx = WALL_JUMP_X * S * -wall;
-      jumpBuf = 0;
-      coyote = 0;
-      wallDir = 0;
+      fx.burst(player.x + player.w / 2, player.y + player.h, { n: 6, color: COL.player, speed: 70, life: 0.25, size: 2, vy: -20 });
+    } else if (wallDir) {
+      player.vy = -WALL_JUMP_Y;
+      player.vx = WALL_JUMP_X * -wallDir;
+      player.face = -wallDir;
+      wallLock = WALL_LOCK;
+      jumpBuf = 0; coyote = 0;
       PA.sfx("whoosh", { pitch: 1.18, vol: 0.6 });
       PA.tone({ freq: 520, to: 780, type: "square", dur: 0.05, vol: 0.045 });
-      fx.burst(wall > 0 ? player.x + player.w : player.x, player.y + player.h * 0.5, {
-        n: 8, color: COL.wallEdge, speed: 90, life: 0.3, size: 2.2
-      });
+      fx.burst(wallDir > 0 ? player.x + player.w : player.x, player.y + player.h * 0.5, { n: 8, color: COL.wallEdge, speed: 90, life: 0.3, size: 2.2 });
+      wallDir = 0;
     }
   }
 
-  function rectsOverlap(a, b) {
-    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-  }
-
-  function playerBox(p) {
-    return { x: p.x, y: p.y, w: p.w, h: p.h };
+  function overlapsSolid(x, y, w, h) {
+    const x0 = Math.floor(x / TILE), x1 = Math.floor((x + w - 0.001) / TILE);
+    const y0 = Math.floor(y / TILE), y1 = Math.floor((y + h - 0.001) / TILE);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (isSolid(tx, ty)) return { tx, ty };
+    return null;
   }
 
   function moveAxis(p, dx, dy) {
-    p.x += dx;
-    for (const s of solids) {
-      if (!rectsOverlap(playerBox(p), s)) continue;
-      if (dx > 0) p.x = s.x - p.w - 0.01;
-      else if (dx < 0) p.x = s.x + s.w + 0.01;
+    // horizontal, in steps no larger than half a tile so fast moves can't skip a wall
+    const nx = Math.ceil(Math.abs(dx) / (TILE / 2)) || 1;
+    for (let i = 0; i < nx; i++) {
+      p.x += dx / nx;
+      const hit = overlapsSolid(p.x, p.y, p.w, p.h);
+      if (hit) { p.x = dx > 0 ? hit.tx * TILE - p.w : (hit.tx + 1) * TILE; p.vx = 0; break; }
     }
-    p.y += dy;
     p.onGround = false;
-    for (const s of solids) {
-      if (!rectsOverlap(playerBox(p), s)) continue;
-      if (dy > 0) {
-        p.y = s.y - p.h - 0.01;
+    const ny = Math.ceil(Math.abs(dy) / (TILE / 2)) || 1;
+    for (let i = 0; i < ny; i++) {
+      p.y += dy / ny;
+      const hit = overlapsSolid(p.x, p.y, p.w, p.h);
+      if (hit) {
+        if (dy > 0) { p.y = hit.ty * TILE - p.h; p.onGround = true; if (p.vy > 500) p.squash = 0.22; }
+        else p.y = (hit.ty + 1) * TILE;
         p.vy = 0;
-        p.onGround = true;
-      } else if (dy < 0) {
-        p.y = s.y + s.h + 0.01;
-        p.vy = 0;
+        break;
       }
     }
+    if (!p.onGround && dy >= 0 && overlapsSolid(p.x, p.y + 1, p.w, 1)) p.onGround = true;
   }
 
   function senseWalls(p) {
     wallDir = 0;
-    const pad = 2 * S;
-    const left = { x: p.x - pad, y: p.y + 4 * S, w: pad, h: p.h - 8 * S };
-    const right = { x: p.x + p.w, y: p.y + 4 * S, w: pad, h: p.h - 8 * S };
-    for (const s of solids) {
-      if (rectsOverlap(left, s) && !p.onGround) wallDir = -1;
-      if (rectsOverlap(right, s) && !p.onGround) wallDir = 1;
-    }
-    if (p.onGround) wallDir = 0;
+    if (p.onGround) return;
+    if (overlapsSolid(p.x - 2, p.y + 6, 2, p.h - 12)) wallDir = -1;
+    else if (overlapsSolid(p.x + p.w, p.y + 6, 2, p.h - 12)) wallDir = 1;
   }
 
-  function killPlayer() {
+  function killPlayer(why) {
     if (invuln > 0 || player.dead) return;
     player.dead = true;
-    PA.shake(12 * S, 0.45);
+    deaths++;
+    PA.shake(12, 0.45);
     PA.hitstop(90);
     PA.flash("rgba(255,77,109,.35)", 280);
     PA.sfx("explode", { pitch: 0.85, vol: 0.65 });
-    fx.burst(player.x + player.w / 2, player.y + player.h / 2, {
-      n: 36, colors: [COL.player, COL.enemy, COL.laser, "#fff"], speed: 220, life: 0.65, size: 3, shape: "spark"
-    });
-    texts.add(player.x + player.w / 2, player.y, "FRIED", { color: COL.laser, size: 22 * S, life: 0.75, vy: -40 });
+    fx.burst(player.x + player.w / 2, player.y + player.h / 2, { n: 36, colors: [COL.player, COL.enemy, COL.laser, "#fff"], speed: 220, life: 0.65, size: 3, shape: "spark" });
+    texts.add(player.x + player.w / 2, player.y, why || "FRIED", { color: COL.laser, size: 18, life: 0.75, vy: -40 });
     setTimeout(() => {
-      if (PA.state !== "play") return;
+      if (PA.state !== "play" || overSent) return;
       resetPlayer();
-      player.dead = false;
-    }, 420);
+    }, 520);
   }
 
   function collectChip(c) {
-    if (c.got) return;
     c.got = true;
     chipsGot++;
-    const pts = 400;
-    score += pts;
+    score += 400;
     PA.sfx("coin", { pitch: 1 + (chipsGot % 8) * 0.04 });
     PA.tone({ freq: 880, to: 1320, type: "sine", dur: 0.08, vol: 0.05 });
     fx.burst(c.x, c.y, { n: 14, color: COL.chip, speed: 120, life: 0.45, size: 2.5 });
-    texts.add(c.x, c.y - 8, "+" + pts, { color: COL.chip, size: 16 * S, life: 0.65, vy: -50 });
+    texts.add(c.x, c.y - 8, "+400", { color: COL.chip, size: 14, life: 0.65, vy: -50 });
     paintHud();
-    PA.music.intensity(clamp(0.15 + chipsGot / Math.max(1, totalChipsAll) * 0.55, 0.15, 0.85));
+    PA.music.intensity(clamp(0.15 + chipsGot / Math.max(1, totalChipsAll) * 0.6, 0.15, 0.85));
   }
 
-  function laserActive(L, t) {
-    const cycle = 2.4;
-    const u = ((t + L.phase) % cycle) / cycle;
-    return u < 0.62;
+  function stomp(e) {
+    e.dead = true;
+    stomps++;
+    score += 250;
+    player.vy = -(PA.down.apply(null, JUMP_KEYS) ? STOMP_V * 1.2 : STOMP_V);
+    player.onGround = false;
+    coyote = 0;
+    PA.sfx("hit", { pitch: 1.4, vol: 0.6 });
+    PA.shake(4, 0.15);
+    fx.burst(e.x, e.y, { n: 18, colors: [COL.enemy, "#fff"], speed: 160, life: 0.45, size: 2.5, shape: "spark" });
+    texts.add(e.x, e.y - 14, "+250", { color: COL.enemy, size: 14, life: 0.6, vy: -50 });
+    paintHud();
   }
+
+  function laserPhase(L, t) { return (((t + L.phase) % LASER_CYCLE) + LASER_CYCLE) % LASER_CYCLE / LASER_CYCLE; }
+  const laserActive = (L, t) => laserPhase(L, t) < LASER_ON;
 
   function hitLaser(p, t) {
-    const cx = p.x + p.w / 2;
-    const cy = p.y + p.h / 2;
     for (const L of lasers) {
       if (!laserActive(L, t)) continue;
-      const thick = 6 * S;
       if (L.axis === "h") {
-        if (Math.abs(cy - L.y) < thick + p.h * 0.35 && cx >= L.x1 - 4 && cx <= L.x2 + 4) return true;
-      } else if (Math.abs(cx - L.x) < thick + p.w * 0.35 && cy >= L.y1 - 4 && cy <= L.y2 + 4) return true;
+        if (L.y > p.y + 3 && L.y < p.y + p.h - 3 && p.x + p.w > L.x1 && p.x < L.x2) return true;
+      } else if (L.x > p.x + 3 && L.x < p.x + p.w - 3 && p.y + p.h > L.y1 && p.y < L.y2) return true;
     }
     return false;
   }
 
   function completeLevel() {
-    const bonus = 1800 + chips.filter((c) => c.got).length * 120;
+    const secs = levelT;
+    const bonus = 1500 + Math.max(0, Math.round((60 - secs) * 20)) + chips.filter((c) => c.got).length * 100;
     score += bonus;
     paintHud();
     PA.sfx("levelup");
     PA.flash("rgba(142,233,255,.22)", 320);
-    texts.add(player.x, player.y - 20, "SECTOR CLEAR", { color: COL.portal, size: 20 * S, life: 1.1, vy: -35 });
     if (levelIdx + 1 >= LEVELS.length) {
       if (overSent) return;
       overSent = true;
       hud.classList.remove("on");
       PA.gameOver(score, {
-        title: "Circuit synced",
-        stats: [
-          ["Chips", chipsGot + " / " + totalChipsAll],
-          ["Sectors", LEVELS.length],
-          ["Final score", score]
-        ]
+        kicker: "All sectors synced",
+        title: chipsGot >= totalChipsAll ? "Every chip, every sector!" : deaths === 0 ? "Flawless run!" : "Circuit complete",
+        stats: [["Chips", chipsGot + " / " + totalChipsAll], ["Bots stomped", stomps], ["Deaths", deaths], ["Time", Math.round(simT) + "s"]]
       });
       return;
     }
     loadLevel(levelIdx + 1, true);
-  }
-
-  function onExit() {
-    completeLevel();
+    texts.add(player.x + player.w / 2, player.y - 30, "+" + bonus.toLocaleString(), { color: COL.portal, size: 18, life: 1.2, vy: -30 });
   }
 
   function update(dt, t) {
-    simT = t;
     fx.update(dt);
     texts.update(dt);
     if (banner) banner.t += dt;
+    for (const f of flags) f.t += dt;
+    for (const e of enemies) if (e.dead) e.squash = Math.min(1, e.squash + dt * 4);
 
-    if (PA.state !== "play" || !player || player.dead) return;
-
+    if (PA.state !== "play" || !player) return;
+    simT += dt;
+    if (player.dead) return;
+    levelT += dt;
     if (invuln > 0) invuln -= dt;
+    if (wallLock > 0) wallLock -= dt;
+    player.squash *= Math.pow(0.0005, dt);
 
     const left = PA.down("ArrowLeft", "KeyA", "a");
     const right = PA.down("ArrowRight", "KeyD", "d");
-    const targetVx = (right ? 1 : 0) - (left ? 1 : 0);
-    player.vx = targetVx * MOVE * S;
-    if (targetVx && player.onGround) {
-      player.vx += targetVx * 40 * S;
+    const dir = (right ? 1 : 0) - (left ? 1 : 0);
+    if (dir) player.face = dir;
+    if (wallLock <= 0) {
+      const a = (player.onGround ? ACCEL : AIR_ACCEL) * dt, target = dir * MOVE;
+      player.vx = player.vx < target ? Math.min(target, player.vx + a) : Math.max(target, player.vx - a);
     }
 
-    player.vy = clamp(player.vy + GRAV * S * dt, -9999, MAX_FALL * S);
+    // variable jump: let go early for a short hop
+    const held = PA.down.apply(null, JUMP_KEYS);
+    if (!held && jumpHeld && player.vy < -200) player.vy *= JUMP_CUT;
+    jumpHeld = held;
+
+    player.vy += (player.vy > 0 ? FALL_GRAV : GRAV) * dt;
+    // sliding down a wall you are pushing into
+    if (wallDir && player.vy > WALL_SLIDE && dir === wallDir) player.vy = WALL_SLIDE;
+    player.vy = Math.min(player.vy, MAX_FALL);
     if (jumpBuf > 0) jumpBuf -= dt;
     tryJump();
 
+    const wasAirborne = !player.onGround;
     moveAxis(player, player.vx * dt, player.vy * dt);
-    if (player.onGround) coyote = COYOTE;
-    else coyote = Math.max(0, coyote - dt);
-
+    if (player.onGround) {
+      coyote = COYOTE;
+      if (wasAirborne) fx.burst(player.x + player.w / 2, player.y + player.h, { n: 4, color: COL.player, speed: 50, life: 0.2, size: 1.6 });
+    } else coyote = Math.max(0, coyote - dt);
     senseWalls(player);
+    if (wallDir && player.vy > 0 && dir === wallDir && Math.random() < 0.3) fx.burst(wallDir > 0 ? player.x + player.w : player.x, player.y + player.h * 0.3, { n: 1, color: COL.wallEdge, speed: 30, life: 0.25, size: 1.5 });
+
+    const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
 
     for (const e of enemies) {
-      e.x += e.vx * dt * e.dir;
-      if (e.x <= e.minX) { e.x = e.minX; e.dir = 1; }
-      if (e.x >= e.maxX) { e.x = e.maxX; e.dir = -1; }
-      e.ph += dt * 4;
-      const dx = (player.x + player.w / 2) - e.x;
-      const dy = (player.y + player.h / 2) - e.y;
-      if (dx * dx + dy * dy < (e.r + Math.min(player.w, player.h) * 0.45) ** 2) killPlayer();
+      if (e.dead) continue;
+      e.ph += dt * 6;
+      // walk the platform: turn at walls and at ledges
+      const nx = e.x + e.dir * BOT_SPEED * dt;
+      const ahead = Math.floor((nx + e.dir * e.r) / TILE), foot = Math.floor((e.y + e.r + 4) / TILE), row = Math.floor(e.y / TILE);
+      if (isSolid(ahead, row) || !isSolid(ahead, foot)) e.dir *= -1;
+      else e.x = nx;
+      const dx = pcx - e.x, dy = pcy - e.y;
+      if (Math.abs(dx) < e.r + player.w / 2 - 2 && Math.abs(dy) < e.r + player.h / 2 - 2) {
+        if (player.vy > 60 && player.y + player.h - player.vy * dt <= e.y - e.r * 0.3) stomp(e);
+        else killPlayer("ZAPPED");
+      }
     }
 
     for (const c of chips) {
       if (c.got) continue;
       c.ph += dt * 3;
-      const dx = (player.x + player.w / 2) - c.x;
-      const dy = (player.y + player.h / 2) - c.y;
-      if (dx * dx + dy * dy < (c.r + 12 * S) ** 2) collectChip(c);
+      const dx = pcx - c.x, dy = pcy - c.y;
+      if (dx * dx + dy * dy < (c.r + 14) ** 2) collectChip(c);
     }
 
-    if (exit && rectsOverlap(playerBox(player), exit)) onExit();
+    for (const f of flags) {
+      if (f.on || Math.abs(pcx - f.x) > 20 || Math.abs(player.y + player.h - f.y) > 34) continue;
+      flags.forEach((o) => { o.on = false; });
+      f.on = true; f.t = 0;
+      checkpoint = { x: f.x - PW / 2, y: f.y - PH };
+      PA.sfx("power", { pitch: 1.3 });
+      texts.add(f.x, f.y - 46, "CHECKPOINT", { color: COL.flag, size: 14, life: 1, vy: -30 });
+      fx.burst(f.x, f.y - 30, { n: 16, color: COL.flag, speed: 120, life: 0.5, size: 2 });
+    }
 
-    if (hitLaser(player, t)) killPlayer();
+    for (const s of spikes) {
+      if (player.x + player.w > s.x + 4 && player.x < s.x + s.w - 4 && player.y + player.h > s.y + 4 && player.y < s.y + s.h) { killPlayer("SPIKED"); break; }
+    }
 
-    const cx = player.x + player.w / 2;
-    camX += (clamp(cx - W / 2, 0, Math.max(0, levelW - W)) - camX) * clamp(dt * 9, 0, 1);
-    const cy = player.y + player.h / 2;
-    camY += (clamp(cy - H / 2, 0, Math.max(0, levelH - H)) - camY) * clamp(dt * 7, 0, 1);
+    if (!player.dead && exit && player.x + player.w > exit.x && player.x < exit.x + exit.w && player.y + player.h > exit.y && player.y < exit.y + exit.h) {
+      completeLevel();
+      return;
+    }
+    if (!player.dead && hitLaser(player, t)) killPlayer("FRIED");
+    if (!player.dead && player.y > levelH + 60) { invuln = 0; killPlayer("LOST SIGNAL"); }
 
-    if (player.y > levelH + 80) killPlayer();
+    const c = centerCamera(false);
+    camX += (c.tx - camX) * clamp(dt * 8, 0, 1);
+    camY += (c.ty - camY) * clamp(dt * 6, 0, 1);
   }
 
-  function drawTile(s) {
-    const x = s.x - camX, y = s.y - camY;
-    if (x + s.w < -8 || x > W + 8 || y + s.h < -8 || y > H + 8) return;
+  /* ---------------- drawing ---------------- */
+  function drawTiles() {
+    const x0 = Math.floor(camX / TILE) - 1, x1 = Math.ceil((camX + VW()) / TILE) + 1;
+    const y0 = Math.floor(camY / TILE) - 1, y1 = Math.ceil((camY + VH()) / TILE) + 1;
     ctx.fillStyle = COL.wall;
-    ctx.fillRect(x, y, s.w, s.h);
-    ctx.fillStyle = "rgba(142,233,255,.22)";
-    ctx.fillRect(x, y, s.w, 3);
-    ctx.strokeStyle = "rgba(196,166,255,.35)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, s.w - 1, s.h - 1);
+    for (let ty = Math.max(0, y0); ty <= Math.min(grid.length - 1, y1); ty++) {
+      for (let tx = Math.max(0, x0); tx <= Math.min(grid[0].length - 1, x1); tx++) {
+        if (grid[ty][tx]) ctx.fillRect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
+      }
+    }
+    // circuit traces inside the walls
+    ctx.strokeStyle = COL.trace; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let ty = Math.max(0, y0); ty <= Math.min(grid.length - 1, y1); ty++) {
+      for (let tx = Math.max(0, x0); tx <= Math.min(grid[0].length - 1, x1); tx++) {
+        if (!grid[ty][tx] || (tx * 7 + ty * 13) % 5) continue;
+        const X = tx * TILE, Y = ty * TILE;
+        ctx.moveTo(X + 8, Y + 16); ctx.lineTo(X + 16, Y + 16); ctx.lineTo(X + 24, Y + 24);
+        ctx.moveTo(X + 25, Y + 25); ctx.arc(X + 24, Y + 24, 1.5, 0, TAU);
+      }
+    }
+    ctx.stroke();
+    // glowing edges only where a wall meets open air
+    ctx.save();
+    ctx.strokeStyle = COL.wallEdge; ctx.lineWidth = 2; ctx.shadowColor = COL.wallEdge; ctx.shadowBlur = 8; ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    for (let ty = Math.max(0, y0); ty <= Math.min(grid.length - 1, y1); ty++) {
+      for (let tx = Math.max(0, x0); tx <= Math.min(grid[0].length - 1, x1); tx++) {
+        if (!grid[ty][tx]) continue;
+        const X = tx * TILE, Y = ty * TILE;
+        if (ty > 0 && !grid[ty - 1][tx]) { ctx.moveTo(X, Y + 1); ctx.lineTo(X + TILE, Y + 1); }
+        if (ty < grid.length - 1 && !grid[ty + 1][tx]) { ctx.moveTo(X, Y + TILE - 1); ctx.lineTo(X + TILE, Y + TILE - 1); }
+        if (tx > 0 && !grid[ty][tx - 1]) { ctx.moveTo(X + 1, Y); ctx.lineTo(X + 1, Y + TILE); }
+        if (tx < grid[0].length - 1 && !grid[ty][tx + 1]) { ctx.moveTo(X + TILE - 1, Y); ctx.lineTo(X + TILE - 1, Y + TILE); }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawSpikes(t) {
+    ctx.save();
+    ctx.fillStyle = COL.spike; ctx.shadowColor = COL.spike; ctx.shadowBlur = 10 + Math.sin(t * 4) * 3;
+    ctx.beginPath();
+    for (const s of spikes) {
+      for (let i = 0; i < 4; i++) {
+        const x = s.x + i * 8;
+        ctx.moveTo(x, s.y + s.h); ctx.lineTo(x + 4, s.y + 1); ctx.lineTo(x + 8, s.y + s.h);
+      }
+    }
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawChip(c, t) {
     if (c.got) return;
-    const x = c.x - camX, y = c.y - camY + Math.sin(c.ph) * 3 * S;
-    if (x < -20 || x > W + 20 || y < -20 || y > H + 20) return;
-    const r = c.r + Math.sin(t * 4 + c.ph) * 1.2 * S;
+    const x = c.x, y = c.y + Math.sin(c.ph) * 3;
+    const r = c.r + Math.sin(t * 4 + c.ph) * 1.2;
     ctx.save();
-    ctx.shadowColor = COL.chip;
-    ctx.shadowBlur = 14;
+    ctx.shadowColor = COL.chip; ctx.shadowBlur = 14;
     ctx.fillStyle = COL.chip;
-    ctx.beginPath();
-    ctx.moveTo(x, y - r);
-    ctx.lineTo(x + r * 0.85, y);
-    ctx.lineTo(x, y + r);
-    ctx.lineTo(x - r * 0.85, y);
-    ctx.closePath();
-    ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.85, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.85, y); ctx.closePath(); ctx.fill();
     ctx.fillStyle = COL.chipCore;
-    ctx.beginPath();
-    ctx.arc(x, y, r * 0.35, 0, TAU);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, r * 0.35, 0, TAU); ctx.fill();
     ctx.restore();
   }
 
-  function drawEnemy(e, t) {
-    const x = e.x - camX, y = e.y - camY;
+  function drawEnemy(e) {
+    if (e.dead && e.squash >= 1) return;
+    const sq = e.dead ? 1 - e.squash : 1;
+    const x = e.x, y = e.y + (1 - sq) * e.r, bob = e.dead ? 0 : Math.abs(Math.sin(e.ph)) * 2;
     ctx.save();
-    ctx.shadowColor = COL.enemy;
-    ctx.shadowBlur = 12;
+    ctx.globalAlpha = sq;
+    ctx.shadowColor = COL.enemy; ctx.shadowBlur = 12;
     ctx.fillStyle = COL.enemy;
-    ctx.beginPath();
-    ctx.arc(x, y, e.r, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(x - 4 * S, y - 2 * S, 3 * S, 3 * S);
-    ctx.fillRect(x + 1 * S, y - 2 * S, 3 * S, 3 * S);
+    ctx.beginPath(); ctx.ellipse(x, y - bob, e.r * (2 - sq), e.r * sq, 0, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#2a0d1c";
+    ctx.fillRect(x - 7 + e.dir * 2, y - bob - 4, 4, 4 * sq);
+    ctx.fillRect(x + 3 + e.dir * 2, y - bob - 4, 4, 4 * sq);
+    // little antenna, so it reads as a bot
+    ctx.strokeStyle = COL.enemy; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, y - bob - e.r * sq); ctx.lineTo(x, y - bob - e.r * sq - 6); ctx.stroke();
     ctx.restore();
   }
 
   function drawLaser(L, t) {
-    const on = laserActive(L, t);
+    const u = laserPhase(L, t), on = u < LASER_ON, warn = !on && u > 0.86;
     const pulse = 0.55 + 0.45 * Math.sin(t * 8 + L.phase);
-    const x1 = L.x1 - camX, x2 = L.x2 - camX;
-    const y1 = L.y1 - camY, y2 = L.y2 - camY;
     ctx.save();
-    ctx.globalAlpha = on ? 0.85 : 0.18;
-    ctx.strokeStyle = on ? COL.laser : "rgba(255,77,109,.35)";
-    ctx.lineWidth = (on ? 5 : 2) * S;
-    ctx.shadowColor = COL.laser;
-    ctx.shadowBlur = on ? 18 * pulse : 4;
-    ctx.beginPath();
-    if (L.axis === "h") {
-      ctx.moveTo(x1, L.y - camY);
-      ctx.lineTo(x2, L.y - camY);
-    } else {
-      ctx.moveTo(L.x - camX, y1);
-      ctx.lineTo(L.x - camX, y2);
-    }
-    ctx.stroke();
+    ctx.globalAlpha = on ? 0.9 : warn ? 0.35 + 0.35 * Math.sin(t * 40) : 0.14;
+    ctx.strokeStyle = on ? COL.laser : "rgba(255,77,109,.6)";
+    ctx.lineWidth = on ? 5 : 2;
+    ctx.shadowColor = COL.laser; ctx.shadowBlur = on ? 18 * pulse : 4;
+    ctx.beginPath(); ctx.moveTo(L.x1, L.y1); ctx.lineTo(L.x2, L.y2); ctx.stroke();
+    if (on) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.shadowBlur = 0; ctx.beginPath(); ctx.moveTo(L.x1, L.y1); ctx.lineTo(L.x2, L.y2); ctx.stroke(); }
+    ctx.globalAlpha = 1;
     ctx.fillStyle = COL.laserCore;
-    ctx.beginPath();
-    ctx.arc(L.x - camX, L.y - camY, 4 * S, 0, TAU);
-    ctx.fill();
+    const ex = L.axis === "h" ? [L.x1 + 3, L.x2 - 3] : [L.x], ey = L.axis === "h" ? [L.y] : [L.y1 + 3, L.y2 - 3];
+    for (const X of ex) for (const Y of ey) { ctx.beginPath(); ctx.arc(X, Y, 4, 0, TAU); ctx.fill(); }
+    ctx.restore();
+  }
+
+  function drawFlag(f, t) {
+    const x = f.x, y = f.y;
+    ctx.save();
+    ctx.strokeStyle = "rgba(244,241,255,.55)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.lineTo(x - 6, y - 38); ctx.stroke();
+    const c = f.on ? COL.flag : "rgba(126,231,168,.35)";
+    ctx.fillStyle = c; ctx.shadowColor = COL.flag; ctx.shadowBlur = f.on ? 14 : 0;
+    const wave = Math.sin(t * 6) * (f.on ? 3 : 1);
+    ctx.beginPath(); ctx.moveTo(x - 6, y - 38); ctx.quadraticCurveTo(x + 6, y - 36 + wave, x + 14, y - 31); ctx.lineTo(x - 6, y - 24); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 
   function drawExit(e, t) {
-    const x = e.x - camX, y = e.y - camY;
-    const cx = x + e.w / 2, cy = y + e.h / 2;
-    const r = e.w * 0.42 + Math.sin(t * 3 + e.ph) * 2 * S;
+    const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
+    const r = e.w * 0.48 + Math.sin(t * 3 + e.ph) * 2;
     ctx.save();
-    ctx.shadowColor = COL.portal;
-    ctx.shadowBlur = 20;
-    const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
-    g.addColorStop(0, COL.portalCore);
-    g.addColorStop(0.55, COL.portal);
-    g.addColorStop(1, "rgba(196,166,255,0)");
+    ctx.shadowColor = COL.portal; ctx.shadowBlur = 24;
+    const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r * 1.15);
+    g.addColorStop(0, COL.portalCore); g.addColorStop(0.55, COL.portal); g.addColorStop(1, "rgba(196,166,255,0)");
     ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,.55)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.65, t * 2, t * 2 + TAU * 0.7);
-    ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.8, r * 1.15, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.55, r * 0.8, 0, t * 2, t * 2 + TAU * 0.7); ctx.stroke();
     ctx.restore();
   }
 
   function drawPlayer(p, t) {
-    const x = p.x - camX, y = p.y - camY;
-    if (invuln > 0 && Math.floor(t * 20) % 2 === 0) ctx.globalAlpha = 0.45;
+    if (p.dead) return;
+    const sq = p.squash, w = p.w * (1 + sq), h = p.h * (1 - sq);
+    const x = p.x + (p.w - w) / 2, y = p.y + (p.h - h);
     ctx.save();
-    ctx.shadowColor = COL.player;
-    ctx.shadowBlur = 16;
+    if (invuln > 0 && Math.floor(t * 20) % 2 === 0) ctx.globalAlpha = 0.45;
+    ctx.shadowColor = COL.player; ctx.shadowBlur = 16;
     ctx.fillStyle = COL.player;
-    roundRect(x, y, p.w, p.h, 6 * S);
-    ctx.fill();
+    roundRect(x, y, w, h, 6); ctx.fill();
+    ctx.shadowBlur = 0;
     ctx.fillStyle = COL.playerCore;
-    ctx.fillRect(x + 4 * S, y + 6 * S, p.w - 8 * S, 5 * S);
+    ctx.fillRect(x + 4 + p.face * 2, y + 6, w - 8, 5);
+    ctx.fillStyle = "#0a1a2a";
+    ctx.fillRect(x + w / 2 - 1 + p.face * 5, y + 7, 3, 3);
     ctx.restore();
-    ctx.globalAlpha = 1;
   }
 
   function roundRect(x, y, w, h, r) {
@@ -612,14 +755,14 @@ window.paConfig = {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "rgba(244,241,255,.25)";
-    for (let i = 0; i < 55; i++) {
-      const sx = (i * 173 + camX * 0.08) % W;
-      const sy = (i * 97 + camY * 0.05) % (H * 0.85);
+    for (let i = 0; i < 70; i++) {
+      const sx = ((i * 173 - camX * Z * 0.12) % W + W) % W;
+      const sy = ((i * 97 - camY * Z * 0.08) % H + H) % H;
       ctx.fillRect(sx, sy, 2, 2);
     }
   }
 
-  function drawBanner(t) {
+  function drawBanner() {
     if (!banner || banner.t > banner.max) return;
     const k = banner.t / banner.max;
     const a = k < 0.12 ? k / 0.12 : k > 0.78 ? (1 - k) / 0.22 : 1;
@@ -630,10 +773,10 @@ window.paConfig = {
     ctx.fillStyle = "#8ee9ff";
     ctx.shadowColor = "#c4a6ff";
     ctx.shadowBlur = 16;
-    ctx.fillText(banner.text, W / 2, H * 0.28);
+    ctx.fillText(banner.text, W / 2, H * 0.24);
     ctx.font = "500 " + Math.round(13 * S) + "px 'JetBrains Mono', monospace";
     ctx.fillStyle = "#c4a6ff";
-    ctx.fillText(banner.sub.toUpperCase().split("").join(" "), W / 2, H * 0.28 + 28 * S);
+    ctx.fillText(banner.sub.toUpperCase().split("").join(" "), W / 2, H * 0.24 + 28 * S);
     ctx.restore();
   }
 
@@ -641,20 +784,27 @@ window.paConfig = {
     const sh = PA.shakeOffset();
     ctx.setTransform(DPR, 0, 0, DPR, DPR * sh.x, DPR * sh.y);
     drawBackground();
-    solids.forEach(drawTile);
+    if (!grid.length) return;
+    ctx.save();
+    ctx.scale(Z, Z);
+    ctx.translate(-camX, -camY);
+    drawTiles();
+    drawSpikes(t);
     lasers.forEach((L) => drawLaser(L, t));
+    flags.forEach((f) => drawFlag(f, t));
     if (exit) drawExit(exit, t);
     chips.forEach((c) => drawChip(c, t));
-    enemies.forEach((e) => drawEnemy(e, t));
+    enemies.forEach(drawEnemy);
     if (player) drawPlayer(player, t);
     fx.draw(ctx);
     texts.draw(ctx);
-    drawBanner(t);
-    if (PA.state === "play" && player && !player.dead && banner && banner.t > 0.5) {
-      ctx.fillStyle = "rgba(168,163,192,.75)";
+    ctx.restore();
+    drawBanner();
+    if (PA.state === "play" && levelIdx === 0 && player && !player.dead && banner && banner.t > 0.5 && levelT < 9) {
+      ctx.fillStyle = "rgba(168,163,192,.8)";
       ctx.font = "500 " + Math.round(12 * S) + "px Manrope, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("Collect data chips · reach the portal", W / 2, H - 24 * S);
+      ctx.fillText("Grab the chips · land on bots to stomp them · hold jump to jump higher", W / 2, H - 24 * S);
     }
   }
 
@@ -662,27 +812,29 @@ window.paConfig = {
     score,
     level: levelIdx + 1,
     levelName: LEVELS[levelIdx] ? LEVELS[levelIdx].name : null,
+    levels: LEVELS.length,
     chips: chipsGot,
     chipsTotal: totalChipsAll,
     chipsLevel: chips.filter((c) => c.got).length,
-    chipsLevelTotal: chipsInLevel,
+    chipsLevelTotal: chips.length,
     x: player ? player.x : 0,
     y: player ? player.y : 0,
     vx: player ? player.vx : 0,
     vy: player ? player.vy : 0,
     onGround: !!(player && player.onGround),
-    coyote,
-    jumpBuf,
     wallDir,
-    invuln,
+    deaths,
+    stomps,
     camX,
     camY,
+    zoom: Z,
     alive: !!(player && !player.dead),
-    enemies: enemies.length,
-    lasers: lasers.length,
     overSent,
     simT
   });
+  // test hook: drop the player on a tile (x, y in tiles)
+  window.__chopWarp = (tx, ty) => { if (player) { player.x = tx * TILE + (TILE - PW) / 2; player.y = ty * TILE + TILE - PH; player.vx = player.vy = 0; invuln = 0.3; } };
+  window.__chopLevel = (i) => loadLevel(i, true);
 
   PA.loop(update, render);
 })();

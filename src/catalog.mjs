@@ -181,11 +181,11 @@ export const GAMES = [
     genre: "Platformer", tags: ["platformer"], difficulty: "Advanced", accent: "#7dffb0", accent2: "#5ef2ff", unit: "points",
     original: true,
     tagline: "A tight neon platformer through circuit-board levels.",
-    about: "A tight neon platformer through handcrafted circuit-board levels. Wall-jump, stomp patrol bots, dodge laser gates and grab every data chip on the way to the exit portal.",
+    about: "A tight neon platformer through six handcrafted circuit-board sectors. Wall-jump up shafts, stomp patrol bots, time the laser gates, hop the spike beds and grab every data chip on the way to the exit portal.",
     credit: CLAUDE_CURSOR,
     brief: "A tile-based platformer with coyote time, jump buffering, wall jumps, hazards, enemies, checkpoints and handcrafted levels.",
     process: "Built by an AI coding agent from a multi-step brief: movement feel first, then the level set, hazards and enemies, then camera, effects and touch buttons.",
-    tech: ["Coyote time and jump buffering", "Wall jumps and checkpoints", "Handcrafted level set"]
+    tech: ["Coyote time, jump buffering and hold-to-jump-higher", "Wall slides, wall jumps and a checkpoint in every sector", "Six handcrafted sectors, each checked by a reachability test so every chip and exit can be reached"]
   },
   {
     slug: "void-rocks", title: "Void Rocks", added: "2026-09-20",
