@@ -157,14 +157,20 @@ export const GAMES = [
   },
   {
     slug: "neon-outrun", title: "Neon Outrun", added: "2026-09-20",
-    genre: "Racing", tags: ["racing", "arcade"], difficulty: "Advanced", accent: "#ff5ca8", accent2: "#ffd36b", unit: "points",
-    classic: "Sunset road racer", twist: "Checkpoint arches against the clock, plus near-miss bonuses for threading traffic flat out.",
-    tagline: "A pseudo-3D sunset racer against the clock.",
-    about: "A pseudo-3D sunset racer. Weave through traffic on a road of curves and hills, hit the checkpoint arches before the clock runs out, and chase near-miss bonuses at full throttle.",
-    credit: CLAUDE_CURSOR,
-    brief: "A segment-projection road racer in the style of late-80s arcade cabinets: curves, hills, traffic, roadside neon, checkpoint time attack.",
-    process: "Built by an AI coding agent from a multi-step brief: the road renderer first, then the track, traffic and roadside sprites, then the HUD, engine audio and touch pedals, with a headless-browser playtest after each pass.",
-    tech: ["Segment-projection road renderer (the classic sprite-scaling technique)", "Procedural engine audio", "Touch pedals"]
+    genre: "Racing", tags: ["racing", "arcade", "3d"], difficulty: "Advanced", accent: "#ff5ca8", accent2: "#ffd36b", unit: "points",
+    classic: "Sunset road racer", twist: "A real-3D night city: draft behind trucks for extra top speed, thread traffic for near-miss combos and dodge lane closures to beat the checkpoint clock.",
+    tagline: "A real-3D night-city racer against the clock.",
+    about: "Race an endless neon boulevard at dusk. Weave through cars and trucks that signal before they change lanes, tuck into a truck's slipstream for extra top speed, brake for the tight bends and road works, and reach every checkpoint before the clock runs out. The course gets sharper and busier the further you go.",
+    credit: { maker: "Claude", model: null, via: "Claude (agentic session)", method: "agentic" },
+    brief: "Rebuild the sunset road racer from the ground up in real 3D: a realistic car, road and city, cars and trucks as traffic, real-looking streetlights, tighter steering and a harder course.",
+    process: "Rebuilt by an AI coding agent in one session: the procedural road and city chunks first, then the car and traffic models, lighting and sky, then handling, traffic AI and road works, then audio and HUD. An automated driver played simulated runs in a headless browser to tune the clock and difficulty.",
+    tech: [
+      "three.js: an endless procedural boulevard built in chunks ahead of the camera",
+      "Car and traffic bodies extruded from side profiles, with environment-mapped paint and glass",
+      "Streetlights with real moving point lights, light pools and glow, plus a dusk sky and skyline",
+      "Traffic AI that follows, brakes and signals before changing lanes; slipstream and near-miss scoring",
+      "Synthesised engine with a six-speed gearbox, wind and tyre noise"
+    ]
   },
   {
     slug: "hyperlane-3d", title: "Hyperlane 3D", added: "2026-09-20",
