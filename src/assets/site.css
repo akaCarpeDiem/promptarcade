@@ -144,6 +144,8 @@ button{font:inherit;color:inherit}
 .cab-svg .mq-panel{filter:brightness(1.05)}
 .cab-svg .mq-title{font:800 36px var(--display);letter-spacing:-.5px;fill:#fff7ff;paint-order:stroke;stroke:rgba(255,92,168,.55);stroke-width:5px}
 .cab-svg .mq-arc{fill:var(--gold)}
+.cab-svg .deck-grid{stroke:var(--a);opacity:.13;transition:stroke .6s}
+.cab-svg .deck-bevel{stroke:rgba(200,205,255,.14);stroke-width:1}
 .cab-svg .ember{animation:ember 2.2s ease-in-out infinite}
 @keyframes ember{50%{opacity:.45}}
 .cab-svg .bz-text{font:700 11px var(--mono);letter-spacing:2px;fill:#7d80b8}
