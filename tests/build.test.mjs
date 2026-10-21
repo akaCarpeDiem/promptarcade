@@ -28,6 +28,7 @@ test("catalog entries are complete and credit a model", () => {
     assert.ok(!slugs.has(g.slug), "duplicate slug " + g.slug); slugs.add(g.slug);
     for (const k of ["title", "genre", "tagline", "about", "brief", "unit", "accent", "accent2", "added"]) assert.ok(g[k], `${g.slug}.${k}`);
     assert.ok(g.credit && g.credit.maker && g.credit.via && g.credit.method, `${g.slug} credit`);
+    assert.ok(g.original ? !g.classic && !g.twist : g.classic && g.twist, `${g.slug}: needs classic + twist, or original: true`);
     assert.ok(!RETIRED[g.slug] && !(g.slug in RETIRED), `${g.slug} is both live and retired`);
   }
   for (const q of QUESTS) assert.ok(slugs.has(q.game), "quest for unknown game " + q.game);

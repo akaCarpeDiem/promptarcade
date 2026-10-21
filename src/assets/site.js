@@ -195,30 +195,6 @@
     paintBests();
   });
 
-  /* ---------- hero fan ---------- */
-  const fan = $(".fan");
-  if (fan) {
-    const cards = $$("a", fan);
-    let i = 0;
-    const lay = () => {
-      cards.forEach((c, k) => {
-        const o = ((k - i) % cards.length + cards.length) % cards.length;
-        const pos = o > cards.length / 2 ? o - cards.length : o;
-        const x = pos * 120, z = -Math.abs(pos) * 140, ry = -pos * 16, s = 1 - Math.abs(pos) * 0.08;
-        c.style.transform = `translate3d(${x}px,${Math.abs(pos) * 12}px,${z}px) rotateY(${ry}deg) scale(${s})`;
-        c.style.zIndex = 10 - Math.abs(pos);
-        c.style.opacity = Math.abs(pos) > 2 ? 0 : 1;
-        c.style.filter = pos === 0 ? "none" : `brightness(${0.75 - Math.abs(pos) * 0.12})`;
-        c.tabIndex = pos === 0 ? 0 : -1;
-      });
-    };
-    lay();
-    let timer = reduce ? 0 : setInterval(() => { i = (i + 1) % cards.length; lay(); }, 3400);
-    fan.addEventListener("pointerenter", () => clearInterval(timer));
-    fan.addEventListener("pointerleave", () => { if (!reduce) timer = setInterval(() => { i = (i + 1) % cards.length; lay(); }, 3400); });
-    cards.forEach((c, k) => c.addEventListener("click", (e) => { const o = ((k - i) % cards.length + cards.length) % cards.length; if (o !== 0) { e.preventDefault(); i = k; lay(); } }));
-  }
-
   /* ---------- count-up numbers ---------- */
   $$("[data-count]").forEach((el) => {
     const to = +el.dataset.count, suf = el.dataset.suffix || "";

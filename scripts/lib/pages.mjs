@@ -2,46 +2,40 @@
 import { SITE, GAMES, NEWS } from "../../src/catalog.mjs";
 import { layout, card, esc, fmt, ICON, makerClass, creditLabel } from "./html.mjs";
 import { highlight } from "./highlight.mjs";
+import { cabinet } from "./cabinet.mjs";
 
 const isNew = (g, now) => (now - new Date(g.added)) / 864e5 <= 21;
 const featured = () => GAMES.filter((g) => g.featured).sort((a, b) => a.featured - b.featured);
 const byOrder = () => [...featured(), ...GAMES.filter((g) => !g.featured)];
 const genres = () => [...new Set(GAMES.map((g) => g.genre))];
 const playUrl = (g) => `/games/play/${g.slug}`;
+const classics = () => byOrder().filter((g) => !g.original);
+const originals = () => byOrder().filter((g) => g.original);
+const classicLine = (g) => (g.original ? "An arcade original" : `Twist on ${g.classic.toLowerCase()}`);
 
 export function home(ctx) {
-  const now = ctx.now;
-  const f = featured();
-  const fan = f.slice(0, 6);
   const totals = ctx.totals;
   const flagship = GAMES.find((g) => g.slug === "glowline-arena");
-  const second = GAMES.find((g) => g.slug === "ember-swarm");
-  const shelves = [
-    ["Action & arcade", (g) => ["Shooter", "Arcade", "Racing", "Platformer", "Roguelite", "Multiplayer"].includes(g.genre)],
-    ["Puzzles & brain teasers", (g) => ["Puzzle", "Daily"].includes(g.genre)],
-    ["Strategy, 3D & deep dives", (g) => ["3D", "Roguelike"].includes(g.genre)]
-  ];
-  const newOnes = GAMES.filter((g) => isNew(g, now));
   const body = `
 <section class="hero" aria-labelledby="hero-h">
   <canvas id="hero-gl" aria-hidden="true"></canvas>
   <div class="wrap">
     <div>
-      <span class="kicker">${GAMES.length} free games · every one made by AI</span>
-      <h1 id="hero-h">Games built<br/>from a <span class="glow">sentence.</span></h1>
-      <p class="lede">Every game in this arcade was written by an AI model from plain-English prompts — the code, the art, the music, the physics. Play a live multiplayer arena, survive a roguelite swarm, crack the daily word, then see exactly how each one was made.</p>
+      <span class="kicker">${GAMES.length} free games · classics remade by AI</span>
+      <h1 id="hero-h">Prompt&#8209;made<br/>classics with<br/><span class="glow">a twist.</span></h1>
+      <p class="lede">Snake, falling blocks, rock shooters, brick breakers, the daily word: the games everyone knows, rebuilt by AI from plain-English prompts and changed enough to play like something new. Every game shows which classic it remakes, what the twist is, and exactly how it was made.</p>
       <div class="ctas">
         <a class="btn" href="/games/${flagship.slug}/#play">${ICON.play} Play ${esc(flagship.title)}</a>
         <a class="btn ghost" href="/games/">Browse all ${GAMES.length} games ${ICON.arrow}</a>
       </div>
       <div class="hero-stats">
-        <div><b data-count="${GAMES.length}">${GAMES.length}</b><span>games</span></div>
+        <div><b data-count="${classics().length}">${classics().length}</b><span>classics with a twist</span></div>
+        <div><b data-count="${originals().length}">${originals().length}</b><span>originals</span></div>
         <div><b data-count="${totals.lines}">${fmt(totals.lines)}</b><span>lines of AI-written code</span></div>
-        <div><b>0</b><span>accounts needed</span></div>
       </div>
     </div>
-    <div class="fan" aria-label="Featured games">
-      ${fan.map((g) => `<a href="/games/${g.slug}/" style="--a:${g.accent}"><img src="/shots/${g.slug}.webp" alt="${esc(g.title)}" width="800" height="500" ${g === fan[0] ? 'fetchpriority="high"' : 'loading="lazy"'}/><span>${esc(g.title)}</span></a>`).join("")}
+    <div class="cab-stage" aria-label="Arcade cabinet playing through the games">
+      ${cabinet(classics())}
     </div>
   </div>
 </section>
@@ -79,23 +73,15 @@ export function home(ctx) {
 </div></section>
 ${GAMES.map((g) => `<template data-card="${g.slug}">${card(g)}</template>`).join("")}
 
-<section aria-labelledby="feat-h"><div class="wrap">
-  <div class="sec-head reveal"><div><span class="kicker">Flagships</span><h2 id="feat-h">The big ones</h2><p>The most ambitious builds in the arcade — each one a single AI session of a few prompts.</p></div></div>
-  <div class="grid">
-    ${card(flagship, { feature: true, isNew: isNew(flagship, now) })}
-    ${card(second, { feature: true, isNew: isNew(second, now) })}
-  </div>
+<section aria-labelledby="classics-h"><div class="wrap">
+  <div class="sec-head reveal"><div><span class="kicker">The main floor</span><h2 id="classics-h">Classics with a twist</h2><p>Games you already know how to play, each remade by AI with a change big enough to play differently. Here's the classic, and here's the twist.</p></div><a class="more" href="/games/?genre=classic">All classics ${ICON.arrow}</a></div>
+  <div class="grid twists">${classics().map((g) => card(g, { twist: true, isNew: isNew(g, ctx.now) })).join("")}</div>
 </div></section>
 
-${newOnes.length ? `<section aria-labelledby="new-h"><div class="wrap">
-  <div class="sec-head reveal"><div><span class="kicker">Fresh drops</span><h2 id="new-h">New this month</h2></div><a class="more" href="/new/">What's new ${ICON.arrow}</a></div>
-  <div class="shelf">${newOnes.filter((g) => g !== flagship && g !== second).map((g) => card(g, { isNew: true })).join("")}</div>
+${originals().length ? `<section aria-labelledby="orig-h"><div class="wrap">
+  <div class="sec-head reveal"><div><span class="kicker">Off the main floor</span><h2 id="orig-h">Originals</h2><p>Games that aren't remakes of anything: new ideas, also made entirely by AI from prompts.</p></div><a class="more" href="/games/?genre=original">All originals ${ICON.arrow}</a></div>
+  <div class="grid">${originals().map((g) => card(g, { isNew: isNew(g, ctx.now) })).join("")}</div>
 </div></section>` : ""}
-
-${shelves.map(([title, fn], k) => { const list = byOrder().filter(fn); return list.length ? `<section aria-labelledby="sh-${k}"><div class="wrap">
-  <div class="sec-head reveal"><div><h2 id="sh-${k}">${esc(title)}</h2></div><a class="more" href="/games/">All games ${ICON.arrow}</a></div>
-  <div class="shelf">${list.map((g) => card(g, { isNew: isNew(g, now) })).join("")}</div>
-</div></section>` : ""; }).join("")}
 
 <section aria-labelledby="lab-h"><div class="wrap">
   <div class="sec-head reveal"><div><span class="kicker">For the curious</span><h2 id="lab-h">Open the hood</h2><p>Every game page shows the model that made it, the brief it was given, what's technically interesting inside — and the full source, syntax-highlighted.</p></div><a class="more" href="/lab/">The Lab ${ICON.arrow}</a></div>
@@ -121,11 +107,13 @@ export function library(ctx) {
   const makers = [...new Set(GAMES.map((g) => makerClass(g.credit)))];
   const tagsF = ["multiplayer", "daily", "3d", "physics"];
   const body = `<div class="wrap" style="padding-top:34px">
-  <div class="sec-head"><div><span class="kicker">The arcade</span><h2 style="font-size:clamp(32px,4.6vw,56px)">All ${GAMES.length} games</h2><p>Every one free, no account needed, playable on desktop and phone — and every one written by an AI model.</p></div></div>
+  <div class="sec-head"><div><span class="kicker">The arcade</span><h2 style="font-size:clamp(32px,4.6vw,56px)">All ${GAMES.length} games</h2><p>Classics remade with a twist, plus a few originals. Every one free, no account needed, playable on desktop and phone, and every one written by an AI model.</p></div></div>
   <div class="filters" role="search">
     <input id="f-q" type="search" placeholder="Search by name, genre or model…" aria-label="Search games"/>
     <div class="fchips" aria-label="Genre">
       <button class="fchip" type="button" data-genre="all" aria-pressed="true">All</button>
+      <button class="fchip" type="button" data-genre="classic" aria-pressed="false">Classics with a twist</button>
+      ${originals().length ? '<button class="fchip" type="button" data-genre="original" aria-pressed="false">Originals</button>' : ""}
       ${genres().map((x) => `<button class="fchip" type="button" data-genre="${esc(x.toLowerCase())}" aria-pressed="false">${esc(x)}</button>`).join("")}
       ${tagsF.filter((t) => GAMES.some((g) => g.tags.includes(t)) && !genres().map((x) => x.toLowerCase()).includes(t)).map((t) => `<button class="fchip" type="button" data-genre="${t}" aria-pressed="false">${t === "3d" ? "3D" : t[0].toUpperCase() + t.slice(1)}</button>`).join("")}
     </div>
@@ -135,7 +123,7 @@ export function library(ctx) {
   <div class="grid" id="library">${byOrder().map((g, i) => card(g, { isNew: isNew(g, ctx.now), order: i, vt: true })).join("")}</div>
   <p class="empty" id="f-empty" hidden>No games match that. Try another search.</p>
 </div>`;
-  return { path: "/games/", html: layout({ title: "All games", description: `Browse all ${GAMES.length} free AI-made browser games on PromptArcade: multiplayer, roguelites, puzzles, daily challenges and 3D.`, path: "/games/", v: ctx.v, body }) };
+  return { path: "/games/", html: layout({ title: "All games", description: `Browse all ${GAMES.length} free AI-made browser games on PromptArcade: classic arcade games remade with a twist, plus originals.`, path: "/games/", v: ctx.v, body }) };
 }
 
 export function game(ctx, g) {
@@ -150,7 +138,7 @@ export function game(ctx, g) {
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Arcade</a><span>/</span><a href="/games/">Games</a><span>/</span><span>${esc(g.title)}</span></nav>
   <h1>${esc(g.title)}</h1>
   <p class="tagline">${esc(g.tagline)}</p>
-  <div class="chips"><span class="chip maker ${makerClass(c)}">Made with ${esc(creditLabel(c))}</span><span class="chip">${esc(g.genre)}</span><span class="chip">${esc(g.difficulty)}</span>${g.tags.includes("multiplayer") ? '<span class="chip live">Live multiplayer</span>' : ""}${g.daily ? '<span class="chip daily">Daily mode</span>' : ""}${isNew(g, ctx.now) ? '<span class="chip new">NEW</span>' : ""}</div>
+  <div class="chips"><span class="chip ${g.original ? "orig" : "classic"}">${esc(classicLine(g))}</span><span class="chip maker ${makerClass(c)}">Made with ${esc(creditLabel(c))}</span><span class="chip">${esc(g.genre)}</span><span class="chip">${esc(g.difficulty)}</span>${g.tags.includes("multiplayer") ? '<span class="chip live">Live multiplayer</span>' : ""}${g.daily ? '<span class="chip daily">Daily mode</span>' : ""}${isNew(g, ctx.now) ? '<span class="chip new">NEW</span>' : ""}</div>
 </div></div>
 <div class="wrap" style="--a:${g.accent};--b:${g.accent2}">
   <div class="beat" id="beat" hidden>🏁 A friend scored <b>0</b> — think you can beat it?</div>
@@ -177,6 +165,7 @@ export function game(ctx, g) {
     <div class="panel reveal">
       <span class="kicker">About the game</span>
       <h2>${esc(g.title)}</h2>
+      ${g.original ? "" : `<dl class="twistbox"><dt>The classic</dt><dd>${esc(g.classic)}</dd><dt>The twist</dt><dd>${esc(g.twist)}</dd></dl>`}
       <p style="color:#d4d6f5;margin:0 0 12px">${esc(g.about)}</p>
       <p class="note">Scores save automatically to the global Top 10 under your player name. Scored in ${esc(g.unit)}.</p>
     </div>
@@ -316,7 +305,7 @@ export function lab(ctx) {
   <div class="diagram reveal">${ARCH_SVG}</div></section>
   <section><div class="sec-head"><div><h2>Credits for every game</h2><p>Which model made what, how, and how big it is. “Version not recorded” means we know the model family but not the exact release used at the time.</p></div></div>
   <div class="ctable-wrap"><table class="ctable"><thead><tr><th>Game</th><th>Model</th><th>Built in</th><th>Method</th><th style="text-align:right">Lines</th><th style="text-align:right">Size</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>
-  <section><div class="panel"><h2>The fine print</h2><p style="color:var(--muted);margin:0">Some games are inspired by well-known genres — survivors-likes, merge puzzles, word games, twin-stick shooters. Game mechanics are free for anyone to use; every name, look and line of code here is original. ${SITE.name} is an independent project and isn't affiliated with Anthropic, xAI or any other AI lab, or with any game publisher.</p></div></section>
+  <section><div class="panel"><h2>The fine print</h2><p style="color:var(--muted);margin:0">Most games here remake well-known classics, from snake and falling blocks to vector rock shooters and brick breakers, and each adds a twist of its own. Game mechanics are free for anyone to use; every name, look and line of code here is original. ${SITE.name} is an independent project and isn't affiliated with Anthropic, xAI or any other AI lab, or with any game publisher.</p></div></section>
 </div>`;
   return { path: "/lab/", html: layout({ title: "The Lab — how the games are made", description: "How PromptArcade's games are built by AI from prompts: the process, model credits, code stats and the multiplayer architecture.", path: "/lab/", v: ctx.v, body }) };
 }
@@ -348,8 +337,9 @@ function prose(ctx, path, title, description, inner) {
   return { path, html: layout({ title, description, path, v: ctx.v, body: `<div class="wrap prose" style="padding-top:34px">${inner}</div>` }) };
 }
 export function about(ctx) {
-  return prose(ctx, "/about/", "About", "What PromptArcade is and how its AI-made games work.", `<span class="kicker">About</span><h1>An arcade written by AI</h1>
-<p>${SITE.name} is a growing collection of browser games that were all made by AI models from written prompts. The point is simple: to show — and let you play — what today's models can build from a few sentences of direction.</p>
+  return prose(ctx, "/about/", "About", "What PromptArcade is and how its AI-made games work.", `<span class="kicker">About</span><h1>Prompt-made classics with a twist</h1>
+<p>${SITE.name} is an arcade of prompt-made classics with a twist. Every game was made by an AI model from written prompts, and most of them remake a game you already know, then change it enough to play differently: snake that's live and multiplayer, falling blocks with no next-piece preview, a merge puzzle that ends in a black hole. Every game page says which classic it remakes and what the twist is.</p>
+<p>A few games aren't remakes of anything. They live on the Originals shelf.</p>
 <h2>What “made with prompts” means</h2>
 <p>Each game was generated and refined by an AI model. Some came from a single agentic session where the model wrote, play-tested and fixed the game itself; others from multi-step prompting in a coding tool. Every game page names the model, how it was built and the brief it was given — and links to the full source.</p>
 <h2>Scores, the Arcade Pass and multiplayer</h2>
@@ -357,7 +347,7 @@ export function about(ctx) {
 <h2>New games</h2>
 <p>New games are added regularly — check <a href="/new/">What's new</a>, or look for the NEW badge.</p>
 <h2>Inspired by classics</h2>
-<p>Some games borrow well-loved genres and mechanics. Every name, piece of art and line of code is original, and none of them are affiliated with or endorsed by the owners of any other game.</p>
+<p>Most games borrow well-loved genres and mechanics. Every name, piece of art and line of code is original, and none of them are affiliated with or endorsed by the owners of any other game.</p>
 <p>${SITE.name} is an independent project and is not affiliated with Anthropic, xAI, OpenAI, Google or any other AI lab.</p>
 <p>Contact: <a href="mailto:${SITE.email}">${SITE.email}</a></p>`);
 }
