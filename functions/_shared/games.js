@@ -148,5 +148,17 @@ export const GAMES = {
   "night-press": {
     "title": "Night Press",
     "cap": 100000
+  },
+  "crosstime": {
+    "title": "Crosstime",
+    "cap": 5000000
+  },
+  "echo-maze": {
+    "title": "Echo Maze",
+    "cap": 10000000
+  },
+  "ringfall": {
+    "title": "Ringfall",
+    "cap": 10000000
   }
 };

@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Echo Maze — PromptArcade</title>
+<style>
+html,body{margin:0;height:100%;background:#06050f;color:#f6f0ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#c{display:block;position:fixed;inset:0}
+</style></head><body>
+<canvas id="c" aria-label="Echo Maze board"></canvas>
+<script>
+window.paConfig = {
+  slug: "echo-maze", title: "Echo Maze", native: true, music: "spooky", unit: "points",
+  controls: [["← → ↑ ↓ / WASD", "Steer"], ["Touch", "Swipe to steer"], ["Echoes", "Your own past path, replayed. Don't touch them"], ["Power orbs", "Make hunters and echoes edible"]]
+};
+</script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script>
+(() => {
+"use strict";
+// A pellet maze where your own past hunts you. The game records where you've been; each echo replays
+// that route exactly, a few seconds behind you, so doubling back or standing still walks you into your
+// own ghost. Hunters chase on top of that. Every level is a freshly generated symmetric maze with loops.
+const W = 19, H = 21, TAU = Math.PI * 2;
+const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];       // right, down, left, up
+const PATH = 0, WALL = 1, DOOR = 2, HOUSE = 3;
+const fx = new PA.Particles(1200), texts = new PA.Texts();
+const HUNTER_COLS = ["#ff5c7a", "#5ef2ff", "#ffb35c", "#ff9cf2"];
+
+let grid, pellets, pelletsLeft, totalPellets, player, hunters, echoes, hist, lifeT, level, score, shownScore, lives, best = 0;
+let phase, phaseT, fright, frightTotal, eatChain, modeT, scatter, wallCanvas, extraGiven, echoesEaten, huntersEaten;
+try { best = +localStorage.getItem("em_best") || 0; } catch (e) {}
+
+/* ---------- maze generation ---------- */
+const inHouseZone = (x, y) => x >= 6 && x <= 12 && y >= 8 && y <= 12;
+const interiorCell = (x, y) => (x === 7 || x === 9 || x === 11) && (y === 9 || y === 11);
+function genMaze() {
+  const g = Array.from({ length: H }, () => Array(W).fill(WALL));
+  const cells = [];
+  for (let y = 1; y < H; y += 2) for (let x = 1; x <= 9; x += 2) if (!interiorCell(x, y)) cells.push([x, y]);
+  const seen = new Set(), key = (x, y) => x + "," + y;
+  const open = (x, y) => { g[y][x] = PATH; g[y][W - 1 - x] = PATH; };
+  // depth-first carve over the left half (center column included), mirrored to the right
+  const stack = [[9, 15]]; seen.add(key(9, 15)); open(9, 15);
+  while (stack.length) {
+    const [x, y] = stack[stack.length - 1];
+    const nb = DIRS.map(([dx, dy]) => [x + dx * 2, y + dy * 2, dx, dy]).filter(([nx, ny]) => nx >= 1 && nx <= 9 && ny >= 1 && ny < H - 1 && !interiorCell(nx, ny) && !seen.has(key(nx, ny)));
+    if (!nb.length) { stack.pop(); continue; }
+    const [nx, ny, dx, dy] = nb[(Math.random() * nb.length) | 0];
+    open(x + dx, y + dy); open(nx, ny); seen.add(key(nx, ny)); stack.push([nx, ny]);
+  }
+  // braid: knock out walls at dead ends so the maze is full of loops
+  const deg = (x, y) => DIRS.reduce((n, [dx, dy]) => n + (g[y + dy] && g[y + dy][x + dx] === PATH ? 1 : 0), 0);
+  for (const [x, y] of cells) {
+    if (deg(x, y) > 1) continue;
+    const opts = DIRS.filter(([dx, dy]) => {
+      const wx = x + dx, wy = y + dy, nx = x + dx * 2, ny = y + dy * 2;
+      return nx >= 1 && nx <= W - 2 && ny >= 1 && ny <= H - 2 && g[wy][wx] === WALL && !interiorCell(nx, ny) && !(nx > 9);
+    });
+    if (opts.length) { const [dx, dy] = opts[(Math.random() * opts.length) | 0]; open(x + dx, y + dy); }
+  }
+  // the hunters' house in the middle, with a ring corridor around it
+  for (let x = 5; x <= 13; x++) { g[7][x] = PATH; g[13][x] = PATH; }
+  for (let y = 7; y <= 13; y++) { g[y][5] = PATH; g[y][13] = PATH; }
+  for (let y = 8; y <= 12; y++) for (let x = 6; x <= 12; x++) g[y][x] = WALL;
+  for (let x = 8; x <= 10; x++) g[10][x] = HOUSE;
+  g[9][9] = DOOR; g[8][9] = PATH;
+  // side tunnels
+  g[9][0] = PATH; g[9][1] = PATH; g[9][W - 1] = PATH; g[9][W - 2] = PATH;
+  return g;
+}
+function isWall(x, y, who) {
+  if (y < 0 || y >= H) return true;
+  x = ((x % W) + W) % W;
+  const t = grid[y][x];
+  if (t === WALL) return true;
+  if (t === DOOR || t === HOUSE) return !(who && who.house);
+  return false;
+}
+function placePellets() {
+  pellets = Array.from({ length: H }, () => Array(W).fill(0));
+  pelletsLeft = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (grid[y][x] !== PATH) continue;
+    if (x === 0 || x === W - 1 || (y === 8 && x === 9) || (y === 15 && x === 9)) continue;
+    if (y >= 7 && y <= 13 && x >= 5 && x <= 13 && (y === 7 || y === 13 || x === 5 || x === 13) && y > 7 && y < 13) continue; // keep the ring sides clear
+    pellets[y][x] = 1; pelletsLeft++;
+  }
+  // power orbs: the open tile nearest each corner
+  for (const [cx, cy] of [[1, 3], [W - 2, 3], [1, H - 4], [W - 2, H - 4]]) {
+    let bestD = 1e9, bx = 0, by = 0;
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) if (pellets[y][x]) { const d = Math.abs(x - cx) + Math.abs(y - cy); if (d < bestD) { bestD = d; bx = x; by = y; } }
+    pellets[by][bx] = 2;
+  }
+  totalPellets = pelletsLeft;
+}
+
+/* ---------- setup ---------- */
+function echoDelays() {
+  // level 1: one echo eight seconds behind you; more, and closer, as the levels go up
+  const n = level === 1 ? 1 : level <= 3 ? 2 : 3;
+  const gap = Math.max(4.2, 8 - (level - 1) * .5);
+  return Array.from({ length: n }, (_, i) => gap * (i + 1));
+}
+function hunterCount() { return Math.min(4, level === 1 ? 2 : level <= 3 ? 3 : 4); }
+function speeds() {
+  const k = Math.min(1, (level - 1) / 6);
+  return { player: 6.4 + k * 1.2, hunter: 5.4 + k * 1.8, fright: 3.4, eyes: 12, house: 2.6 };
+}
+// Distance from every corridor tile to the house door, so eaten hunters always find their way home.
+let homeDist;
+function buildHomeDist() {
+  homeDist = Array.from({ length: H }, () => Array(W).fill(1e9));
+  const q = [[9, 8]]; homeDist[8][9] = 0;
+  while (q.length) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of DIRS) {
+      const nx = (x + dx + W) % W, ny = y + dy;
+      if (ny < 0 || ny >= H || grid[ny][nx] !== PATH || homeDist[ny][nx] <= homeDist[y][x] + 1) continue;
+      homeDist[ny][nx] = homeDist[y][x] + 1; q.push([nx, ny]);
+    }
+  }
+}
+function newLevel() {
+  grid = genMaze();
+  buildHomeDist();
+  placePellets();
+  drawWalls();
+  startLife();
+}
+function startLife() {
+  player = { x: 9, y: 15, dir: 2, next: 2, moving: true, mouth: 0 };
+  hunters = [];
+  const homes = [[9, 7], [9, 10], [8, 10], [10, 10]], n = hunterCount();
+  for (let i = 0; i < n; i++) {
+    const [x, y] = homes[i];
+    hunters.push({ i, x, y, dir: i === 0 ? 2 : 3, state: i === 0 ? "out" : "home", release: [0, 2.5, 6, 10][i] / (1 + (level - 1) * .2), house: i !== 0, fr: false, bob: Math.random() * TAU, ai: i });
+  }
+  echoes = echoDelays().map((d) => ({ delay: d, x: 0, y: 0, on: false, fadeIn: 0, silenced: 0 }));
+  hist = [];
+  lifeT = 0; fright = 0; eatChain = 0; modeT = 0; scatter = true;
+  phase = "ready"; phaseT = 0;
+}
+function reset() {
+  level = 1; score = 0; shownScore = 0; lives = 3; extraGiven = false; echoesEaten = 0; huntersEaten = 0;
+  fx.clear(); texts.clear();
+  newLevel();
+  PA.music.intensity(0);
+}
+
+/* ---------- movement ---------- */
+function opp(d) { return (d + 2) % 4; }
+function atCenter(e) { return Math.abs(e.x - Math.round(e.x)) < 1e-4 && Math.abs(e.y - Math.round(e.y)) < 1e-4; }
+function canGo(e, d) { const cx = Math.round(e.x), cy = Math.round(e.y); return !isWall(cx + DIRS[d][0], cy + DIRS[d][1], e); }
+// Moves an entity along its direction, stopping at each tile centre to let decide() pick the next one.
+function step(e, dist, decide) {
+  let guard = 0;
+  while (dist > 1e-6 && guard++ < 8) {
+    if (atCenter(e)) {
+      e.x = Math.round(e.x); e.y = Math.round(e.y);
+      if (e.x < 0) e.x += W; else if (e.x >= W) e.x -= W;
+      decide(e);
+      if (e.dir == null || !canGo(e, e.dir)) { e.moving = false; return; }
+    }
+    e.moving = true;
+    const [dx, dy] = DIRS[e.dir];
+    const pos = dx ? e.x : e.y, s = dx || dy;
+    const nextC = s > 0 ? Math.floor(pos + 1e-6) + 1 : Math.ceil(pos - 1e-6) - 1;
+    const d = Math.abs(nextC - pos), m = Math.min(d, dist);
+    if (dx) e.x += dx * m; else e.y += dy * m;
+    if (m >= d - 1e-9) { if (dx) e.x = nextC; else e.y = nextC; }
+    dist -= m;
+  }
+}
+function playerDecide(e) {
+  if (e.next != null && canGo(e, e.next)) e.dir = e.next;
+}
+function hunterTarget(h) {
+  const px = Math.round(player.x), py = Math.round(player.y);
+  if (h.state === "eyes") return [9, 8];
+  if (h.state === "leaving") return [9, 7];
+  if (scatter) return [[W - 2, -2], [1, -2], [W - 2, H + 1], [1, H + 1]][h.ai];
+  const [dx, dy] = DIRS[player.dir];
+  switch (h.ai) {
+    case 0: return [px, py];                                           // straight at you
+    case 1: return [px + dx * 4, py + dy * 4];                          // cuts you off
+    case 2: { const d = Math.hypot(px - h.x, py - h.y); return d > 7 ? [px, py] : [1, H + 1]; } // shy
+    default: { const a = hunters[0] || h; return [px * 2 - Math.round(a.x) + dx * 2, py * 2 - Math.round(a.y) + dy * 2]; } // flanks with the leader
+  }
+}
+function hunterDecide(h) {
+  const cx = Math.round(h.x), cy = Math.round(h.y);
+  if (h.state === "leaving" && cx === 9 && cy === 7) { h.state = "out"; h.house = false; }
+  if (h.state === "eyes" && cx === 9 && cy === 8) { h.house = true; }
+  if (h.state === "eyes" && cx === 9 && cy === 10) { h.state = "leaving"; h.fr = false; h.dir = 3; return; }
+  let opts = [];
+  for (let d = 0; d < 4; d++) {
+    if (d === opp(h.dir) && h.dir != null) continue;
+    if (isWall(cx + DIRS[d][0], cy + DIRS[d][1], h)) continue;
+    // only eyes and leavers use the door
+    const t = grid[cy + DIRS[d][1]] && grid[cy + DIRS[d][1]][((cx + DIRS[d][0]) % W + W) % W];
+    if ((t === DOOR || t === HOUSE) && h.state === "out") continue;
+    opts.push(d);
+  }
+  if (!opts.length) opts = [opp(h.dir)];
+  if (h.fr && h.state === "out") { h.dir = opts[(Math.random() * opts.length) | 0]; return; }
+  if (h.state === "eyes" && !(cx === 9 && cy === 8)) {
+    // eyes follow the distance map home (reversing allowed), so they can never circle forever
+    let bd = Infinity;
+    for (let d = 0; d < 4; d++) {
+      const nx = ((cx + DIRS[d][0]) % W + W) % W, ny = cy + DIRS[d][1];
+      if (ny < 0 || ny >= H || grid[ny][nx] !== PATH) continue;
+      if (homeDist[ny][nx] < bd) { bd = homeDist[ny][nx]; h.dir = d; }
+    }
+    return;
+  }
+  const [tx, ty] = h.state === "eyes" && cx === 9 && cy === 8 ? [9, 10] : hunterTarget(h);
+  let best = opts[0], bd = Infinity;
+  for (const d of opts) { const nx = cx + DIRS[d][0], ny = cy + DIRS[d][1], dd = (nx - tx) ** 2 + (ny - ty) ** 2; if (dd < bd) { bd = dd; best = d; } }
+  h.dir = best;
+}
+
+/* ---------- echoes ---------- */
+function echoAt(t) {
+  // binary search the recorded path
+  if (!hist.length || t < hist[0].t) return null;
+  let lo = 0, hi = hist.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (hist[m].t <= t) lo = m; else hi = m - 1; }
+  const a = hist[lo], b = hist[Math.min(hist.length - 1, lo + 1)];
+  if (b === a || b.t === a.t || Math.abs(b.x - a.x) > 2) return { x: a.x, y: a.y, dir: a.dir };
+  const k = (t - a.t) / (b.t - a.t);
+  return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, dir: a.dir };
+}
+
+/* ---------- update ---------- */
+function update(dt) {
+  fx.update(dt); texts.update(dt);
+  if (!grid || PA.state !== "play") return;
+  phaseT += dt;
+  if (phase === "ready") { if (phaseT > 1.6) { phase = "play"; phaseT = 0; } return; }
+  if (phase === "dying") { if (phaseT > 1.4) afterDeath(); return; }
+  if (phase === "clear") { if (phaseT > 1.8) { level++; texts.add(view.w / 2, view.h / 2, "LEVEL " + level, { color: "#b48cff", size: 34, life: 1.4, vy: -10 }); newLevel(); } return; }
+  const sp = speeds();
+  lifeT += dt;
+
+  // mode timer: short scatter breaks between long chases
+  if (fright <= 0) { modeT += dt; const len = scatter ? Math.max(3, 6 - level * .5) : 20; if (modeT > len) { modeT = 0; scatter = !scatter; for (const h of hunters) if (h.state === "out" && h.dir != null) h.dir = opp(h.dir); } }
+
+  // player
+  if (player.next != null && player.dir != null && player.next === opp(player.dir)) player.dir = player.next;
+  if (!player.moving && player.next != null && canGo(player, player.next) && atCenter(player)) player.dir = player.next;
+  step(player, sp.player * dt, playerDecide);
+  if (player.moving) player.mouth += dt * 14;
+  hist.push({ t: lifeT, x: player.x, y: player.y, dir: player.dir });
+  while (hist.length > 2 && hist[0].t < lifeT - 30) hist.shift();
+  eat();
+
+  // hunters
+  if (fright > 0) { fright -= dt; if (fright <= 0) { for (const h of hunters) h.fr = false; eatChain = 0; } }
+  for (const h of hunters) {
+    if (h.state === "home") {
+      h.release -= dt; h.bob += dt * 5;
+      if (h.release <= 0) { h.state = "leaving"; h.x = Math.round(h.x); h.y = 10; h.dir = h.x < 9 ? 0 : h.x > 9 ? 2 : 3; }
+      continue;
+    }
+    if (h.state === "leaving" && Math.round(h.y) === 10 && Math.round(h.x) !== 9 && atCenter(h)) { h.dir = h.x < 9 ? 0 : 2; }
+    const tunnel = Math.round(h.y) === 9 && (h.x < 3 || h.x > W - 4);
+    const v = h.state === "eyes" ? sp.eyes : h.state === "leaving" ? sp.house : h.fr ? sp.fright : sp.hunter * (tunnel ? .6 : 1);
+    step(h, v * dt, hunterDecide);
+  }
+
+  // echoes replay your recorded route
+  for (const e of echoes) {
+    e.silenced = Math.max(0, e.silenced - dt);
+    const p = lifeT > e.delay ? echoAt(lifeT - e.delay) : null;
+    if (!p) { e.on = false; continue; }
+    if (!e.on) { e.on = true; e.fadeIn = 1; PA.sfx("whoosh", { pitch: .6 }); }
+    e.fadeIn = Math.max(0, e.fadeIn - dt * 1.4);
+    e.x = p.x; e.y = p.y; e.dir = p.dir;
+  }
+  collide();
+  PA.music.intensity(Math.min(1, (level - 1) / 6 + (1 - pelletsLeft / totalPellets) * .3));
+}
+
+function wrapDist(ax, ay, bx, by) { let dx = Math.abs(ax - bx); dx = Math.min(dx, W - dx); return Math.hypot(dx, ay - by); }
+function eat() {
+  const x = Math.round(player.x), y = Math.round(player.y);
+  if (x < 0 || x >= W || Math.abs(player.x - x) > .3 || Math.abs(player.y - y) > .3) return;
+  const p = pellets[y][x];
+  if (!p) return;
+  pellets[y][x] = 0; pelletsLeft--;
+  const s = toScreen(x, y);
+  if (p === 1) { score += 10; PA.sfx("blip", { pitch: 1 + (pelletsLeft % 2) * .12, vol: .2 }); }
+  else {
+    score += 50; PA.sfx("power");
+    frightTotal = fright = Math.max(2.2, 7 - (level - 1) * .6);
+    eatChain = 0;
+    for (const h of hunters) if (h.state === "out") { h.fr = true; if (h.dir != null) h.dir = opp(h.dir); }
+    fx.burst(s.x, s.y, { n: 24, colors: ["#fff", "#b48cff"], speed: 240, life: .6 });
+  }
+  if (!extraGiven && score >= 10000) { extraGiven = true; lives++; PA.sfx("levelup"); texts.add(view.w / 2, view.h * .3, "EXTRA LIFE", { color: "#7dffb0", size: 28 }); }
+  if (pelletsLeft <= 0) {
+    phase = "clear"; phaseT = 0;
+    const bonus = 1000 * level; score += bonus;
+    texts.add(view.w / 2, view.h * .42, "MAZE CLEAR +" + bonus.toLocaleString(), { color: "#ffd36b", size: 28, life: 1.6, vy: -20 });
+    PA.sfx("levelup");
+  }
+}
+function collide() {
+  for (const h of hunters) {
+    if (h.state !== "out") continue;
+    if (wrapDist(h.x, h.y, player.x, player.y) > .7) continue;
+    if (h.fr) {
+      h.fr = false; h.state = "eyes"; h.house = false;
+      eatChain++; huntersEaten++;
+      const pts = 200 * Math.pow(2, Math.min(3, eatChain - 1)); score += pts;
+      const s = toScreen(h.x, h.y); texts.add(s.x, s.y, String(pts), { color: "#5ef2ff", size: 18 });
+      fx.burst(s.x, s.y, { n: 18, colors: [HUNTER_COLS[h.i], "#fff"], speed: 220 });
+      PA.sfx("combo", { pitch: 1 + eatChain * .15 }); PA.hitstop(90);
+    } else { die("hunter"); return; }
+  }
+  for (const e of echoes) {
+    if (!e.on || e.silenced > 0 || e.fadeIn > .2) continue;
+    if (wrapDist(e.x, e.y, player.x, player.y) > .55) continue;
+    if (fright > 0) {
+      e.silenced = fright + 2.5; echoesEaten++;
+      score += 500;
+      const s = toScreen(e.x, e.y); texts.add(s.x, s.y, "ECHO +500", { color: "#ffd36b", size: 18 });
+      fx.burst(s.x, s.y, { n: 22, colors: ["#ffd36b", "#b48cff"], speed: 220 });
+      PA.sfx("coin");
+    } else { die("echo"); return; }
+  }
+}
+let deathBy = "";
+function die(by) {
+  phase = "dying"; phaseT = 0; deathBy = by;
+  PA.sfx("lose"); PA.shake(6, .3);
+  const s = toScreen(player.x, player.y);
+  fx.burst(s.x, s.y, { n: 36, colors: by === "echo" ? ["#b48cff", "#fff"] : ["#7dffb0", "#fff", "#ff5c7a"], speed: 260, life: .9 });
+}
+function afterDeath() {
+  lives--;
+  if (lives <= 0) {
+    phase = "over";
+    if (score > best) { best = score; try { localStorage.setItem("em_best", best); } catch (e) {} }
+    PA.sfx("gameover");
+    PA.gameOver(score, {
+      kicker: deathBy === "echo" ? "Caught by your own echo" : "Caught by a hunter",
+      title: level >= 5 ? "Maze master" : level >= 3 ? "Deep in the maze" : "Lost in the maze",
+      stats: [["Level", level], ["Hunters eaten", huntersEaten], ["Echoes eaten", echoesEaten]]
+    });
+    return;
+  }
+  startLife();
+}
+
+/* ---------- input ---------- */
+function steer(d) { if (player && phase !== "dying") player.next = d; }
+PA.onKey((e) => {
+  const c = e.code;
+  if (c === "ArrowRight" || c === "KeyD") steer(0);
+  else if (c === "ArrowDown" || c === "KeyS") steer(1);
+  else if (c === "ArrowLeft" || c === "KeyA") steer(2);
+  else if (c === "ArrowUp" || c === "KeyW") steer(3);
+});
+let sw = null;
+addEventListener("pointerdown", (e) => {
+  if (PA.state !== "play" || PA.isPaused()) return;
+  if (e.target.closest && e.target.closest("button,input,#pa-gate,.pa-layer,.pa-tb,.pa-touch")) return;
+  sw = { id: e.pointerId, x: e.clientX, y: e.clientY };
+});
+addEventListener("pointermove", (e) => {
+  if (!sw || e.pointerId !== sw.id) return;
+  const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 18) return;
+  steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3));
+  sw.x = e.clientX; sw.y = e.clientY;   // keep steering with the same finger
+});
+addEventListener("pointerup", () => { sw = null; });
+addEventListener("pointercancel", () => { sw = null; });
+
+/* ---------- drawing ---------- */
+let view, ctx, T = 24, bx = 0, by = 0;
+function layout(v) {
+  const top = 78, bottom = PA.isTouch ? 40 : 20;
+  T = Math.max(12, Math.floor(Math.min((v.w - 16) / W, (v.h - top - bottom) / H)));
+  bx = Math.round((v.w - T * W) / 2); by = Math.round(top + (v.h - top - bottom - T * H) / 2);
+  if (grid) drawWalls();
+}
+function toScreen(x, y) { return { x: bx + (x + .5) * T, y: by + (y + .5) * T }; }
+function drawWalls() {
+  if (!view) return;
+  const dpr = view.dpr, c = document.createElement("canvas");
+  c.width = Math.ceil(W * T * dpr) + 2; c.height = Math.ceil(H * T * dpr) + 2;
+  const g = c.getContext("2d"); g.scale(dpr, dpr);
+  const wall = (x, y) => y < 0 || y >= H || x < 0 || x >= W ? !(y === 9) : grid[y][x] === WALL;
+  // fill
+  // wall blocks: a soft violet slab inside each outline
+  g.fillStyle = "#1a1240";
+  const ins0 = T * .28;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (grid[y][x] !== WALL) continue;
+    const l = wall(x - 1, y) ? 0 : ins0, r = wall(x + 1, y) ? 0 : ins0, u = wall(x, y - 1) ? 0 : ins0, d = wall(x, y + 1) ? 0 : ins0;
+    g.fillRect(x * T + l, y * T + u, T - l - r, T - u - d);
+  }
+  // glowing outline along every wall edge that faces a corridor, inset a little
+  const ins = T * .28;
+  g.lineCap = "round"; g.lineJoin = "round";
+  for (const pass of [[8, "rgba(140,90,255,.35)", 4], [0, "#b48cff", 2]]) {
+    g.shadowBlur = pass[0]; g.shadowColor = "#8c5cff"; g.strokeStyle = pass[1]; g.lineWidth = pass[2];
+    g.beginPath();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (grid[y][x] !== WALL) continue;
+      const X = x * T, Y = y * T;
+      const up = wall(x, y - 1), dn = wall(x, y + 1), lf = wall(x - 1, y), rt = wall(x + 1, y);
+      if (!up) { g.moveTo(X + (lf ? 0 : ins), Y + ins); g.lineTo(X + T - (rt ? 0 : ins), Y + ins); }
+      if (!dn) { g.moveTo(X + (lf ? 0 : ins), Y + T - ins); g.lineTo(X + T - (rt ? 0 : ins), Y + T - ins); }
+      if (!lf) { g.moveTo(X + ins, Y + (up ? 0 : ins)); g.lineTo(X + ins, Y + T - (dn ? 0 : ins)); }
+      if (!rt) { g.moveTo(X + T - ins, Y + (up ? 0 : ins)); g.lineTo(X + T - ins, Y + T - (dn ? 0 : ins)); }
+      // inner corners where two corridors meet diagonally
+      if (up && lf && !wall(x - 1, y - 1)) { g.moveTo(X, Y + ins); g.lineTo(X + ins, Y + ins); g.lineTo(X + ins, Y); }
+      if (up && rt && !wall(x + 1, y - 1)) { g.moveTo(X + T, Y + ins); g.lineTo(X + T - ins, Y + ins); g.lineTo(X + T - ins, Y); }
+      if (dn && lf && !wall(x - 1, y + 1)) { g.moveTo(X, Y + T - ins); g.lineTo(X + ins, Y + T - ins); g.lineTo(X + ins, Y + T); }
+      if (dn && rt && !wall(x + 1, y + 1)) { g.moveTo(X + T, Y + T - ins); g.lineTo(X + T - ins, Y + T - ins); g.lineTo(X + T - ins, Y + T); }
+    }
+    g.stroke();
+  }
+  g.shadowBlur = 0;
+  // house door
+  g.fillStyle = "#ff5ca8"; g.fillRect(9 * T + T * .1, 9 * T + T * .4, T * .8, T * .18);
+  wallCanvas = c;
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function drawPlayerShape(x, y, dir, mouth, r, color, alpha) {
+  const open = (Math.sin(mouth) * .5 + .5) * .7 + .05, a = [0, Math.PI / 2, Math.PI, -Math.PI / 2][dir == null ? 2 : dir];
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, r, a + open * .5, a + TAU - open * .5); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function drawHunter(h, t) {
+  const p = toScreen(h.x, h.y + (h.state === "home" ? Math.sin(h.bob) * .2 : 0)), r = T * .44;
+  const flashing = h.fr && fright < 2 && Math.sin(t * 18) > 0;
+  const col = h.fr ? (flashing ? "#ffffff" : "#3b5bff") : HUNTER_COLS[h.i];
+  if (h.state !== "eyes") {
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.4); g.addColorStop(0, col + "66"); g.addColorStop(1, col + "00");
+    ctx.fillStyle = g; ctx.fillRect(p.x - r * 2.4, p.y - r * 2.4, r * 4.8, r * 4.8); ctx.restore();
+    // a spiky wisp: a rounded crown that flickers along the bottom edge
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - r * .1, r, Math.PI, 0);
+    const n = 4;
+    for (let k = 0; k <= n; k++) {
+      const xx = p.x + r - (2 * r * k) / n, yy = p.y + r * (.85 + (k % 2 ? -.25 : .1) * Math.sin(t * 10 + h.i + k));
+      ctx.lineTo(xx, yy);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+  // eyes look where it's going
+  const [dx, dy] = h.dir == null ? [0, 0] : DIRS[h.dir];
+  for (const s of [-1, 1]) {
+    const ex = p.x + s * r * .38, ey = p.y - r * .2;
+    ctx.fillStyle = h.fr ? "#ffd0e0" : "#fff"; ctx.beginPath(); ctx.ellipse(ex, ey, r * .26, r * .32, 0, 0, TAU); ctx.fill();
+    if (!h.fr) { ctx.fillStyle = "#14183a"; ctx.beginPath(); ctx.arc(ex + dx * r * .13, ey + dy * r * .15, r * .14, 0, TAU); ctx.fill(); }
+  }
+}
+
+function render(t) {
+  const w = view.w, h = view.h;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  const bg = ctx.createRadialGradient(w / 2, h * .45, 0, w / 2, h * .45, Math.max(w, h) * .7);
+  bg.addColorStop(0, "#160e33"); bg.addColorStop(1, "#06050f");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  if (!grid) return;
+  const sh = PA.shakeOffset();
+  ctx.save(); ctx.translate(sh.x, sh.y);
+  // maze (flashes on clear)
+  if (wallCanvas) {
+    if (phase === "clear" && Math.sin(phaseT * 14) > 0) ctx.filter = "brightness(2) hue-rotate(60deg)";
+    ctx.drawImage(wallCanvas, bx, by, wallCanvas.width / view.dpr, wallCanvas.height / view.dpr);
+    ctx.filter = "none";
+  }
+  // pellets
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const p = pellets[y][x]; if (!p) continue;
+    const s = toScreen(x, y);
+    if (p === 1) { ctx.fillStyle = "#ffe6c4"; ctx.fillRect(s.x - T * .08, s.y - T * .08, T * .16, T * .16); }
+    else {
+      const r = T * (.26 + Math.sin(t * 6) * .05);
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 3); g.addColorStop(0, "rgba(180,140,255,.7)"); g.addColorStop(1, "rgba(180,140,255,0)");
+      ctx.fillStyle = g; ctx.fillRect(s.x - r * 3, s.y - r * 3, r * 6, r * 6); ctx.restore();
+      ctx.fillStyle = "#f1e8ff"; ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, TAU); ctx.fill();
+    }
+  }
+  // echo trails: faint dotted line of where each echo is headed (your recent path)
+  if (phase === "play" || phase === "ready") {
+    for (const e of echoes) {
+      if (!e.on || e.silenced > 0) continue;
+      ctx.fillStyle = fright > 0 ? "rgba(255,211,107,.35)" : "rgba(180,140,255,.3)";
+      for (let k = .25; k < 2.2; k += .25) {
+        const q = echoAt(lifeT - e.delay + k); if (!q) break;
+        const s = toScreen(q.x, q.y); ctx.beginPath(); ctx.arc(s.x, s.y, T * .07 * (1 - k / 2.4), 0, TAU); ctx.fill();
+      }
+    }
+  }
+  // echoes
+  for (const e of echoes) {
+    if (!e.on || e.silenced > 0) continue;
+    const s = toScreen(e.x, e.y), col = fright > 0 ? "#ffd36b" : "#b48cff";
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, T * 1.2); g.addColorStop(0, col + "88"); g.addColorStop(1, col + "00");
+    ctx.fillStyle = g; ctx.fillRect(s.x - T * 1.2, s.y - T * 1.2, T * 2.4, T * 2.4); ctx.restore();
+    const a = (1 - e.fadeIn) * (.55 + Math.sin(t * 9) * .12);
+    drawPlayerShape(s.x, s.y, e.dir, lifeT * 14, T * .42, col, a);
+    ctx.globalAlpha = a; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(s.x, s.y, T * .48, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+  }
+  // hunters
+  if (phase !== "dying" || phaseT < .3) for (const hh of hunters) drawHunter(hh, t);
+  // player
+  if (phase !== "over") {
+    const s = toScreen(player.x, player.y);
+    if (phase === "dying") {
+      const k = Math.min(1, phaseT / 1.1);
+      ctx.fillStyle = "#7dffb0"; ctx.globalAlpha = 1 - k * .6;
+      const a = [0, Math.PI / 2, Math.PI, -Math.PI / 2][player.dir];
+      ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.arc(s.x, s.y, T * .44, a + k * Math.PI, a + TAU - k * Math.PI); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    } else {
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, T * 1.4); g.addColorStop(0, "rgba(125,255,176,.5)"); g.addColorStop(1, "rgba(125,255,176,0)");
+      ctx.fillStyle = g; ctx.fillRect(s.x - T * 1.4, s.y - T * 1.4, T * 2.8, T * 2.8); ctx.restore();
+      drawPlayerShape(s.x, s.y, player.dir, player.mouth, T * .44, "#7dffb0", 1);
+    }
+  }
+  fx.draw(ctx); texts.draw(ctx);
+  // centre banners
+  ctx.textAlign = "center";
+  if (phase === "ready") {
+    const s = toScreen(9, 11.1);
+    ctx.font = `800 ${Math.round(T * .9)}px Manrope, sans-serif`; ctx.fillStyle = "#7dffb0"; ctx.shadowColor = "#7dffb0"; ctx.shadowBlur = 14;
+    ctx.fillText("READY", s.x, s.y + T * .3); ctx.shadowBlur = 0;
+    if (level === 1 && lives === 3) {
+      ctx.font = `600 ${Math.max(11, Math.round(T * .5))}px Manrope, sans-serif`; ctx.fillStyle = "#cdb8ff";
+      ctx.fillText("Your path comes back as an echo " + Math.round(echoes[0].delay) + "s behind you", w / 2, by + H * T + Math.min(26, T));
+    }
+  }
+  ctx.restore();
+  drawHud(w, t);
+}
+function drawHud(w, t) {
+  shownScore += (score - shownScore) * .25;
+  ctx.textAlign = "left";
+  ctx.font = `800 ${w < 500 ? 26 : 32}px Manrope, sans-serif`;
+  ctx.fillStyle = "#fff"; ctx.shadowColor = "#b48cff"; ctx.shadowBlur = 16;
+  ctx.fillText(Math.round(shownScore).toLocaleString(), 16, 40); ctx.shadowBlur = 0;
+  ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#b9a8ff";
+  const ne = echoes ? echoes.length : 0;
+  ctx.fillText("LEVEL " + level + "  ·  " + ne + (ne === 1 ? " ECHO" : " ECHOES") + "  ·  BEST " + Math.max(best, score).toLocaleString(), 17, 58);
+  for (let i = 0; i < lives - 1; i++) drawPlayerShape(24 + i * 22, 72, 0, 1.2, 8, "#7dffb0", 1);
+}
+
+view = PA.canvas(document.getElementById("c"), { onResize: layout });
+ctx = view.ctx;
+reset();
+PA.onStart(reset);
+PA.loop(update, render);
+window.__em = {
+  get grid() { return grid; }, get player() { return player; }, get hunters() { return hunters; }, get echoes() { return echoes; },
+  get phase() { return phase; }, get level() { return level; }, get score() { return score; }, get lives() { return lives; },
+  get pelletsLeft() { return pelletsLeft; }, get pellets() { return pellets; }, get fright() { return fright; }, steer, isWall, W, H, DIRS,
+  clearAll() { for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (pellets[y][x]) { pellets[y][x] = 0; pelletsLeft--; } pelletsLeft = 1; pellets[Math.round(player.y)][Math.round(player.x)] = 1; }
+};
+})();
+</script>
+</body></html>
