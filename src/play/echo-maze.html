@@ -205,7 +205,7 @@ function hunterDecide(h) {
   }
   if (!opts.length) opts = [opp(h.dir)];
   if (h.fr && h.state === "out") { h.dir = opts[(Math.random() * opts.length) | 0]; return; }
-  if (h.state === "eyes" && !(cx === 9 && cy === 8)) {
+  if (h.state === "eyes" && !(cx === 9 && cy === 8) && grid[cy][((cx % W) + W) % W] === PATH) {
     // eyes follow the distance map home (reversing allowed), so they can never circle forever
     let bd = Infinity;
     for (let d = 0; d < 4; d++) {
