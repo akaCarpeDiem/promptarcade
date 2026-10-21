@@ -170,7 +170,8 @@ function nextFloor() {
   }
   // torches on room walls
   for (const r of rooms) if (rnd() < 0.7) { const tx = ri(r.x, r.x + r.w - 1); if (map[r.y - 1] && map[r.y - 1][tx] === 1) G.torches.push({ x: tx, y: r.y - 1, f: rnd() * 6 }); }
-  G.mons = G.mons.filter((m) => Math.hypot(m.x - G.p.x, m.y - G.p.y) > 4);
+  G.mons = G.mons.filter((m) => MON[m.k].boss || Math.hypot(m.x - G.p.x, m.y - G.p.y) > 4);
+  G.path = null;
   fov();
   paint();
   if (G.depth > 1) { PA.sfx("whoosh", { pitch: 0.6 }); logMsg(`Depth ${G.depth}.` + (G.depth % 5 === 4 ? " You hear deep breathing below…" : "")); }
@@ -233,9 +234,11 @@ function act(dx, dy) {
   const p = G.p;
   if (dx === 0 && dy === 0) { endTurn(); return true; }
   const nx = p.x + dx, ny = p.y + dy;
-  if (G.map[ny] == null || G.map[ny][nx] !== 0) { return false; }
+  if (G.map[ny] == null || G.map[ny][nx] == null) return false;
+  // check for a monster first: wraiths drift inside walls and must still be hittable there
   const m = monAt(nx, ny);
   if (m) { attack(m); endTurn(); return true; }
+  if (G.map[ny][nx] !== 0) return false;
   p.x = nx; p.y = ny; p.ox = -dx; p.oy = -dy;
   PA.sfx("click", { pitch: 0.5 + Math.random() * .1, vol: .25 });
   // pickups
@@ -264,23 +267,24 @@ function pickup(it) {
 function atkOf() { return G.p.atk + G.p.wpn * 2; }
 function defOf() { return G.p.def + G.p.arm; }
 function attack(m) {
-  const M = MON[m.k];
   const crit = Math.random() < 0.1;
   const dmg = Math.max(1, Math.round((atkOf() + ri(-1, 2)) * (crit ? 2 : 1)) - m.def);
   m.hp -= dmg; m.flash = 1; m.awake = true;
   G.p.ox = (m.x - G.p.x) * .4; G.p.oy = (m.y - G.p.y) * .4;
   float(m.x, m.y, (crit ? "✦" : "") + dmg, crit ? "#ffe08a" : "#fff");
   PA.sfx("hit", { pitch: 1.2 + Math.random() * .3, vol: .5 });
-  if (m.hp <= 0) {
-    G.mons = G.mons.filter((x) => x !== m);
-    G.kills++;
-    logMsg(`You slay the ${M.n}.`);
-    burst(m.x, m.y, M.boss ? 80 : 14, M.boss ? "#ff7a2a" : "#e8d6c4");
-    gainXp(M.xp);
-    if (M.split && m.max > 4) for (const [ddx, ddy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { if (G.map[m.y + ddy][m.x + ddx] === 0 && !monAt(m.x + ddx, m.y + ddy) && Math.random() < .5) { spawnMon("slime", m.x + ddx, m.y + ddy); const s = G.mons[G.mons.length - 1]; s.hp = s.max = Math.ceil(m.max / 2); s.awake = true; } }
-    if (M.boss) { G.p.gold += 300; logMsg("🐉 The deep dragon falls! The stairs unseal. (+300 gold)"); PA.flash("#ffd27a", 500); PA.shake(10, .6); PA.sfx("boom"); }
-    if (Math.random() < 0.18) G.items.push({ k: Math.random() < .6 ? "gold" : "potion", x: m.x, y: m.y, v: ri(4, 10) * G.depth });
-  }
+  if (m.hp <= 0) killMon(m);
+}
+function killMon(m) {
+  const M = MON[m.k];
+  G.mons = G.mons.filter((x) => x !== m);
+  G.kills++;
+  logMsg(`You slay the ${M.n}.`);
+  burst(m.x, m.y, M.boss ? 80 : 14, M.boss ? "#ff7a2a" : "#e8d6c4");
+  gainXp(M.xp);
+  if (M.split && m.max > 4) for (const [ddx, ddy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { if (G.map[m.y + ddy] && G.map[m.y + ddy][m.x + ddx] === 0 && !monAt(m.x + ddx, m.y + ddy) && Math.random() < .5) { spawnMon("slime", m.x + ddx, m.y + ddy); const s = G.mons[G.mons.length - 1]; s.hp = s.max = Math.ceil(m.max / 2); s.awake = true; } }
+  if (M.boss) { G.p.gold += 300; logMsg("🐉 The deep dragon falls! The stairs unseal. (+300 gold)"); PA.flash("#ffd27a", 500); PA.shake(10, .6); PA.sfx("boom"); }
+  if (Math.random() < 0.18 && G.map[m.y][m.x] === 0) G.items.push({ k: Math.random() < .6 ? "gold" : "potion", x: m.x, y: m.y, v: ri(4, 10) * G.depth });
 }
 function gainXp(v) {
   const p = G.p; p.xp += v;
@@ -356,10 +360,11 @@ function useItem(k) {
   if (k === "potion") { const h = Math.min(G.p.max - G.p.hp, 12 + G.depth); G.p.hp += h; logMsg(`You drink a potion (+${h}).`); PA.sfx("power"); burst(G.p.x, G.p.y, 16, "#ff7eb6"); }
   else if (k === "scroll") {
     const opts = []; for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) if (G.map[y][x] === 0 && !monAt(x, y) && Math.hypot(x - G.p.x, y - G.p.y) > 10) opts.push([x, y]);
-    const [x, y] = opts[(Math.random() * opts.length) | 0]; G.p.x = x; G.p.y = y; logMsg("You blink across the dungeon!"); PA.sfx("whoosh"); burst(x, y, 20, "#5ef2ff");
+    if (!opts.length) { G.inv[k]++; logMsg("The scroll fizzles: nowhere far enough to blink to."); return; }
+    const [x, y] = opts[(Math.random() * opts.length) | 0]; G.p.x = x; G.p.y = y; G.path = null; logMsg("You blink across the dungeon!"); PA.sfx("whoosh"); burst(x, y, 20, "#5ef2ff");
   } else if (k === "bomb") {
     let n = 0;
-    for (const m of G.mons.slice()) if (Math.max(Math.abs(m.x - G.p.x), Math.abs(m.y - G.p.y)) <= 2) { m.hp -= 10 + G.depth * 2; m.flash = 1; n++; burst(m.x, m.y, 10, "#ff8a3d"); if (m.hp <= 0) { G.mons = G.mons.filter((x) => x !== m); G.kills++; gainXp(MON[m.k].xp); } }
+    for (const m of G.mons.slice()) if (Math.max(Math.abs(m.x - G.p.x), Math.abs(m.y - G.p.y)) <= 2) { m.hp -= 10 + G.depth * 2; m.flash = 1; m.awake = true; n++; burst(m.x, m.y, 10, "#ff8a3d"); if (m.hp <= 0) killMon(m); }
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) burst(G.p.x + dx, G.p.y + dy, 3, "#ffb35c");
     logMsg(`Boom! The fire bomb scorches ${n} foe${n === 1 ? "" : "s"}.`); PA.sfx("explode"); PA.shake(8, .4);
   } else if (k === "map") { for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (G.map[y][x] === 0) G.seen[y][x] = 1; logMsg("The map reveals the floor."); PA.sfx("select"); }
