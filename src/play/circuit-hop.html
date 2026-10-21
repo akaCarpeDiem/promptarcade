@@ -800,7 +800,7 @@ window.paConfig = {
     texts.draw(ctx);
     ctx.restore();
     drawBanner();
-    if (PA.state === "play" && levelIdx === 0 && player && !player.dead && banner && banner.t > 0.5 && levelT < 9) {
+    if (PA.state === "play" && levelIdx === 0 && W > 640 && player && !player.dead && banner && banner.t > 0.5 && levelT < 9) {
       ctx.fillStyle = "rgba(168,163,192,.8)";
       ctx.font = "500 " + Math.round(12 * S) + "px Manrope, system-ui, sans-serif";
       ctx.textAlign = "center";

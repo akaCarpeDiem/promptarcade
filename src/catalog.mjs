@@ -174,7 +174,7 @@ export const GAMES = [
     about: "A real-time 3D flight down an endless neon hyperlane. Bank between walls, gates and laser bars, string energy orbs into a multiplier, and burn boost when you dare.",
     credit: CLAUDE_CURSOR,
     brief: "A three.js endless flyer: a banking ship, pooled 3D obstacles, a boost meter, an orb multiplier and color-shifting sectors.",
-    tech: ["three.js scene with object pooling", "Colour-shifting sectors", "Boost meter and orb multiplier"]
+    tech: ["three.js lane built to the ship's limits, so every obstacle sits where you can fly", "Six colour-shifting sectors that narrow the gates and raise the speed", "Gates, sweeping laser bars, pillar clusters and orb lines on a distance-based rhythm", "Boost meter and orb multiplier"]
   },
   {
     slug: "circuit-hop", title: "Circuit Hop", added: "2026-09-20",
