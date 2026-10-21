@@ -158,16 +158,18 @@ export const GAMES = [
   {
     slug: "neon-outrun", title: "Neon Outrun", added: "2026-09-20",
     genre: "Racing", tags: ["racing", "arcade", "3d"], difficulty: "Advanced", accent: "#ff5ca8", accent2: "#ffd36b", unit: "points",
-    classic: "Sunset road racer", twist: "A real-3D night city: draft behind trucks for extra top speed, thread traffic for near-miss combos and dodge lane closures to beat the checkpoint clock.",
-    tagline: "A real-3D night-city racer against the clock.",
-    about: "Race an endless neon boulevard at dusk. Weave through cars and trucks that signal before they change lanes, tuck into a truck's slipstream for extra top speed, brake for the tight bends and road works, and reach every checkpoint before the clock runs out. The course gets sharper and busier the further you go.",
+    classic: "Sunset road racer", twist: "A real-3D cyberpunk megacity: draft behind haulers for extra top speed, thread hover cars for near-miss combos and dodge lane closures to beat the checkpoint clock.",
+    tagline: "A real-3D cyberpunk racer through a neon megacity.",
+    about: "Race a futuristic hypercar down an endless boulevard through a neon megacity at night. Towers vanish into the smog, holograms hang over the street and flying traffic streams overhead. Weave through hover cars and haulers that signal before they change lanes, tuck into a slipstream for extra top speed, brake for the tight bends and road works, and reach every checkpoint before the clock runs out. The course gets sharper and busier the further you go.",
     credit: { maker: "Claude", model: null, via: "Claude (agentic session)", method: "agentic" },
-    brief: "Rebuild the sunset road racer from the ground up in real 3D: a realistic car, road and city, cars and trucks as traffic, real-looking streetlights, tighter steering and a harder course.",
-    process: "Rebuilt by an AI coding agent in one session: the procedural road and city chunks first, then the car and traffic models, lighting and sky, then handling, traffic AI and road works, then audio and HUD. An automated driver played simulated runs in a headless browser to tune the clock and difficulty.",
+    brief: "Rebuild the sunset road racer from the ground up in real 3D: a realistic car, road and city, cars and trucks as traffic, real-looking streetlights, tighter steering and a harder course. Then restyle it as a futuristic cyberpunk megacity: neon glow, LED lights, big imagery, a modified future car and futuristic traffic.",
+    process: "Rebuilt by an AI coding agent in one session: the procedural road and city chunks first, then the car and traffic models, lighting and sky, then handling, traffic AI and road works, then audio and HUD. A second pass restyled the city: HDR bloom, a wet reflective road, megatowers, holograms, hover cars and flying traffic. An automated driver played simulated runs in a headless browser to tune the clock and difficulty.",
     tech: [
-      "three.js: an endless procedural boulevard built in chunks ahead of the camera",
-      "Car and traffic bodies extruded from side profiles, with environment-mapped paint and glass",
-      "Streetlights with real moving point lights, light pools and glow, plus a dusk sky and skyline",
+      "three.js: an endless procedural boulevard and megacity built in chunks ahead of the camera",
+      "HDR rendering with a custom bloom pass, so every neon sign, LED strip and tail light glows",
+      "A wet road whose puddles mirror the city, with reflections streaking back from every light",
+      "Futuristic car, hover car and hauler bodies extruded from side profiles, with LED trim and iridescent paint",
+      "Holographic adverts for made-up brands, megatowers in the smog and streams of flying traffic",
       "Traffic AI that follows, brakes and signals before changing lanes; slipstream and near-miss scoring",
       "Synthesised engine with a six-speed gearbox, wind and tyre noise"
     ]
