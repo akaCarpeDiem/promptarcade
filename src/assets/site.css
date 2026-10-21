@@ -141,9 +141,11 @@ button{font:inherit;color:inherit}
 .cab-svg .acc-stop{stop-color:var(--a)}
 .cab-svg .scr-glow{fill:var(--a);opacity:.5;transition:fill .6s}
 .cab-svg .mq-panel{filter:brightness(1.05)}
-.cab-svg .mq-title{font:800 32px var(--display);letter-spacing:-.5px;fill:#fff7ff;paint-order:stroke;stroke:rgba(255,92,168,.55);stroke-width:5px}
+.cab-svg .mq-title{font:800 36px var(--display);letter-spacing:-.5px;fill:#fff7ff;paint-order:stroke;stroke:rgba(255,92,168,.55);stroke-width:5px}
 .cab-svg .mq-arc{fill:var(--gold)}
-.cab-svg .mq-sub{font:700 12.5px var(--mono);letter-spacing:4px;fill:#e9d8ff}
+.cab-svg .art-grid{stroke:var(--a);opacity:.22;transition:stroke .6s}
+.cab-svg .snake-stripes{animation:snake-run 1.6s linear infinite}
+@keyframes snake-run{to{stroke-dashoffset:-40}}
 .cab-svg .bz-text{font:700 11px var(--mono);letter-spacing:2px;fill:#7d80b8}
 .cab-svg .bz-coin{font:800 13px var(--mono);letter-spacing:3px;fill:var(--gold);animation:blink 1.2s steps(2) infinite}
 .cab-svg .coin-slot{fill:#ff5a3c;filter:drop-shadow(0 0 4px #ff5a3c);animation:coin 2.4s ease-in-out infinite}
@@ -187,7 +189,7 @@ button{font:inherit;color:inherit}
 .cab-right{left:39.5%;top:52%;width:8.5%;height:9%}
 .cab-play{left:57%;top:56%;width:22%;height:5.8%}
 .cab-screen a{cursor:pointer}
-@media (prefers-reduced-motion:reduce){.cab,.cab-slide.on img,.cab-svg .bulb,.cab-svg .bz-coin,.cab-svg .coin-slot{animation:none}}
+@media (prefers-reduced-motion:reduce){.cab,.cab-slide.on img,.cab-svg .snake-stripes,.cab-svg .bulb,.cab-svg .bz-coin,.cab-svg .coin-slot{animation:none}}
 
 /* ---------- classic / original labels ---------- */
 .card-kind{font:700 11px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--a)}
