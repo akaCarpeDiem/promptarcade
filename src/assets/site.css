@@ -147,6 +147,11 @@ button{font:inherit;color:inherit}
 .cab-svg .deck-grid{stroke:var(--a);opacity:.13;transition:stroke .6s}
 .cab-svg .deck-bevel{stroke:rgba(200,205,255,.14);stroke-width:1}
 .cab-svg .ember{animation:ember 2.2s ease-in-out infinite}
+.cab-svg .sn-body{fill:#6dffa8;opacity:.5}
+.cab-svg .sn-glow{fill:none;stroke:#6dffa8;stroke-width:4;stroke-linejoin:round;opacity:.16}
+.cab-svg .sn-head{fill:#d8ffe8;opacity:.8}
+.cab-svg .sn-food{fill:#7af6ff;opacity:.85;animation:sn-dot 1s ease-in-out infinite alternate}
+@keyframes sn-dot{to{opacity:.4}}
 @keyframes ember{50%{opacity:.45}}
 .cab-svg .bz-text{font:700 11px var(--mono);letter-spacing:2px;fill:#7d80b8}
 .cab-svg .bz-coin{font:800 13px var(--mono);letter-spacing:3px;fill:var(--gold);animation:blink 1.2s steps(2) infinite}
@@ -188,7 +193,7 @@ button{font:inherit;color:inherit}
 .cab-right{left:43%;top:73.5%;width:6%;height:14.7%}
 .cab-play{left:56%;top:78.7%;width:24%;height:8.8%}
 .cab-screen a{cursor:pointer}
-@media (prefers-reduced-motion:reduce){.cab,.cab-slide.on img,.cab-svg .ember,.cab-svg .bulb,.cab-svg .bz-coin{animation:none}}
+@media (prefers-reduced-motion:reduce){.cab,.cab-slide.on img,.cab-svg .ember,.cab-svg .bulb,.cab-svg .bz-coin,.cab-svg .sn-food{animation:none}}
 
 /* ---------- classic / original labels ---------- */
 .card-kind{font:700 11px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--a)}

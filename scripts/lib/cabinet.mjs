@@ -59,6 +59,7 @@ const SVG = `<svg class="cab-svg" viewBox="0 0 600 680" aria-hidden="true" focus
   <radialGradient id="cab-aura" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ff9a3c" stop-opacity=".55"/><stop offset="1" stop-color="#ff9a3c" stop-opacity="0"/></radialGradient>
   <radialGradient id="cab-spirit" cx=".38" cy=".32" r=".7"><stop offset="0" stop-color="#ffe0b0"/><stop offset=".45" stop-color="#ff8a4c"/><stop offset="1" stop-color="#d9481f"/></radialGradient>
   <radialGradient id="cab-bat" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#8a45c4"/><stop offset="1" stop-color="#4b2378"/></radialGradient>
+  <clipPath id="cab-mqclip"><rect x="176" y="34" width="368" height="92" rx="6"/></clipPath>
   <clipPath id="cab-sideclip"><polygon points="60,46 160,18 160,528 150,606 150,632 160,642 160,975 60,955"/></clipPath>
   <filter id="cab-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 </defs>
@@ -71,9 +72,10 @@ ${SIDE_ART}
 <!-- front body -->
 <rect x="160" y="18" width="400" height="957" fill="url(#cab-front)"/>
 
-<!-- marquee -->
+<!-- marquee (the attract-mode snake behind the logo is drawn into data-cab-snake by src/assets/hero.js) -->
 <rect x="160" y="18" width="400" height="122" fill="#0b0b24"/>
 <rect class="mq-panel" x="176" y="34" width="368" height="92" rx="6" fill="url(#cab-mq)"/>
+<g class="cab-snake" clip-path="url(#cab-mqclip)" data-cab-snake></g>
 <rect x="176" y="34" width="368" height="92" rx="6" fill="none" stroke="rgba(255,255,255,.18)"/>
 <text x="360" y="93" text-anchor="middle" class="mq-title">Prompt<tspan class="mq-arc">Arcade</tspan></text>
 <g class="bulbs">${BULBS(26)}${BULBS(134)}</g>
