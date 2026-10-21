@@ -65,7 +65,7 @@ ${head}
 <body class="${bodyClass}">
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="wrap">
-  <a class="logo" href="/" aria-label="${SITE.name} home">${LOGO}<span>Prompt<b>Arcade</b></span></a>
+  <a class="logo" href="/" aria-label="${SITE.name} home">${LOGO}<span class="logo-txt"><span>Prompt<b>Arcade</b></span><small>${esc(SITE.tagline)}</small></span></a>
   <nav class="nav-links" aria-label="Main">${NAV.map(([h, t]) => `<a href="${h}"${cur(h)}>${t}</a>`).join("")}</nav>
   <div class="nav-right">
     <button class="search-btn" type="button" aria-label="Search games">${ICON.search}<span>Search</span><kbd>/</kbd></button>
@@ -87,7 +87,7 @@ ${body}
 <footer><div class="wrap">
   <div>
     <a class="logo" href="/">${LOGO}<span>Prompt<b>Arcade</b></span></a>
-    <p style="max-width:380px;margin:.9em 0 0">${esc(SITE.tagline)} Free browser games built entirely by AI models from plain-English prompts — new ones land regularly.</p>
+    <p style="max-width:380px;margin:.9em 0 0">${esc(SITE.tagline)}. Well-known games remade by AI models from plain-English prompts, each with a twist of its own, plus a few originals. New ones land regularly.</p>
   </div>
   <div><h4>Play</h4><ul><li><a href="/games/">All games</a></li><li><a href="/daily/">Daily challenges</a></li><li><a href="/hall-of-fame/">Hall of Fame</a></li><li><a href="/me/">My Arcade Pass</a></li></ul></div>
   <div><h4>Learn</h4><ul><li><a href="/lab/">The Lab — how they're made</a></li><li><a href="/new/">What's new</a></li><li><a href="/about/">About</a></li></ul></div>
@@ -103,17 +103,20 @@ ${scripts}
 `;
 }
 
-export function card(g, { feature = false, isNew = false, order = 0, vt = false } = {}) {
+export function card(g, { feature = false, isNew = false, order = 0, vt = false, twist = false } = {}) {
   const live = g.tags.includes("multiplayer");
+  const shelf = g.original ? "original" : "classic";
+  const kind = g.original ? "An arcade original" : `Twist on ${g.classic.toLowerCase()}`;
   const daily = g.daily;
-  const search = [g.title, g.genre, g.tags.join(" "), g.credit.maker, g.credit.model || "", g.tagline].join(" ").toLowerCase();
-  return `<a class="card${feature ? " feature" : ""} reveal" href="/games/${g.slug}/" data-slug="${g.slug}" data-genre="${esc(g.genre.toLowerCase())}" data-tags="${esc(g.tags.join(" "))}" data-maker="${makerClass(g.credit)}" data-title="${esc(g.title)}" data-added="${g.added}" data-order="${order}" data-search="${esc(search)}" style="--a:${g.accent};--b:${g.accent2}">
+  const search = [g.title, g.genre, g.tags.join(" "), g.classic || "original", g.credit.maker, g.credit.model || "", g.tagline].join(" ").toLowerCase();
+  return `<a class="card${feature ? " feature" : ""} reveal" href="/games/${g.slug}/" data-slug="${g.slug}" data-genre="${esc(g.genre.toLowerCase())}" data-tags="${esc([...g.tags, shelf].join(" "))}" data-maker="${makerClass(g.credit)}" data-title="${esc(g.title)}" data-added="${g.added}" data-order="${order}" data-search="${esc(search)}" style="--a:${g.accent};--b:${g.accent2}">
   <div class="card-media"><img src="/shots/${g.slug}.webp" alt="${esc(g.title)} gameplay" loading="lazy" decoding="async" width="800" height="500"${vt ? ` style="view-transition-name:shot-${g.slug}"` : ""}/>
     <div class="card-badges">${isNew ? '<span class="chip new">NEW</span>' : ""}${live ? '<span class="chip live">LIVE MULTIPLAYER</span>' : ""}${daily ? '<span class="chip daily">DAILY</span>' : ""}</div>
     <span class="card-play">${ICON.play}</span></div>
   <div class="card-body">
+    <span class="card-kind ${shelf}">${esc(kind)}</span>
     <h3>${esc(g.title)}</h3>
-    <p>${esc(g.tagline)}</p>
+    ${twist && !g.original ? `<p class="twist"><b>The twist</b> ${esc(g.twist)}</p>` : `<p>${esc(g.tagline)}</p>`}
     <div class="card-meta"><span class="chip maker ${makerClass(g.credit)}">${esc(creditLabel(g.credit))}</span><span class="chip">${esc(g.genre)}</span></div>
   </div>
 </a>`;

@@ -8,13 +8,19 @@
  * credit.model   exact model name if known, otherwise null (the page then says "version not recorded")
  * credit.via     where it was built (chat app, Cursor agent, …)
  * credit.method  "single-prompt" | "multi-prompt" | "agentic"
+ *
+ * Every game is either a classic with a twist or an original:
+ * classic        the kind of classic it remakes, as a plain description ("Falling blocks"). Never a
+ *                trademarked game name: the build test fails on those.
+ * twist          one sentence on what it changes about that classic
+ * original       true for games that aren't a remake of anything (no classic/twist)
  */
 export const SITE = {
   name: "PromptArcade",
   url: "https://promptarcade.games",
   email: "support@promptarcade.games",
-  tagline: "Every game here was made by AI, from prompts.",
-  description: "Free browser games built entirely by AI from plain-English prompts — a multiplayer snake arena, a roguelite, a daily word game and more. No account needed.",
+  tagline: "An arcade of prompt-made classics with a twist",
+  description: "Classic arcade games remade by AI from plain-English prompts, each with a twist that changes how it plays: multiplayer snake, falling blocks with no preview, a daily word, a vector rock shooter and more. Free, no account needed.",
   launched: "2026-10-11"
 };
 
@@ -26,6 +32,7 @@ export const GAMES = [
     slug: "glowline-arena", title: "Glowline Arena", added: "2026-10-11", featured: 1,
     genre: "Multiplayer", tags: ["multiplayer", "io", "arcade"], difficulty: "Mid", accent: "#5ef2ff", accent2: "#ff5ca8",
     unit: "length",
+    classic: "Snake", twist: "Snake goes live and multiplayer: boost to cut off real rivals, slip through portals and evolve into rare forms.",
     tagline: "A live multiplayer snake arena. Eat, grow, and cut off everyone else.",
     about: "Glide through a glowing hex arena with players from everywhere — and a pack of surprisingly cunning bots. Eat light to grow, boost to cut in front of rivals, and turn their wreckage into your next meal. Grab rare power-ups, slip through portals, and if you get lucky, evolve into a Viper, an Eel, a Comet or four other rare forms for the rest of your life. Every day brings a new twist, and Glow XP unlocks looks-only skins and trails. If the live server is quiet or unreachable, you drop straight into an offline match against bots.",
     credit: CLAUDE_NEW,
@@ -44,6 +51,7 @@ export const GAMES = [
     slug: "ember-swarm", title: "Ember Swarm", added: "2026-10-11", featured: 2,
     genre: "Roguelite", tags: ["roguelite", "survivors", "action"], difficulty: "Mid", accent: "#ffb35c", accent2: "#ff3d7f",
     unit: "points",
+    classic: "Survivors horde", twist: "A forge for permanent upgrades, unlockable spirits and a segmented wyrm boss on the way to dawn.",
     tagline: "Survive the night against hundreds of shadow creatures. Your weapons fire on their own.",
     about: "A survivors-style roguelite. Move, collect embers and pick upgrades as the swarm thickens — seven weapons, eight passives, elites with treasure, and two bosses on the way to dawn. Embers you bank buy permanent upgrades in the forge, and new spirits unlock as you get better.",
     credit: CLAUDE_NEW,
@@ -60,6 +68,7 @@ export const GAMES = [
     slug: "nebula-drop", title: "Nebula Drop", added: "2026-10-11", featured: 3,
     genre: "Puzzle", tags: ["puzzle", "physics", "merge"], difficulty: "Simple", accent: "#b48cff", accent2: "#5ef2ff",
     unit: "points",
+    classic: "Merge and drop", twist: "Real circle physics and an eleven-step climb from stardust to a black hole, with chain reactions worth the most.",
     tagline: "Drop celestial bodies into the jar. Two of a kind fuse into something bigger.",
     about: "Stardust becomes pebbles, pebbles become moons, moons become worlds — all the way up to a black hole. A physics merge puzzle where every drop nudges the pile and chain reactions are worth the most. Don't let the jar overflow.",
     credit: CLAUDE_NEW,
@@ -74,6 +83,7 @@ export const GAMES = [
     slug: "wordglow", title: "Wordglow", added: "2026-10-11", featured: 4,
     genre: "Daily", tags: ["daily", "word", "puzzle"], difficulty: "Simple", accent: "#2ee6c5", accent2: "#b48cff",
     unit: "streak points", daily: true,
+    classic: "Five-letter word", twist: "Your daily streak climbs a global leaderboard, with hard mode and unlimited practice after the daily.",
     tagline: "One five-letter word a day. Six tries. Keep your streak glowing.",
     about: "A fresh five-letter word every day — the same one for everyone. Guess in six tries, share your glowing grid with friends, and keep a streak going. Practice rounds are unlimited once the daily is done. Your leaderboard score grows with your streak.",
     credit: CLAUDE_NEW,
@@ -88,6 +98,7 @@ export const GAMES = [
     slug: "block-bloom", title: "Block Bloom", added: "2026-10-11", featured: 5,
     genre: "Puzzle", tags: ["puzzle", "casual"], difficulty: "Simple", accent: "#ff7eb6", accent2: "#ffd36b",
     unit: "points",
+    classic: "Falling blocks", twist: "No next-piece preview, and a row finished in a single colour scores ten times as much.",
     tagline: "Falling gems, no preview. Clear a row in one colour for 10× points.",
     about: "Gem blocks fall into the garden one at a time. Turn them, slide them and drop them to fill a row and watch it burst into petals. There is no next-piece window: each piece appears at the top the moment the last one lands, so you play what you get. Finish a whole row in a single colour and it scores ten times as much.",
     credit: CLAUDE_NEW,
@@ -102,6 +113,7 @@ export const GAMES = [
     slug: "gridstorm", title: "Gridstorm", added: "2026-10-11", featured: 6,
     genre: "Shooter", tags: ["shooter", "twin-stick", "arcade"], difficulty: "Advanced", accent: "#5ef2ff", accent2: "#ffe68a",
     unit: "points",
+    classic: "Twin-stick arena", twist: "Gravity wells bend your bullets, and the whole grid ripples with every explosion.",
     tagline: "A twin-stick shooter on a grid that ripples with every explosion.",
     about: "Move with one hand, aim with the other, and survive an escalating storm of geometric enemies — dodgers that sidestep your shots, splitters, armored snakes and gravity wells that bend bullets and swallow everything nearby. Collect gems to climb the multiplier.",
     credit: CLAUDE_NEW,
@@ -116,6 +128,7 @@ export const GAMES = [
     slug: "deepdelve", title: "Deepdelve", added: "2026-10-11", featured: 7,
     genre: "Roguelike", tags: ["roguelike", "daily", "strategy"], difficulty: "Mid", accent: "#ffcf70", accent2: "#ff7a2a",
     unit: "points", daily: true,
+    classic: "Dungeon crawl", twist: "One seeded Daily Delve for every player, and a dragon waiting on every fifth floor.",
     tagline: "A turn-based dungeon crawler with a new dungeon every day.",
     about: "Descend through procedurally generated floors, fight monsters turn by turn, find potions, bombs and better gear, and face a dragon every fifth floor. Death is permanent. The Daily Delve gives everyone the same dungeon each day.",
     credit: CLAUDE_NEW,
@@ -131,6 +144,7 @@ export const GAMES = [
     slug: "skystack", title: "Skystack 3D", added: "2026-10-11", featured: 8,
     genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#7dffb0", accent2: "#6ec8ff",
     unit: "floors",
+    classic: "Tower stacker", twist: "Real 3D: overhangs slice off and tumble away, and a chain of perfect drops grows the slab back.",
     tagline: "Stack sliding slabs as high as you can. One button, real 3D.",
     about: "Drop each sliding slab onto the tower. Whatever hangs over the edge is sliced off and tumbles away, so the tower narrows with every miss. Land a perfect drop to keep its size — chain them and it grows back.",
     credit: CLAUDE_NEW,
@@ -144,6 +158,7 @@ export const GAMES = [
   {
     slug: "neon-outrun", title: "Neon Outrun", added: "2026-09-20",
     genre: "Racing", tags: ["racing", "arcade"], difficulty: "Advanced", accent: "#ff5ca8", accent2: "#ffd36b", unit: "points",
+    classic: "Sunset road racer", twist: "Checkpoint arches against the clock, plus near-miss bonuses for threading traffic flat out.",
     tagline: "A pseudo-3D sunset racer against the clock.",
     about: "A pseudo-3D sunset racer. Weave through traffic on a road of curves and hills, hit the checkpoint arches before the clock runs out, and chase near-miss bonuses at full throttle.",
     credit: CLAUDE_CURSOR,
@@ -154,6 +169,7 @@ export const GAMES = [
   {
     slug: "hyperlane-3d", title: "Hyperlane 3D", added: "2026-09-20",
     genre: "3D", tags: ["3d", "flying"], difficulty: "Advanced", accent: "#5ef2ff", accent2: "#c77dff", unit: "points",
+    original: true,
     tagline: "A real-time 3D flight down an endless neon hyperlane.",
     about: "A real-time 3D flight down an endless neon hyperlane. Bank between walls, gates and laser bars, string energy orbs into a multiplier, and burn boost when you dare.",
     credit: CLAUDE_CURSOR,
@@ -163,6 +179,7 @@ export const GAMES = [
   {
     slug: "circuit-hop", title: "Circuit Hop", added: "2026-09-20",
     genre: "Platformer", tags: ["platformer"], difficulty: "Advanced", accent: "#7dffb0", accent2: "#5ef2ff", unit: "points",
+    original: true,
     tagline: "A tight neon platformer through circuit-board levels.",
     about: "A tight neon platformer through handcrafted circuit-board levels. Wall-jump, stomp patrol bots, dodge laser gates and grab every data chip on the way to the exit portal.",
     credit: CLAUDE_CURSOR,
@@ -173,6 +190,7 @@ export const GAMES = [
   {
     slug: "void-rocks", title: "Void Rocks", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#c49bff", accent2: "#5ef2ff", unit: "points",
+    classic: "Vector rock shooter", twist: "Glowing vector art with real inertia and screen wrap, saucers that hunt you, and a hyperspace escape.",
     tagline: "A glowing vector rock shooter with inertia and saucers.",
     about: "A glowing vector rock shooter. Thrust, drift and blast rocks into smaller rocks, outgun the saucers, and hyperspace out of trouble when it gets crowded.",
     credit: CLAUDE_CURSOR,
@@ -183,6 +201,7 @@ export const GAMES = [
   {
     slug: "star-siege", title: "Star Siege", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#ff7eb6", accent2: "#7dffb0", unit: "points",
+    classic: "Alien invasion", twist: "Eroding pixel shields and power-ups, and a formation that speeds up as you thin it out.",
     tagline: "Hold the line against a marching alien formation.",
     about: "Hold the line against a marching alien formation. Shoot through the ranks before they land, use the shields while they last, and tag the mothership for a bonus.",
     credit: CLAUDE_CURSOR,
@@ -193,6 +212,7 @@ export const GAMES = [
   {
     slug: "prism-breaker", title: "Prism Breaker", added: "2026-09-20",
     genre: "Arcade", tags: ["arcade", "breakout"], difficulty: "Mid", accent: "#6ec8ff", accent2: "#c49bff", unit: "points",
+    classic: "Brick breaker", twist: "Combos for chaining hits without touching the paddle, plus multiball, lasers and steel bricks.",
     tagline: "A glassy neon brick-breaker with power-ups and combos.",
     about: "A glassy neon brick-breaker. Angle shots off your paddle, chain combos without touching it, and catch power-ups for multiball, lasers and a wider paddle.",
     credit: CLAUDE_CURSOR,
@@ -203,6 +223,7 @@ export const GAMES = [
   {
     slug: "fusion-2048", title: "Fusion 2048", added: "2026-09-20",
     genre: "Puzzle", tags: ["puzzle"], difficulty: "Simple", accent: "#5ef2ff", accent2: "#ff7eb6", unit: "points",
+    classic: "Sliding tiles", twist: "Glowing fusion effects and sound that climbs with every merge as you push past 2048.",
     tagline: "Slide and fuse glowing tiles past 2048.",
     about: "Slide glowing tiles and fuse equal numbers into bigger ones. Plan your corners, build chains and see how far past 2048 you can push.",
     credit: CLAUDE_CURSOR,
@@ -213,6 +234,7 @@ export const GAMES = [
   {
     slug: "neon-flap", title: "Neon Flap", added: "2026-09-20",
     genre: "Arcade", tags: ["arcade", "one-button"], difficulty: "Simple", accent: "#ff7eb6", accent2: "#8ee9ff", unit: "points",
+    classic: "One-tap flyer", twist: "Moving laser gates, coins to grab and near-miss bonuses for shaving the edges.",
     tagline: "One button, one glowing flyer, endless laser gates.",
     about: "One button, one glowing flyer, endless laser gates over a neon city. Flap through the gaps, grab coins and shave the edges for near-miss bonuses.",
     credit: CLAUDE_CURSOR,
@@ -235,6 +257,7 @@ export const RETIRED = {
 
 /* What's-new feed (newest first). */
 export const NEWS = [
+  { date: "2026-10-21", title: "Classics with a twist", body: "PromptArcade is now an arcade of prompt-made classics with a twist: well-known games remade by AI, each changed enough to play differently. Every game page now says which classic it remakes and what the twist is, and games that aren't remakes have their own Originals shelf. The home page has a new arcade cabinet that plays through the shelf." },
   { date: "2026-10-11", title: "PromptArcade 3.0", body: "A full redesign and eight new games made with Claude Opus 5.5 — including a live multiplayer snake arena, a survivors-style roguelite, a daily word game and a daily dungeon. Plus the Arcade Pass: XP, badges, streaks and daily quests that follow you across every game." },
   { date: "2026-10-11", title: "Retired the one-prompt plates", body: "The early single-prompt experiments and two remakes have been retired so the shelf is all full builds. Old links now land on the games that replaced them." },
   { date: "2026-09-20", title: "Shared kit and global leaderboards", body: "Every game got the shared kit: pause menu, procedural music, a name gate and a global Top 10." }

@@ -76,3 +76,86 @@ void main(){
   raf = requestAnimationFrame(loop);
   cv.classList.add("on");
 })();
+
+/* The arcade cabinet: attract mode cycles the games on its screen with a channel-change burst,
+   while the joystick and buttons twitch as if someone were playing. The joystick (or the arrow
+   keys while it has focus) picks a game; the buttons and the screen open it. */
+(() => {
+  const cab = document.querySelector("[data-cab]");
+  if (!cab) return;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const slides = [...cab.querySelectorAll(".cab-slide")];
+  const play = cab.querySelector("[data-cab-play]");
+  const title = cab.querySelector("[data-cab-title]"), classic = cab.querySelector("[data-cab-classic]");
+  const nEl = cab.querySelector("[data-cab-n]"), scoreEl = cab.querySelector("[data-cab-score]");
+  const btns = [...cab.querySelectorAll(".cbtn")];
+  const noise = cab.querySelector(".cab-static"), nx = noise.getContext("2d");
+  const img = nx.createImageData(noise.width, noise.height);
+  let i = 0, score = 0, paused = false, timer = 0, tuneRaf = 0;
+
+  function burst(ms) {
+    if (reduce) return;
+    cab.classList.add("tuning");
+    const end = performance.now() + ms;
+    cancelAnimationFrame(tuneRaf);
+    const frame = (now) => {
+      const d = img.data;
+      for (let k = 0; k < d.length; k += 4) { const v = Math.random() * 255; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; }
+      nx.putImageData(img, 0, 0);
+      if (now < end) tuneRaf = requestAnimationFrame(frame); else cab.classList.remove("tuning");
+    };
+    tuneRaf = requestAnimationFrame(frame);
+  }
+
+  function show(next) {
+    i = (next + slides.length) % slides.length;
+    burst(260);
+    slides.forEach((s, k) => {
+      const on = k === i;
+      s.classList.toggle("on", on);
+      s.tabIndex = on ? 0 : -1;
+      on ? s.removeAttribute("aria-hidden") : s.setAttribute("aria-hidden", "true");
+    });
+    const s = slides[i];
+    cab.style.setProperty("--a", s.dataset.a);
+    cab.style.setProperty("--b", s.dataset.b);
+    title.textContent = s.dataset.title;
+    classic.textContent = s.dataset.classic ? "Twist on " + s.dataset.classic.toLowerCase() : "Arcade original";
+    nEl.textContent = String(i + 1).padStart(2, "0");
+    play.href = s.getAttribute("href") + "#play";
+    play.setAttribute("aria-label", "Play " + s.dataset.title);
+    score = 0;
+  }
+
+  const press = (b, ms = 120) => { b.classList.add("down"); setTimeout(() => b.classList.remove("down"), ms); };
+  const tilt = (d, ms) => { cab.dataset.stick = d; if (ms) setTimeout(() => { if (cab.dataset.stick === d) cab.dataset.stick = ""; }, ms); };
+  const step = (d) => { tilt(d > 0 ? "r" : "l", 220); show(i + d); restart(); };
+
+  // attract mode: someone "playing" the demo
+  function fidget() {
+    if (!paused && !document.hidden) {
+      const r = Math.random();
+      if (r < 0.55) tilt("lrud"[Math.floor(Math.random() * 4)], 160 + Math.random() * 260);
+      else if (r < 0.9) press(btns[Math.floor(Math.random() * btns.length)]);
+      score += 10 * (1 + Math.floor(Math.random() * 25));
+      scoreEl.textContent = String(score).padStart(6, "0");
+    }
+    setTimeout(fidget, 180 + Math.random() * 420);
+  }
+  function restart() { clearInterval(timer); if (!reduce) timer = setInterval(() => { if (!paused && !document.hidden) show(i + 1); }, 4600); }
+
+  cab.querySelector(".cab-left").addEventListener("click", () => step(-1));
+  cab.querySelector(".cab-right").addEventListener("click", () => step(1));
+  cab.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); step(e.key === "ArrowLeft" ? -1 : 1); }
+  });
+  play.addEventListener("pointerdown", () => btns.slice(0, 3).forEach((b) => press(b, 200)));
+  cab.addEventListener("pointerenter", () => { paused = true; });
+  cab.addEventListener("pointerleave", () => { paused = false; });
+  cab.addEventListener("focusin", () => { paused = true; });
+  cab.addEventListener("focusout", () => { paused = false; });
+  new IntersectionObserver(([e]) => { paused = !e.isIntersecting; }).observe(cab);
+
+  restart();
+  if (!reduce) setTimeout(fidget, 900);
+})();
