@@ -146,7 +146,7 @@ export function game(ctx, g) {
     <div>
       <div class="player${tall ? " tall" : ""}" data-slug="${g.slug}">
         <iframe data-src="${playUrl(g)}" title="${esc(g.title)}" allow="fullscreen; autoplay; gamepad" allowfullscreen loading="lazy"></iframe>
-        <button class="player-poster" type="button" aria-label="Play ${esc(g.title)}"><img src="/shots/${g.slug}.webp" alt="" width="800" height="500" style="view-transition-name:shot-${g.slug}"/><span class="go"><i>${ICON.play}</i><b>Play ${esc(g.title)}</b></span></button>
+        <button class="player-poster" type="button" aria-label="Play ${esc(g.title)}"><img src="${g.shot}" alt="" width="800" height="500" style="view-transition-name:shot-${g.slug}"/><span class="go"><i>${ICON.play}</i><b>Play ${esc(g.title)}</b></span></button>
       </div>
       <div class="ptools">
         <button class="btn ghost small" type="button" id="fs-btn">${ICON.full} Fullscreen</button>
@@ -185,9 +185,9 @@ export function game(ctx, g) {
   return {
     path: `/games/${g.slug}/`,
     html: layout({
-      title: `${g.title} — play free`, description: desc, path: `/games/${g.slug}/`, v: ctx.v, body, og: `/og/${g.slug}.png`,
-      head: `<link rel="preload" as="image" href="/shots/${g.slug}.webp"/>`,
-      schema: { "@context": "https://schema.org", "@type": "VideoGame", name: g.title, url: `${SITE.url}/games/${g.slug}/`, description: g.about, genre: g.genre, image: `${SITE.url}/og/${g.slug}.png`, gamePlatform: "Web browser", applicationCategory: "Game", operatingSystem: "Any", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, author: { "@type": "Organization", name: SITE.name }, isAccessibleForFree: true }
+      title: `${g.title} — play free`, description: desc, path: `/games/${g.slug}/`, v: ctx.v, body, og: g.ogImage,
+      head: `<link rel="preload" as="image" href="${g.shot}"/>`,
+      schema: { "@context": "https://schema.org", "@type": "VideoGame", name: g.title, url: `${SITE.url}/games/${g.slug}/`, description: g.about, genre: g.genre, image: `${SITE.url}${g.ogImage}`, gamePlatform: "Web browser", applicationCategory: "Game", operatingSystem: "Any", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, author: { "@type": "Organization", name: SITE.name }, isAccessibleForFree: true }
     })
   };
 }
@@ -199,7 +199,7 @@ export function source(ctx, g) {
   <div class="sec-head"><div><span class="kicker">Source code</span><h2>${esc(g.title)}</h2><p>Exactly what your browser runs — written by ${esc(g.credit.model || g.credit.maker)}. ${fmt(st.lines)} lines across ${st.files} file${st.files === 1 ? "" : "s"}${st.shared ? ", plus the shared arcade kit (pause menu, audio, scores) every game loads" : ""}.</p></div><a class="btn small" href="/games/${g.slug}/#play">${ICON.play} Play it</a></div>
   ${st.sources.map((f) => `<h3 style="font:700 13px var(--mono);color:var(--muted);margin:22px 0 8px">${esc(f.name)} · ${fmt(f.lines)} lines</h3><div class="src"><pre><code>${highlight(f.text)}</code></pre></div>`).join("")}
 </div>`;
-  return { path: `/games/${g.slug}/source/`, html: layout({ title: `${g.title} source code`, description: `Read the full, syntax-highlighted source of ${g.title}, a browser game written by ${g.credit.model || g.credit.maker}.`, path: `/games/${g.slug}/source/`, v: ctx.v, body, og: `/og/${g.slug}.png` }) };
+  return { path: `/games/${g.slug}/source/`, html: layout({ title: `${g.title} source code`, description: `Read the full, syntax-highlighted source of ${g.title}, a browser game written by ${g.credit.model || g.credit.maker}.`, path: `/games/${g.slug}/source/`, v: ctx.v, body, og: g.ogImage }) };
 }
 
 export function daily(ctx) {

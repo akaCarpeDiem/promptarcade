@@ -120,7 +120,7 @@ export function cabinet(list) {
   return `<div class="cab" style="--a:${first.accent};--b:${first.accent2}" data-cab>
   ${SVG}
   <div class="cab-screen">
-    ${list.map((g, i) => `<a class="cab-slide${i === 0 ? " on" : ""}" href="/games/${g.slug}/" data-i="${i}" data-title="${esc(g.title)}" data-classic="${esc(g.classic || "")}" data-a="${g.accent}" data-b="${g.accent2}"${i === 0 ? "" : ' tabindex="-1" aria-hidden="true"'}><img src="/shots/${g.slug}.webp" alt="${esc(g.title)}" width="800" height="500" ${i === 0 ? 'fetchpriority="high"' : 'loading="lazy"'}/></a>`).join("")}
+    ${list.map((g, i) => `<a class="cab-slide${i === 0 ? " on" : ""}" href="/games/${g.slug}/" data-i="${i}" data-title="${esc(g.title)}" data-classic="${esc(g.classic || "")}" data-a="${g.accent}" data-b="${g.accent2}"${i === 0 ? "" : ' tabindex="-1" aria-hidden="true"'}><img src="${g.shot}" alt="${esc(g.title)}" width="800" height="500" ${i === 0 ? 'fetchpriority="high"' : 'loading="lazy"'}/></a>`).join("")}
     <canvas class="cab-static" width="96" height="72" aria-hidden="true"></canvas>
     <div class="cab-hud" aria-hidden="true"><span>1UP <b data-cab-score>000000</b></span><span>GAME <b data-cab-n>01</b>/${String(list.length).padStart(2, "0")}</span></div>
     <div class="cab-osd" aria-live="polite"><b data-cab-title>${esc(first.title)}</b><span data-cab-classic>${first.classic ? `Twist on ${esc(first.classic.toLowerCase())}` : "Arcade original"}</span></div>

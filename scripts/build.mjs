@@ -34,13 +34,20 @@ copyDir(path.join(SRC, "icons"), path.join(OUT, "icons"));
 copyDir(path.join(SRC, "assets"), path.join(OUT, "assets"));
 copyDir(path.join(SRC, "static"), OUT);
 
+/* Screenshot and share-image URLs carry a content hash, so a replaced image (a rebuilt game's new
+   art) shows up right away instead of waiting out browser and edge caches on the old URL. */
+for (const g of GAMES) {
+  g.shot = `/shots/${g.slug}.webp?v=${hash(fs.readFileSync(path.join(OUT, "shots", `${g.slug}.webp`)))}`;
+  g.ogImage = `/og/${g.slug}.png?v=${hash(fs.readFileSync(path.join(OUT, "og", `${g.slug}.png`)))}`;
+}
+
 /* ---------- game data for the kit + site (pa-data.js) ---------- */
 const kitSrc = read(path.join(SRC, "play/pa-kit.js"));
 const badgeBlock = kitSrc.match(/var BADGES = (\{[\s\S]*?\n {4}\});/);
 if (!badgeBlock) throw new Error("Could not find BADGES in pa-kit.js");
 const BADGES = Function(`"use strict";return (${badgeBlock[1]});`)();
 const data = {
-  games: GAMES.map((g) => ({ slug: g.slug, title: g.title, genre: g.genre, tags: g.tags, accent: g.accent, tagline: g.tagline, maker: g.credit.maker, model: g.credit.model, unit: g.unit })),
+  games: GAMES.map((g) => ({ slug: g.slug, title: g.title, genre: g.genre, tags: g.tags, accent: g.accent, tagline: g.tagline, maker: g.credit.maker, model: g.credit.model, unit: g.unit, shot: g.shot })),
   quests: QUESTS.filter((q) => GAMES.some((g) => g.slug === q.game)),
   badges: BADGES
 };
