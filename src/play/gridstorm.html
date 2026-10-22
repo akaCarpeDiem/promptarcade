@@ -59,7 +59,7 @@ function gridForce(px, py, force, radius) {
   }
 }
 function updateGrid(dt) {
-  const K = 38, D = 0.9, A = 10, CAP = GS * 1.6;
+  const K = 38, D = 0.9, A = 30, CAP = GS * 1.6; // A 30: settles in about a second after a bomb or death (10 left the grid bulged for 3+ s)
   const n = gp.length;
   for (let y = 0; y < GY; y++) for (let x = 0; x < GX; x++) {
     const p = gp[gi(x, y)]; if (p.pin) continue;

@@ -174,7 +174,7 @@ function gameOver() {
   over = true;
   PA.sfx("gameover");
   setTimeout(() => {
-    PA.gameOver(score, { kicker: "The tower topples", title: score >= 50 ? "Skyscraper!" : score >= 25 ? "Lofty!" : score >= 10 ? "Tower complete" : score > 0 ? "Off the ground" : "Not a single floor", unit: "floors", stats: [["Perfect drops", perfects], ["Best combo", "×" + bestCombo]] });
+    PA.gameOver(score, { kicker: score > 0 ? "The tower topples" : "Missed the first slab", title: score >= 50 ? "Skyscraper!" : score >= 25 ? "Lofty!" : score >= 10 ? "High rise!" : score > 0 ? "Off the ground" : "Not a single floor", unit: "floors", stats: [["Perfect drops", perfects], ["Best combo", "×" + bestCombo]] });
     if (window.paXP) window.paXP.award("skystack", { score });
   }, 900);
 }

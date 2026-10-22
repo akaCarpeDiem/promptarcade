@@ -107,7 +107,14 @@ const nebula = (() => {
 let S = 1, ox = 0, oy = 0;
 let bodies = [], nextId = 1, aimA = -Math.PI / 2, curTier = 0, nextTier = 0, dropCd = 0, score = 0, best = 0, combo = 0, comboT = 0;
 let dangerT = 0, over = false, biggest = 0, merges = 0, waves = [], running = false, keyAim = 0, startT = 0;
-try { best = +localStorage.getItem("nd_best") || 0; } catch (e) {}
+// Best = the saved best: this game's own record or the player's best on this device's board, whichever is higher.
+function savedBest() {
+  let b = 0;
+  try { b = +localStorage.getItem("nd_best") || 0; } catch (e) {}
+  try { if (window.paScores) b = Math.max(b, window.paScores.best("nebula-drop", window.paScores.cleanName(window.paScores.getName())) || 0); } catch (e) {}
+  return b;
+}
+best = savedBest();
 $("nd-best").textContent = best.toLocaleString();
 
 function layout(v) {
@@ -131,6 +138,7 @@ function reset() {
   bodies = []; score = 0; combo = 0; dangerT = 0; over = false; biggest = 0; merges = 0; waves = [];
   curTier = randTier(); nextTier = randTier(); dropCd = 0.2; running = true; startT = performance.now();
   fx.clear(); texts.clear();
+  best = Math.max(best, savedBest()); $("nd-best").textContent = best.toLocaleString();
   paintScore(); paintNext(); paintLadder();
 }
 function paintScore() {
