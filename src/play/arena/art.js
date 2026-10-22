@@ -52,8 +52,11 @@ export function strokeBody(g, path, pal, r, o = {}) {
   const evo = o.evo || 0, t = o.t || 0;
   g.lineCap = "round"; g.lineJoin = "round";
   g.beginPath();
-  g.moveTo(path[path.length - 2], path[path.length - 1]);
-  for (let i = path.length - 4; i >= 0; i -= 2) g.lineTo(path[i], path[i + 1]);
+  if (o.smooth && path.length >= 6) smoothBody(g, path, o.head);
+  else {
+    g.moveTo(path[path.length - 2], path[path.length - 1]);
+    for (let i = path.length - 4; i >= 0; i -= 2) g.lineTo(path[i], path[i + 1]);
+  }
   const a0 = o.alpha == null ? 1 : o.alpha;
   if (o.glow !== false) {
     g.globalCompositeOperation = "lighter";
@@ -97,6 +100,33 @@ export function strokeBody(g, path, pal, r, o = {}) {
     g.strokeStyle = pal[0]; g.lineWidth = r * 0.7; g.globalAlpha = a0;
     for (const s of [-0.6, 0.6]) { g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx + Math.cos(a + s) * r * 2, ty + Math.sin(a + s) * r * 2); g.stroke(); }
     g.globalAlpha = 1;
+  }
+}
+
+/* A body path (head first) traced tail to head as a smooth curve: each point's tangent points from
+ * its tail-side neighbour to its head-side neighbour, and each segment's handles are a third of its
+ * length, so uneven spacing (the short piece next to the moving head, boost-length steps) never
+ * overshoots. `head` (optional) is the exact curve from the first body point to the head:
+ * [handle1 x, y, handle2 x, y, tangent at that body point x, y]. */
+function smoothBody(g, path, head) {
+  const n = path.length >> 1;
+  const X = (i) => path[i * 2], Y = (i) => path[i * 2 + 1];
+  let qx = X(n - 1), qy = Y(n - 1);
+  // tangent at the tail, pointing toward the head
+  let tx = X(n - 2) - qx, ty = Y(n - 2) - qy, tl = Math.hypot(tx, ty) || 1;
+  tx /= tl; ty /= tl;
+  g.moveTo(qx, qy);
+  for (let i = n - 1; i >= 1; i--) {
+    const rx = X(i - 1), ry = Y(i - 1);
+    if (i === 1 && head) { g.bezierCurveTo(head[0], head[1], head[2], head[3], rx, ry); break; }
+    let ux, uy;
+    if (i === 2 && head) { ux = head[4]; uy = head[5]; }
+    else if (i - 1 === 0) { ux = rx - qx; uy = ry - qy; }
+    else { ux = X(i - 2) - qx; uy = Y(i - 2) - qy; }
+    const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+    const k = Math.hypot(rx - qx, ry - qy) / 3;
+    g.bezierCurveTo(qx + tx * k, qy + ty * k, rx - ux * k, ry - uy * k, rx, ry);
+    qx = rx; qy = ry; tx = ux; ty = uy;
   }
 }
 
