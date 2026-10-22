@@ -188,18 +188,39 @@ function floorColor(d) {
   }
   return FLOOR[FLOOR.length - 1][1];
 }
+/* The tile spans several hex cells (about 180 px), so its whole-pixel size tracks the zoom within
+ * half a percent. Its world origin is placed from the camera at the tile's own scale, so the grid
+ * stays locked to the camera (no slow slide while zooming, no jump when the tile is rebuilt).
+ * Sub-pixel camera motion is baked into a copy of the tile each frame, and the full-screen fill
+ * keeps a whole-pixel offset, which is the fast path. Rounding the offset alone made the grid
+ * step 0, 1, 1, 0 px a frame on high-refresh screens while everything else moved smoothly. */
 let floorTile = null;
-function floorPattern(ctx, z, d) {
+const floorBake = document.createElement("canvas"), floorBakeG = floorBake.getContext("2d");
+function floorMaster(z, d) {
   const shade = Math.round(Math.min(1, d) * 24);
-  if (floorTile && floorTile.shade === shade && Math.abs(floorTile.z - z) < z * 0.015) return floorTile.pat;
-  const tw = Math.max(8, Math.round(hexTile.width * z)), th = Math.max(8, Math.round(hexTile.height * z));
+  const nx = Math.max(1, Math.ceil(180 / (hexTile.width * z))), ny = Math.max(1, Math.ceil(180 / (hexTile.height * z)));
+  const tw = Math.max(8, Math.round(hexTile.width * z * nx)), th = Math.max(8, Math.round(hexTile.height * z * ny));
+  if (floorTile && floorTile.shade === shade && floorTile.tw === tw && floorTile.th === th) return floorTile;
   const c = floorTile && floorTile.c.width === tw && floorTile.c.height === th ? floorTile.c : document.createElement("canvas");
   c.width = tw; c.height = th;
   const g = c.getContext("2d"), col = floorColor(shade / 24);
   g.fillStyle = `rgb(${col})`; g.fillRect(0, 0, tw, th);
-  g.drawImage(hexTile, 0, 0, tw, th);
-  floorTile = { c, z, shade, pat: ctx.createPattern(c, "repeat") };
-  return floorTile.pat;
+  const cw = tw / nx, ch = th / ny;
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) g.drawImage(hexTile, i * cw, j * ch, cw, ch);
+  floorTile = { c, shade, tw, th, zx: cw / hexTile.width, zy: ch / hexTile.height, fx: -1, fy: -1, pat: null };
+  return floorTile;
+}
+function floorPattern(ctx, ft, ox, oy) {
+  const ix = Math.floor(ox), iy = Math.floor(oy);
+  const fx = Math.round((ox - ix) * 16) / 16, fy = Math.round((oy - iy) * 16) / 16;
+  if (!ft.pat || fx !== ft.fx || fy !== ft.fy) {
+    const b = floorBake, g = floorBakeG, tw = ft.tw, th = ft.th;
+    if (b.width !== tw || b.height !== th) { b.width = tw; b.height = th; }
+    g.drawImage(ft.c, fx, fy); g.drawImage(ft.c, fx - tw, fy); g.drawImage(ft.c, fx, fy - th); g.drawImage(ft.c, fx - tw, fy - th);
+    ft.pat = ctx.createPattern(b, "repeat"); ft.fx = fx; ft.fy = fy;
+  }
+  if (ft.pat.setTransform) ft.pat.setTransform(new DOMMatrix([1, 0, 0, 1, ix, iy]));
+  return ft.pat;
 }
 /* Full-screen gradients (vignette, Blackout fog) are drawn once per size at quarter resolution. */
 const overlays = {};
@@ -224,13 +245,97 @@ const W = {
   map: [], worldR: 2600, me: 0, lb: [], tick: 0, mod: null, st: null
 };
 let mode = "connecting", online = 0, net = null;
-let lastApply = 0, queue = [];
+let queue = [];
 let myStats = null; // {peak, kills, born, bestRank}
 let skin = 0;
 skin = (store.get("ga_skin", (Math.random() * 12) | 0) | 0) % SKINS_V2;
 if (SKIN_XP[skin] > xp) skin = 0;
 
 const tnow = () => W.tick + alpha; // fractional server tick for smooth timers
+
+/* ---------------- playout clock ----------------
+ * The world updates at 20 Hz. Frames used to be applied whenever a 50 ms slot opened, measured
+ * against their (jittery) arrival, so on many display frames the snakes froze for a frame and then
+ * jumped two frames' worth (at 60 Hz the head moved 0, 6, 3 px per frame instead of an even 3).
+ * Now the world plays back on its own clock that advances by the display's frame time, so the
+ * steps are even at 60, 120, 144 or 240 Hz. Online, the clock runs a little behind the newest
+ * frame and is nudged gently toward the server's pace; the delay adapts to the measured jitter
+ * (about 1.2 to 1.5 ticks on a normal connection, more on a bumpy one). Offline, the clock steps
+ * the sim itself (see advanceClock).
+ */
+const clock = { r: 0, on: false, offs: [], minOff: 0, spread: 0, delay: 1.3, starve: 0, starved: false };
+function enqueue(ev) {
+  const at = performance.now(), off = at / FRAME_MS - ev.tick, o = clock.offs;
+  if (o.length && Math.abs(off - clock.minOff) > 6) o.length = 0; // a pause or a long stall: start over
+  o.push(off); if (o.length > 60) o.shift();
+  let mn = Infinity; for (const v of o) if (v < mn) mn = v;
+  // jitter = how late the 90th-percentile frame of the last 3 s was, so a burst (like the one right
+  // after joining) or one freak frame doesn't hold extra delay for long
+  const sorted = o.slice().sort((x, y) => x - y);
+  clock.minOff = mn; clock.spread = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))] - mn;
+  queue.push(ev);
+  if (queue.length > 200) applyFrame(queue.shift()); // tab in the background: don't pile up
+}
+const clockTarget = (now) => now / FRAME_MS - clock.minOff - clock.delay;
+function advanceClock(now, fdt) {
+  if (net && net.kind === "local") {
+    // offline: a classic fixed-step loop. The sim steps at exactly 20 Hz of display time and the
+    // picture is interpolated between the last two steps, so the delay is one tick and never jitters.
+    if (!net.paused) {
+      if (!clock.on) { clock.on = true; clock.r = W.tick - 1; }
+      clock.r += fdt * TICK_HZ;
+      if (clock.r - W.tick > 4) clock.r = W.tick; // a long hitch: drop the lost time instead of fast-forwarding
+      while (W.tick < clock.r) applyFrame(viewFor(net.sim, net.sim.step(), net.vw, W.me));
+    }
+    alpha = Math.max(0, Math.min(1, clock.r - (W.tick - 1)));
+    return;
+  }
+  if (!clock.on) { if (!queue.length) { alpha = 1; return; } clock.on = true; clock.r = clockTarget(now); }
+  const want = 1.15 + Math.min(4, clock.spread) + clock.starve;
+  clock.delay += (want - clock.delay) * Math.min(1, fdt * (want > clock.delay ? 4 : 1));
+  clock.starve = Math.max(0, clock.starve - fdt * 0.03);
+  clock.r += fdt * TICK_HZ;
+  const e = clockTarget(now) - clock.r;
+  if (Math.abs(e) > 3) clock.r += e; else clock.r += e * Math.min(1, fdt * 2);
+  while (queue.length && queue[0].tick < clock.r + 1) applyFrame(queue.shift());
+  const starving = clock.r > W.tick && !queue.length;
+  if (starving && !clock.starved) clock.starve = Math.min(2, clock.starve + 0.25);
+  clock.starved = starving;
+  alpha = Math.max(0, Math.min(1, clock.r - (W.tick - 1)));
+}
+
+/* Each snake's drawn head rides a smooth curve through its last tick points (a Catmull-Rom style
+ * cubic, with the next bend predicted from the last one) instead of straight 50 ms chords with a
+ * corner at every tick. The body is drawn along the same kind of curve, so head and body agree.
+ * hc keeps the curve from the previous tick point to the head for the body's first segment. */
+function headOf(s) {
+  const p = s.pts, n = p.length, x0 = s.px, y0 = s.py, x1 = s.x, y1 = s.y;
+  const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
+  if (len < 0.01 || len > 120 || n < 6 || p[n - 4] !== x0 || p[n - 3] !== y0) {
+    s.hx = x0 + dx * alpha; s.hy = y0 + dy * alpha; s.ha = s.pa + angDelta(s.pa, s.a) * alpha; s.hc = null; return;
+  }
+  const ax = p[n - 6], ay = p[n - 5];
+  let tx = x1 - ax, ty = y1 - ay, tl = Math.hypot(tx, ty);
+  if (tl < 0.01 || tl > len * 4) { tx = dx; ty = dy; tl = len; }
+  tx /= tl; ty /= tl;
+  const th1 = Math.atan2(dy, dx), th0 = Math.atan2(y0 - ay, x0 - ax);
+  const bend = Math.max(-0.6, Math.min(0.6, angDelta(th0, th1)));
+  const e1 = th1 + bend / 2, k = len / 3;
+  const c1x = x0 + tx * k, c1y = y0 + ty * k, c2x = x1 - Math.cos(e1) * k, c2y = y1 - Math.sin(e1) * k;
+  const t = alpha, u = 1 - t;
+  // de Casteljau: point, tangent and the sub-curve from the previous tick point to the head
+  const ax1 = x0 + (c1x - x0) * t, ay1 = y0 + (c1y - y0) * t;
+  const bx1 = c1x + (c2x - c1x) * t, by1 = c1y + (c2y - c1y) * t;
+  const cx1 = c2x + (x1 - c2x) * t, cy1 = c2y + (y1 - c2y) * t;
+  const ax2 = ax1 + (bx1 - ax1) * t, ay2 = ay1 + (by1 - ay1) * t;
+  const bx2 = bx1 + (cx1 - bx1) * t, by2 = by1 + (cy1 - by1) * t;
+  s.hx = ax2 + (bx2 - ax2) * t; s.hy = ay2 + (by2 - ay2) * t;
+  s.ha = Math.atan2(by2 - ay2, bx2 - ax2);
+  if (!(Math.abs(by2 - ay2) + Math.abs(bx2 - ax2) > 1e-6)) s.ha = th1;
+  s.hc = s.hc || [0, 0, 0, 0, 0, 0];
+  s.hc[0] = ax1; s.hc[1] = ay1; s.hc[2] = ax2; s.hc[3] = ay2; s.hc[4] = tx; s.hc[5] = ty;
+  void u;
+}
 
 function applySnapshot(snap) {
   W.snakes.clear(); W.meta.clear(); W.food.clear(); W.portals.clear(); W.decoys.clear(); W.flares = [];
@@ -239,7 +344,7 @@ function applySnapshot(snap) {
   for (const f of snap.food) addFood(f, 0);
   for (const p of snap.portals || []) W.portals.set(p[0], { x: p[1], y: p[2], uses: p[3], exp: p[4], born: 0 });
   for (const d of snap.decoys || []) W.decoys.set(d[0], { owner: d[1], skin: d[2], r: d[3], pts: d[4], until: performance.now() + Math.max(0, d[5] - snap.tick) * FRAME_MS });
-  queue = [];
+  queue = []; clock.on = false; clock.offs.length = 0;
   showMod();
 }
 const metaOf = (d) => ({ id: d.id, name: d.name, skin: d.skin, bot: d.bot, evo: d.evo || 0, cos: d.cos || [0, 0, 0] });
@@ -249,7 +354,8 @@ function addSnake(d) {
   W.snakes.set(d.id, {
     id: d.id, name: d.name, skin: d.skin, bot: d.bot, evo: d.evo || 0, cos: d.cos || [0, 0, 0], m: d.m, pm: d.m, a: d.a, pa: d.a,
     pts: d.pts.slice(), x: d.pts[n - 2], y: d.pts[n - 1], px: d.pts[n - 2], py: d.pts[n - 1], boost: 0, flags: 0,
-    born: performance.now(), venom: [], tell: 0, glowT: 0, glowC: "#fff", trailT: 0
+    born: performance.now(), venom: [], tell: 0, glowT: 0, glowC: "#fff", trailT: 0,
+    hx: d.pts[n - 2], hy: d.pts[n - 1], ha: d.a, hc: null, path: []
   });
 }
 function addFood(f, born) {
@@ -493,8 +599,9 @@ function startLocal(reason) {
     else if (m.t === "ab" && W.me) sim.useAbility(W.me);
     else if (m.t === "cam") { vw.cx = m.x; vw.cy = m.y; }
   };
-  n.close = () => clearInterval(n.timer);
-  n.timer = setInterval(() => { if (!n.paused) queue.push(viewFor(sim, sim.step(), vw, W.me)); }, FRAME_MS);
+  // the offline sim is stepped by the playout clock (fixed 20 Hz steps, see advanceClock), so its
+  // frames are never late and never bunch up the way timer-driven steps did
+  n.close = () => {};
   net = n;
   applySnapshot(sim.snapshot(true));
   setMode("local");
@@ -523,7 +630,7 @@ function startOnline(url) {
       else if (m.t === "pong") net.rtt = performance.now() - m.c;
     } else {
       const ev = decodeFrame2(e.data);
-      if (ev) queue.push(ev);
+      if (ev) enqueue(ev);
     }
   };
   ws.onclose = () => {
@@ -755,7 +862,7 @@ applyQuality();
 
 /* ---------------- camera ---------------- */
 let cam = { x: 0, y: 0, z: 1 }, camHold = null, alpha = 0, spectate = 0, spectateT = 0;
-function lerpHead(s) { return { x: s.px + (s.x - s.px) * alpha, y: s.py + (s.y - s.py) * alpha }; }
+function lerpHead(s) { return { x: s.hx, y: s.hy }; }
 function worldToScreen(p) { return { x: (p.x - cam.x) * cam.z + view.w / 2, y: (p.y - cam.y) * cam.z + view.h / 2 }; }
 function onScreen(x, y, pad) {
   const hw = view.w / 2 / cam.z + pad, hh = view.h / 2 / cam.z + pad;
@@ -801,13 +908,15 @@ function updateCamera(dt) {
 /* ---------------- rendering ---------------- */
 const palOf = (s) => (s.evo ? EVO_PAL[s.evo] : SKIN[s.skin] || SKIN[0]);
 const angDelta = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
-function bodyPath(head, p, L) {
-  const path = [head.x, head.y];
+function bodyPath(head, p, L, path) {
+  path.length = 0; path.push(head.x, head.y);
   let acc = 0, lx = head.x, ly = head.y;
+  path.full1 = false;
   for (let i = p.length - 4; i >= 0; i -= 2) {
     const x = p[i], y = p[i + 1], d = Math.hypot(x - lx, y - ly);
     if (acc + d >= L) { const k = (L - acc) / (d || 1); path.push(lx + (x - lx) * k, ly + (y - ly) * k); acc = L; break; }
     acc += d; path.push(x, y); lx = x; ly = y;
+    if (i === p.length - 4) path.full1 = true;
   }
   path.acc = acc;
   return path;
@@ -817,7 +926,7 @@ function drawSnake(s, t, isMe, now) {
   const m = s.pm + (s.m - s.pm) * alpha;
   const r = radiusFor(m) * (s.evo === 2 ? 1.35 : 1), L = lengthFor(m);
   const head = lerpHead(s);
-  const path = bodyPath(head, s.pts, L);
+  const path = bodyPath(head, s.pts, L, s.path);
   // cull when no part is on screen
   let vis = false;
   for (let i = 0; i < path.length; i += 16) if (onScreen(path[i], path[i + 1], r * 2)) { vis = true; break; }
@@ -831,10 +940,10 @@ function drawSnake(s, t, isMe, now) {
     fx.burst(tx, ty, st === 1 ? { n: 1, color: pal[2], speed: 40, life: .3, size: 2.5, shape: "spark" } : st === 2 ? { n: 1, colors: ["#ffc2e0", "#ffd6f3"], speed: 25, life: .3, size: 4 } : { n: 1, color: pal[0], speed: 30, life: .3, size: 3, shape: "square" });
   }
   let alphaB = prot ? 0.45 + Math.sin(t * 20) * 0.1 : phased ? 0.3 + Math.sin(t * 25) * 0.08 : 1;
-  strokeBody(ctx, path, pal, r, { t, offset: path.acc, boost: s.boost, evo: s.evo, alpha: alphaB, glow: q.glow });
+  strokeBody(ctx, path, pal, r, { t, offset: path.acc, boost: s.boost, evo: s.evo, alpha: alphaB, glow: q.glow, smooth: true, head: path.full1 && path.length > 4 ? s.hc : null });
 
   // head
-  const a = s.pa + angDelta(s.pa, s.a) * alpha;
+  const a = s.ha;
   const look = isMe && PA.state === "play" ? angDelta(a, aim) * 0.5 : 0;
   drawHead(ctx, head.x, head.y, a, r, pal, look, alphaB);
   // status rings on the head: Ward (hexagon), Surge (chevrons), Eel tell (flicker), Magnet field
@@ -956,16 +1065,15 @@ function drawArrivalArrows(now) {
   }
 }
 
+/* the display's own frame timestamps (even steps), taken before the game loop runs each frame */
+let frameTs = 0, frameDt = 0;
+requestAnimationFrame(function stamp(ts) { frameDt = frameTs ? Math.max(0, Math.min(0.25, (ts - frameTs) / 1000)) : 0; frameTs = ts; requestAnimationFrame(stamp); });
+let lenShown = -1;
 function render(t) {
   const now = performance.now();
-  // feed queued frames at the server's tick rate (one frame of buffer for smoothness)
-  if (queue.length > 4) { while (queue.length > 1) applyFrame(queue.shift()); lastApply = now; }
-  while (queue.length && now - lastApply >= FRAME_MS) {
-    applyFrame(queue.shift());
-    lastApply = queue.length > 1 ? now : Math.max(lastApply + FRAME_MS, now - FRAME_MS);
-  }
-  alpha = Math.max(0, Math.min(1, (now - lastApply) / FRAME_MS));
-  const dt = Math.min(0.05, (now - (render.last || now)) / 1000); render.last = now;
+  advanceClock(now, frameDt);
+  for (const s of W.snakes.values()) headOf(s);
+  const dt = Math.min(0.05, frameDt);
   if (document.visibilityState === "visible" && !qs.has("q")) watchFps(dt);
   updateInput(dt);
   updateCamera(dt);
@@ -976,9 +1084,8 @@ function render(t) {
   // floor + hex grid in device pixels (translate-only pattern: the fast path)
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const zDev = cam.z * k, camD = Math.hypot(cam.x, cam.y);
-  const fp = floorPattern(ctx, zDev, camD / W.worldR);
-  const ox = Math.round((w / 2 + sh.x) * k - cam.x * zDev), oy = Math.round((h / 2 + sh.y) * k - cam.y * zDev);
-  if (fp.setTransform) fp.setTransform(new DOMMatrix([1, 0, 0, 1, ox, oy]));
+  const ft = floorMaster(zDev, camD / W.worldR);
+  const fp = floorPattern(ctx, ft, (w / 2 + sh.x) * k - cam.x * ft.zx, (h / 2 + sh.y) * k - cam.y * ft.zy);
   ctx.fillStyle = fp; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.save();
@@ -1057,7 +1164,8 @@ function render(t) {
   drawArrivalArrows(now);
 
   if (me) {
-    $("ga-len").textContent = Math.round(me.m);
+    const len = Math.round(me.m);
+    if (len !== lenShown) { lenShown = len; $("ga-len").textContent = len; }
     PA.music && PA.music.intensity && PA.music.intensity(Math.min(1, me.m / 600));
   }
   drawMini(now);
@@ -1135,7 +1243,7 @@ function drawMini(now) {
 }
 
 PA.loop(null, render);
-window.__ga = { W, q, get net() { return net; }, get queue() { return queue.length; }, get sim() { return net && net.sim; }, tip, get xp() { return xp; } };
+window.__ga = { W, q, clock, get floor() { return floorTile && { tw: floorTile.tw, th: floorTile.th }; }, get net() { return net; }, get queue() { return queue.length; }, get sim() { return net && net.sim; }, tip, get xp() { return xp; } };
 setInterval(paintBoard, 1000);
 showMod();
 </script>
