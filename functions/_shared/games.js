@@ -70,7 +70,7 @@ export const GAMES = {
     "cap": 10000000
   },
   "neon-flap": {
-    "title": "Neon Flap",
+    "title": "Ptero Flap",
     "cap": 1000000
   },
   "vault-dash": {

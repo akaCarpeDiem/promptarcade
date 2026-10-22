@@ -295,15 +295,15 @@ export const GAMES = [
     tech: ["Chain reactions resolved as their own animated steps", "Lead cells split each line into runs that slide separately", "Tweened slides and merges", "Swipe input"]
   },
   {
-    slug: "neon-flap", title: "Neon Flap", added: "2026-09-20",
-    genre: "Arcade", tags: ["arcade", "reflex"], difficulty: "Mid", accent: "#ff7eb6", accent2: "#8ee9ff", unit: "points",
-    classic: "One-tap flyer", twist: "The flyer splits in two: one twin in each half of the sky, each with its own gates and its own flap button.",
-    tagline: "One flyer becomes two. Fly both at once.",
-    about: "A glowing flyer over a neon city, and after the first six gates it splits in two. The sky divides down the middle: the cyan twin flies the top half and the pink twin the bottom, each with its own gates, and each with its own button. The gates are staggered so your taps alternate. Every ten gate pairs the twins merge back for a breather, then split again.",
+    slug: "neon-flap", title: "Ptero Flap", added: "2026-09-20",
+    genre: "Arcade", tags: ["arcade", "reflex"], difficulty: "Mid", accent: "#47b5f2", accent2: "#ffb347", unit: "points",
+    classic: "One-tap flyer", twist: "A pterodactyl flies through a prehistoric jungle, and partway through the flock splits: one pterodactyl in each half of the sky, each with its own gaps and its own flap button.",
+    tagline: "Flap a pterodactyl through a prehistoric jungle at sunset.",
+    about: "A cartoon pterodactyl flaps through a prehistoric jungle at sunset, past a smoking volcano and a glowing lake. Dodge hanging branches, spiderwebs and vines from above and trees, rock spires and brontosauruses raising their necks from below. Grab glowing amber on the way. After the first six gaps an orange partner joins and the sky splits at a band of mist. The blue pterodactyl flies the top half and the orange one the bottom, each with its own button, so your taps alternate. Every ten pairs of gaps they regroup for a breather.",
     credit: CLAUDE_CURSOR,
-    brief: "A one-button flyer with moving gates, shrinking gaps, coins and near-miss bonuses.",
-    process: "Built by an AI coding agent from a short multi-step brief: flight feel first, then gate patterns and difficulty, then parallax art and effects. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
-    tech: ["Two lanes with their own gates, staggered half a gap apart", "Split and merge markers ride the gate stream", "Parallax city", "Near-miss detection"]
+    brief: "A one-button flyer with moving gaps, shrinking gaps, collectibles and near-miss bonuses.",
+    process: "Built by an AI coding agent from a short multi-step brief: flight feel first, then gate patterns and difficulty, then parallax art and effects. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser. Then, at Logan's request, it repainted the whole game as a pterodactyl flying through a prehistoric jungle in a cartoon style: hand-coded canvas art, with no images or sprites.",
+    tech: ["The pterodactyl, brontosauruses, spiders and jungle are all painted in code with canvas gradients, and wings and necks animate every frame", "Seven parallax layers painted once into seamless tiles: sky, volcano, hills, jungle, lake, ground and canopy", "Hit shapes follow the art: round crowns and heads, narrow trunks and necks", "Two lanes with their own gaps, staggered half a gap apart, split by a band of mist"]
   }
 ];
 
@@ -320,6 +320,7 @@ export const RETIRED = {
 
 /* What's-new feed (newest first). */
 export const NEWS = [
+  { date: "2026-10-22", title: "Neon Flap is now Ptero Flap", body: "The one-tap flyer has been repainted from the ground up. You now fly a cartoon pterodactyl through a prehistoric jungle at sunset, past a smoking volcano, dodging trees, hanging branches, spiderwebs, rock spires and brontosauruses that raise their necks into your path. The split-sky twist is still there: an orange partner joins and the two of you fly a half of the sky each." },
   { date: "2026-10-21", title: "Nine classics get a real twist", body: "Void Rocks now has a tractor tether: whirl a rock round your ship and fling it for chain kills. Star Siege lasers carry a colour, so you paint aliens and pop matching clusters. Prism Breaker balls take spin off the paddle and curve round steel. Fusion 2048 sets off chain reactions while lead blocks wall off the board. Neon Flap splits into twin flyers, one in each half of the sky. Wordglow is now a daily chain of three linked words that share twelve guesses. Nebula Drop swaps the jar for a round gravity well. Gridstorm kills send out shockwaves that chain through the swarm. And the Skystack tower sways in the wind as it climbs." },
   { date: "2026-10-21", title: "Three new classics with a twist", body: "Crosstime is a road-and-river crosser where getting hit rewinds time. Echo Maze is a pellet maze where your own path comes back to hunt you. Ringfall is city missile defence wrapped round a small turning planet, with blasts that chain into blasts." },
   { date: "2026-10-21", title: "Classics with a twist", body: "PromptArcade is now an arcade of prompt-made classics with a twist: well-known games remade by AI, each changed enough to play differently. Every game page now says which classic it remakes and what the twist is, and games that aren't remakes have their own Originals shelf. The home page has a new arcade cabinet that plays through the shelf." },
@@ -342,7 +343,7 @@ export const QUESTS = [
   { game: "fusion-2048", stat: "score", min: 3000, text: "Score 3,000 in Fusion 2048" },
   { game: "circuit-hop", stat: "score", min: 1500, text: "Score 1,500 in Circuit Hop" },
   { game: "void-rocks", stat: "score", min: 5000, text: "Score 5,000 in Void Rocks" },
-  { game: "neon-flap", stat: "score", min: 500, text: "Score 500 in Neon Flap" },
+  { game: "neon-flap", stat: "score", min: 500, text: "Score 500 in Ptero Flap" },
   { game: "prism-breaker", stat: "score", min: 3000, text: "Score 3,000 in Prism Breaker" },
   { game: "crosstime", stat: "score", min: 600, text: "Score 600 in Crosstime" },
   { game: "echo-maze", stat: "score", min: 3000, text: "Score 3,000 in Echo Maze" },
