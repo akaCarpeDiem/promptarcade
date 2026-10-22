@@ -19,7 +19,7 @@ canvas{display:block;position:fixed;inset:0}
 <script>
 window.paConfig = {
   slug: "prism-breaker", title: "Prism Breaker", native: true, music: "synthwave", unit: "points",
-  controls: [["← → / A D", "Move paddle"], ["Mouse / touch", "Drag paddle"], ["Space / tap", "Launch · fire lasers"]]
+  controls: [["← → / A D", "Move paddle"], ["Mouse / touch", "Drag paddle"], ["Move on contact", "Put spin on the ball"], ["Space / tap", "Launch · fire lasers"]]
 };
 </script>
 <script src="/games/play/pa-score.js?v=e650da0b4c"></script>
@@ -44,33 +44,41 @@ window.paConfig = {
   const POWER_COL = { wide: "#7ee7a8", multi: "#ffd27a", laser: "#ff7eb6" };
   const POWER_LABEL = { wide: "WIDE", multi: "MULTI", laser: "LASER" };
 
-  /* Level grids: . empty · 1-3 hits · s steel · * power brick */
+  // The twist: spin. Whatever the paddle is doing when the ball touches it becomes spin, and a
+  // spinning ball bends in flight, so shots curve round the steel. Bricks broken on a bend score double.
+  const CURVE = 1.25, SPIN_DECAY = 0.6, BEND_MIN = 0.2;
+
+  /* Level grids (10 wide): . empty · 1-3 hits · s steel · * power brick. Steel guards are there to curve round. */
   const LEVELS = [
     [
       "..........",
-      "..111111..",
-      "..111111..",
-      "..112211..",
-      "..111111..",
-      "..1*..*1.."
+      ".11111111.",
+      ".12222221.",
+      ".11111111.",
+      ".1*....*1."
     ],
     [
       "..........",
-      "..222222..",
-      "..213312..",
-      "..23ss32..",
-      "..213312..",
-      "..222222..",
-      "..*1..1*.."
+      ".22222222.",
+      ".21133112.",
+      ".22222222.",
+      "..........",
+      "..ssssss.."
     ],
     [
-      "...ssss...",
-      "..s2332s..",
-      "..s31213s..",
-      "..s32223s.",
-      "..s2332s..",
-      "...ssss...",
-      "....**...."
+      "..........",
+      ".s222222s.",
+      ".s213312s.",
+      ".s23**32s.",
+      ".s222222s.",
+      ".ssssssss."
+    ],
+    [
+      "3333..3333",
+      "2222..2222",
+      "1*11..11*1",
+      "..........",
+      "sss.ss.sss"
     ],
     [
       "..333333..",
@@ -80,6 +88,13 @@ window.paConfig = {
       "..321123..",
       "..3s22s3..",
       "..333333.."
+    ],
+    [
+      "..........",
+      "s222ss222s",
+      "s3*3ss3*3s",
+      "s222ss222s",
+      "ssss..ssss"
     ]
   ];
 
@@ -92,6 +107,7 @@ window.paConfig = {
   let wideT = 0, laserT = 0, laserCd = 0;
   let ptrX = null, ptrDrag = false, tapT = 0;
   let ballSpeed = 380;
+  let loop = 0, paddleV = 0, lastPX = null, bends = 0;
 
   const view = PA.canvas(document.getElementById("c"), { onResize: layout });
   const ctx = view.ctx;
@@ -149,8 +165,9 @@ window.paConfig = {
     bricks = [];
     const grid = LEVELS[idx];
     grid.forEach((row, ri) => decodeRow(row, ri, idx > 0));
-    ballSpeed = (360 + idx * 28) * S;
-    showBanner("LEVEL " + (idx + 1), idx === LEVELS.length - 1 ? "Final prism" : "Break the glass", 1.8);
+    ballSpeed = Math.min(560, 360 + idx * 24 + loop * 60) * S;
+    const sub = idx === 0 && !loop ? "Move as it hits to bend the ball" : idx === LEVELS.length - 1 ? "Last prism of the loop" : loop ? "Loop " + (loop + 1) + " · faster glass" : "Curve round the steel";
+    showBanner("LEVEL " + (level + 1 + loop * LEVELS.length), sub, 1.8);
   }
 
   function serve() {
@@ -158,7 +175,8 @@ window.paConfig = {
     paddle = { x: W / 2 - playW * BASE_PADDLE_W / 2, y, baseW: playW * BASE_PADDLE_W, w: 0 };
     syncPaddleW();
     clampPaddle();
-    balls = [{ x: paddle.x + paddle.w / 2, y: paddle.y - BALL_R - 2, vx: 0, vy: 0, r: BALL_R, stuck: true }];
+    balls = [{ x: paddle.x + paddle.w / 2, y: paddle.y - BALL_R - 2, vx: 0, vy: 0, r: BALL_R, stuck: true, spin: 0, rot: 0, trail: [] }];
+    lastPX = null; paddleV = 0;
     lasers = [];
     launch = true;
     combo = 0;
@@ -166,7 +184,7 @@ window.paConfig = {
 
   function reset() {
     fx.clear(); texts.clear();
-    score = 0; lives = 3; level = 0; combo = 0; maxCombo = 0;
+    score = 0; lives = 3; level = 0; combo = 0; maxCombo = 0; loop = 0; bends = 0;
     overSent = false; banner = null; simT = 0;
     bricksBroken = 0; powerGrab = 0; levelsCleared = 0;
     wideT = 0; laserT = 0; laserCd = 0;
@@ -183,7 +201,7 @@ window.paConfig = {
   function showBanner(text, sub, dur) { banner = { text, sub, t: 0, max: dur || 1.6 }; }
   function paintHud() {
     PA.stat("s-score", score.toLocaleString());
-    PA.stat("s-level", level + 1);
+    PA.stat("s-level", level + 1 + loop * LEVELS.length);
     const mul = combo > 1 ? "×" + (1 + combo * 0.12).toFixed(1) : "×1";
     PA.stat("s-combo", mul);
     PA.stat("s-lives", lives <= 0 ? "—" : lives <= 5 ? "♦".repeat(lives) : "♦×" + lives);
@@ -197,7 +215,8 @@ window.paConfig = {
     paintHud();
   }
 
-  function breakBrick(b, hitLaser) {
+  function breakBrick(b, hitLaser, ball) {
+    const bent = !!(ball && Math.abs(ball.spin) >= BEND_MIN);
     if (b.steel && !hitLaser) {
       PA.tone({ freq: 180, type: "square", dur: 0.06, vol: 0.04 });
       return false;
@@ -219,8 +238,9 @@ window.paConfig = {
     if (b.hp <= 0) {
       bricks.splice(bricks.indexOf(b), 1);
       bricksBroken++;
-      const base = b.power ? 120 : 10 * b.max * b.max;
-      addScore(base, b.x + b.w / 2, b.y, b.max >= 3 || b.power);
+      const base = (b.power ? 120 : 10 * b.max * b.max) * (bent ? 2 : 1);
+      addScore(base, b.x + b.w / 2, b.y, b.max >= 3 || b.power || bent);
+      if (bent) { bends++; texts.add(b.x + b.w / 2, b.y - 16 * S, "BENT ×2", { color: "#ffd27a", size: 13, life: 0.7, vy: -30 }); }
       PA.sfx("hit", { pitch: 1 + combo * 0.02 });
       PA.shake((2 + b.max) * S, 0.1 + b.max * 0.02);
       if (combo >= 4) texts.add(W / 2, H * 0.32, combo + " COMBO", { color: "#ffd27a", size: 20, life: 0.7, vy: -20 });
@@ -257,7 +277,7 @@ window.paConfig = {
       for (let i = 0; i < 2; i++) {
         const a = -Math.PI / 2 + rand(-0.55, 0.55);
         const sp = ballSpeed * rand(0.95, 1.05);
-        balls.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: BALL_R, stuck: false });
+        balls.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: BALL_R, stuck: false, spin: 0, rot: 0, trail: [] });
       }
       launch = false;
     }
@@ -270,12 +290,9 @@ window.paConfig = {
     score += 500 + level * 200;
     PA.sfx("levelup");
     PA.flash("rgba(196,166,255,.22)", 350);
-    if (level >= LEVELS.length - 1) {
-      showBanner("PRISM SHATTERED", "You cleared every level", 2.4);
-      endGame(true);
-      return;
-    }
-    level++;
+    // After the last layout the set loops, faster each time.
+    if (level >= LEVELS.length - 1) { level = 0; loop++; lives++; texts.add(W / 2, H * 0.5, "+1 LIFE", { color: "#7ee7a8", size: 22, life: 1.2, vy: -20 }); }
+    else level++;
     loadLevel(level);
     serve();
     balls[0].stuck = true;
@@ -292,6 +309,7 @@ window.paConfig = {
       stats: [
         ["Levels", levelsCleared + (won ? 1 : 0)],
         ["Bricks", bricksBroken],
+        ["Bent breaks", bends],
         ["Best combo", maxCombo],
         ["Power-ups", powerGrab]
       ]
@@ -306,6 +324,7 @@ window.paConfig = {
     const a = -Math.PI / 2 + rand(-0.35, 0.35);
     b.vx = Math.cos(a) * ballSpeed;
     b.vy = Math.sin(a) * ballSpeed;
+    b.spin = clamp(paddleV / (520 * S), -1.3, 1.3) * 0.9;
     PA.sfx("shoot", { pitch: 1.2, vol: 0.5 });
   }
 
@@ -404,6 +423,12 @@ window.paConfig = {
     b.vx = Math.cos(a) * sp;
     b.vy = Math.sin(a) * sp;
     if (Math.abs(b.vy) < 120) b.vy = -Math.abs(b.vy) - 80;
+    // Spin comes from the paddle's own motion at the moment of contact.
+    b.spin = clamp(paddleV / (520 * S), -1.3, 1.3) * 0.9;
+    if (Math.abs(b.spin) >= BEND_MIN) {
+      PA.tone({ freq: 500, to: 500 + b.spin * 400, type: "triangle", dur: 0.12, vol: 0.05 });
+      fx.burst(b.x, paddle.y, { n: 8, color: "#ffd27a", speed: 90, life: 0.3, size: 1.8, angle: b.spin > 0 ? 0 : Math.PI, spread: 0.8 });
+    }
     PA.tone({ freq: 240 + Math.abs(hit) * 120, type: "sine", dur: 0.06, vol: 0.05 });
     fx.burst(b.x, paddle.y, { n: 5, color: "#8ee9ff", speed: 60, life: 0.25, size: 1.6 });
   }
@@ -440,6 +465,11 @@ window.paConfig = {
       if (launch) for (const b of balls) if (b.stuck) b.x = paddle.x + paddle.w / 2;
     }
     if (PA.down(" ", "Space") && !launch) fireLaser();
+    if (paddle) {
+      const pv = lastPX == null ? 0 : (paddle.x - lastPX) / Math.max(dt, 1e-3);
+      paddleV = paddleV * 0.55 + pv * 0.45;
+      lastPX = paddle.x;
+    }
 
     for (let bi = balls.length - 1; bi >= 0; bi--) {
       const b = balls[bi];
@@ -448,10 +478,26 @@ window.paConfig = {
         b.y = paddle.y - b.r - 2;
         continue;
       }
+      if (b.spin) {
+        // Bend the path: rotate the velocity a little each frame, keeping speed, never going flat.
+        const ang = b.spin * CURVE * dt, c = Math.cos(ang), sn = Math.sin(ang);
+        const vx = b.vx * c - b.vy * sn, vy = b.vx * sn + b.vy * c;
+        const sp = Math.hypot(vx, vy) || 1;
+        b.vx = vx; b.vy = vy;
+        if (Math.abs(b.vy) < sp * 0.28) {
+          b.vy = (b.vy < 0 ? -1 : 1) * sp * 0.28;
+          b.vx = Math.sign(b.vx || 1) * Math.sqrt(Math.max(0, sp * sp - b.vy * b.vy));
+        }
+        b.rot += b.spin * 22 * dt;
+        b.spin *= Math.exp(-SPIN_DECAY * dt);
+        if (Math.abs(b.spin) < 0.03) b.spin = 0;
+      }
+      b.trail.push(b.x, b.y);
+      if (b.trail.length > 28) b.trail.splice(0, 2);
       b.x += b.vx * dt;
       b.y += b.vy * dt;
-      if (b.x - b.r < playL) { b.x = playL + b.r; b.vx = Math.abs(b.vx); }
-      if (b.x + b.r > playR) { b.x = playR - b.r; b.vx = -Math.abs(b.vx); }
+      if (b.x - b.r < playL) { b.x = playL + b.r; b.vx = Math.abs(b.vx); b.spin *= 0.8; }
+      if (b.x + b.r > playR) { b.x = playR - b.r; b.vx = -Math.abs(b.vx); b.spin *= 0.8; }
       if (b.y - b.r < H * 0.04) { b.y = H * 0.04 + b.r; b.vy = Math.abs(b.vy); }
       if (b.y - b.r > H + 40) { loseBall(bi); continue; }
       paddleHit(b);
@@ -465,7 +511,7 @@ window.paConfig = {
           b.y += hit.ny * 3;
           PA.tone({ freq: 120, type: "square", dur: 0.04, vol: 0.03 });
         } else {
-          breakBrick(br, false);
+          breakBrick(br, false, b);
           reflectBall(b, hit.nx, hit.ny);
         }
         break;
@@ -592,6 +638,20 @@ window.paConfig = {
   }
 
   function drawBall(b) {
+    const k = Math.min(1, Math.abs(b.spin || 0));
+    if (b.trail && b.trail.length > 4) {
+      ctx.save();
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.strokeStyle = k >= BEND_MIN ? "#ffd27a" : "#8ee9ff";
+      ctx.globalAlpha = 0.18 + k * 0.4;
+      ctx.lineWidth = b.r * (0.8 + k * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(b.trail[0], b.trail[1]);
+      for (let i = 2; i < b.trail.length; i += 2) ctx.lineTo(b.trail[i], b.trail[i + 1]);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.restore();
+    }
     const m = ctx.createRadialGradient(b.x - 2, b.y - 2, 0, b.x, b.y, b.r);
     m.addColorStop(0, "#fff");
     m.addColorStop(0.35, "#8ee9ff");
@@ -603,6 +663,13 @@ window.paConfig = {
     ctx.arc(b.x, b.y, b.r, 0, TAU);
     ctx.fill();
     ctx.shadowBlur = 0;
+    if (k > 0.05) {
+      // A seam that turns with the spin.
+      const c = Math.cos(b.rot || 0) * b.r * 0.85, s2 = Math.sin(b.rot || 0) * b.r * 0.85;
+      ctx.strokeStyle = "rgba(255,210,122," + (0.4 + k * 0.6).toFixed(2) + ")";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(b.x - c, b.y - s2); ctx.lineTo(b.x + c, b.y + s2); ctx.stroke();
+    }
   }
 
   function render(t) {
@@ -642,7 +709,7 @@ window.paConfig = {
       ctx.fillStyle = "rgba(142,233,255,.75)";
       ctx.font = "500 " + Math.round(13 * S) + "px Manrope, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("Space or tap to launch", W / 2, H - Math.max(48, H * 0.08) - 28);
+      ctx.fillText("Space or tap to launch · move as it leaves to curve it", W / 2, H - Math.max(48, H * 0.08) - 28);
     }
     if (banner && PA.state === "play") drawBanner(t);
   }
@@ -673,7 +740,7 @@ window.paConfig = {
   }
 
   window.__pbrk = () => ({
-    score, lives, level, combo, maxCombo, launch,
+    score, lives, level, loop, combo, maxCombo, launch, bends, spin: balls[0] ? balls[0].spin : 0, bx: balls[0] ? balls[0].x : 0, by: balls[0] ? balls[0].y : 0,
     balls: balls.length, bricks: bricks.length, drops: drops.length,
     wideT, laserT, overSent, simT, bricksBroken, levelsCleared
   });

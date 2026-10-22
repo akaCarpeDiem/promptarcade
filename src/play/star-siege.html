@@ -16,11 +16,12 @@ canvas{display:block;position:fixed;inset:0}
   <div class="pa-stat" id="s-wave"><small>Wave</small><b>1</b></div>
   <div class="pa-stat" id="s-ships"><small>Invaders</small><b>0</b></div>
   <div class="pa-stat" id="s-lives"><small>Lives</small><b>♦♦♦</b></div>
+  <div class="pa-stat" id="s-cluster"><small>Best cluster</small><b>—</b></div>
 </div>
 <script>
 window.paConfig = {
   slug: "star-siege", title: "Star Siege", native: true, music: "space", unit: "points",
-  controls: [["← → / A D", "Move cannon"], ["Touch drag", "Move · auto fire"]]
+  controls: [["← → / A D", "Move cannon"], ["Space / ↑", "Switch laser colour"], ["Touch drag", "Move · auto fire"]]
 };
 </script>
 <script src="/games/play/pa-score.js?v=e650da0b4c"></script>
@@ -35,7 +36,7 @@ window.paConfig = {
     player: "#7ee7a8",
     playerCore: "#8ee9ff",
     alien: ["#ff7eb6", "#c4a6ff", "#8ee9ff", "#7ee7a8", "#ffd27a"],
-    shield: "#8ee9ff",
+    shield: "#c4a6ff",
     mothership: "#ffd27a",
     bulletP: "#7ee7a8",
     bulletE: "#ff7eb6"
@@ -44,6 +45,10 @@ window.paConfig = {
   const ALIEN_COLS = 11;
   const ALIEN_SCORE = [30, 25, 25, 15, 15];
   const SHIELD_COUNT = 4;
+  // The twist: your laser carries a colour. A hit on a different colour paints that alien yours;
+  // a hit on a matching one detonates every touching alien of that colour in a chain.
+  const PAINT = ["#ff7eb6", "#8ee9ff", "#ffd27a", "#7ee7a8"];
+  const PAINT_NAME = ["Pink", "Cyan", "Gold", "Green"];
 
   let W = 0, H = 0, S = 1, DPR = 1;
   let playL = 0, playR = 0, playW = 0, floorY = 0;
@@ -54,6 +59,7 @@ window.paConfig = {
   let enemyFireCd = 0, fireCd = 0, overSent = false, banner = null, simT = 0;
   let respawnT = 0, invulnT = 0, waveClearT = 0, kills = 0, mothershipHits = 0;
   let ptrX = null, stars = [], bgGrad = null;
+  let gun = 0, colours = 3, bestCluster = 0, clusters = 0, paints = 0, swapT = 0;
 
   const view = PA.canvas(document.getElementById("c"), { onResize: layout });
   const ctx = view.ctx;
@@ -148,9 +154,19 @@ window.paConfig = {
     marchDir = 1;
     marchTimer = 0.4;
     marchDelay = clamp(0.78 - wave * 0.04, 0.28, 0.78);
+    colours = wave >= 3 ? 4 : 3;
+    const grid = [];
     for (let r = 0; r < ALIEN_ROWS; r++) {
+      grid.push([]);
       for (let c = 0; c < ALIEN_COLS; c++) {
+        // Colours clump a little so there are clusters to find, and stay patchy enough to paint.
+        const roll = Math.random();
+        let k = randInt(0, colours - 1);
+        if (c > 0 && roll < 0.2) k = grid[r][c - 1];
+        else if (r > 0 && roll < 0.3) k = grid[r - 1][c];
+        grid[r].push(k);
         aliens.push({
+          paint: k, flashT: 0, popT: -1,
           col: c, row: r,
           lx: c * (aw + gapX),
           ly: r * (ah + gapY),
@@ -164,6 +180,7 @@ window.paConfig = {
     }
     invadersLeft = aliens.length;
     makeShields();
+    if (gun >= colours) gun = 0;
     mothership = null;
     mothershipCd = rand(6, 14);
     enemyFireCd = rand(0.8, 1.6);
@@ -184,13 +201,14 @@ window.paConfig = {
   function reset() {
     fx.clear(); texts.clear();
     score = 0; wave = 1; lives = 3; kills = 0; mothershipHits = 0;
+    gun = 0; bestCluster = 0; clusters = 0; paints = 0; swapT = 0;
     overSent = false; banner = null; simT = 0;
     pBullets = []; eBullets = [];
     respawnT = 0; invulnT = 0; waveClearT = 0;
     fireCd = 0; ptrX = null;
     resetPlayer();
     spawnWave();
-    showBanner("STAR SIEGE", "Drag to move · auto fire", 2.2);
+    showBanner("STAR SIEGE", "Match colours to chain-pop clusters", 2.4);
     PA.music.intensity(0);
     hud.classList.add("on");
     paintHud();
@@ -205,6 +223,7 @@ window.paConfig = {
     PA.stat("s-wave", wave);
     PA.stat("s-ships", invadersLeft);
     PA.stat("s-lives", lives <= 0 ? "—" : lives <= 5 ? "♦".repeat(lives) : "♦×" + lives);
+    PA.stat("s-cluster", bestCluster > 1 ? bestCluster : "—");
   }
 
   function clampPlayer() {
@@ -237,13 +256,29 @@ window.paConfig = {
   canvas.addEventListener("pointerup", endPtr);
   canvas.addEventListener("pointercancel", endPtr);
 
+  function swapColour(dir) {
+    if (PA.state !== "play") return;
+    gun = (gun + (dir || 1) + colours) % colours;
+    swapT = 0.25;
+    PA.tone({ freq: 500 + gun * 120, to: 700 + gun * 140, type: "triangle", dur: 0.08, vol: 0.06 });
+    if (player) fx.burst(player.x, player.y - player.h * 0.4, { n: 10, color: PAINT[gun], speed: 90, life: 0.3, size: 2 });
+  }
+  PA.onKey((e) => {
+    if (e.repeat) return;
+    const k = e.key, c = e.code;
+    if (k === " " || c === "Space" || k === "ArrowUp" || c === "KeyW" || k === "w" || c === "KeyC" || k === "c") { e.preventDefault && e.preventDefault(); swapColour(1); }
+    else if (k === "ArrowDown" || c === "KeyS" || k === "s" || c === "KeyZ" || k === "z") swapColour(-1);
+    else if (k >= "1" && k <= "4" && +k <= colours) { gun = +k - 2; swapColour(1); }
+  });
+  PA.touchControls({ right: [{ key: " ", code: "Space", label: "◐", aria: "Switch laser colour" }] });
+
   function firePlayer() {
     if (fireCd > 0 || respawnT > 0 || invulnT > 0 || waveClearT > 0) return;
     if (pBullets.length >= 3) return;
     fireCd = 0.34;
     const bx = player.x;
     const by = player.y - player.h * 0.5;
-    pBullets.push({ x: bx, y: by, vy: -620 * S, w: 3 * S, h: 12 * S });
+    pBullets.push({ x: bx, y: by, vy: -620 * S, w: 3 * S, h: 12 * S, paint: gun });
     PA.tone({ freq: 520, to: 720, type: "square", dur: 0.05, vol: 0.035 });
     fx.burst(bx, by, { n: 4, color: COL.bulletP, speed: 40, life: 0.2, size: 1.6 });
   }
@@ -253,7 +288,7 @@ window.paConfig = {
   }
 
   function livingAliens() {
-    return aliens.filter((a) => a.alive);
+    return aliens.filter((a) => a.alive && a.popT < 0);
   }
 
   function marchStep() {
@@ -341,19 +376,53 @@ window.paConfig = {
     return false;
   }
 
-  function killAlien(a, wx, wy) {
+  function killAlien(a, wx, wy, mult) {
     a.alive = false;
     invadersLeft--;
-    const pts = ALIEN_SCORE[a.kind] + Math.floor(wave * 2);
+    const pts = Math.round((ALIEN_SCORE[a.kind] + Math.floor(wave * 2)) * (mult || 1));
     score += pts;
     kills++;
     PA.sfx("hit", { pitch: 1 + (ALIEN_ROWS - a.row) * 0.04 });
     PA.shake(5 * S, 0.12);
-    fx.burst(wx, wy, { n: 18, colors: [COL.alien[a.kind], "#fff", COL.playerCore], speed: 160, life: 0.55, size: 2.4, shape: "spark" });
-    texts.add(wx, wy - 8 * S, "+" + pts, { color: COL.alien[a.kind], size: 14, life: 0.65, vy: -32 });
+    fx.burst(wx, wy, { n: 18, colors: [PAINT[a.paint], "#fff", PAINT[a.paint]], speed: 160, life: 0.55, size: 2.4, shape: "spark" });
+    texts.add(wx, wy - 8 * S, "+" + pts, { color: PAINT[a.paint], size: 14, life: 0.65, vy: -32 });
     paintHud();
     PA.music.intensity(clamp(1 - invadersLeft / aliens.length + wave * 0.08, 0, 1));
     if (invadersLeft <= 0) beginWaveClear();
+  }
+
+  function hitAlien(a, b, w) {
+    if (a.paint !== b.paint) {
+      // Wrong colour: the shot paints it instead of killing it.
+      a.paint = b.paint; a.flashT = 0.3; paints++;
+      score += 5; paintHud();
+      PA.tone({ freq: 760 + b.paint * 90, to: 520, type: "triangle", dur: 0.07, vol: 0.06 });
+      fx.burst(w.x, w.y, { n: 8, color: PAINT[b.paint], speed: 90, life: 0.3, size: 2 });
+      return;
+    }
+    // Matching colour: flood out through touching aliens of the same colour.
+    const byPos = {};
+    for (const o of aliens) if (o.alive && o.popT < 0) byPos[o.row + "," + o.col] = o;
+    const seen = new Set([a]), queue = [[a, 0]], group = [];
+    while (queue.length) {
+      const [cur, d] = queue.shift();
+      group.push([cur, d]);
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = byPos[(cur.row + dr) + "," + (cur.col + dc)];
+        if (n && !seen.has(n) && n.paint === a.paint) { seen.add(n); queue.push([n, d + 1]); }
+      }
+    }
+    const size = group.length;
+    // Each alien in a cluster of n scores (n + 1) / 2 times its value.
+    for (const [o, d] of group) { o.popT = d * 0.055; o.mult = (size + 1) / 2; }
+    if (size > 1) {
+      clusters++;
+      if (size > bestCluster) bestCluster = size;
+      texts.add(w.x, w.y - 26 * S, "CLUSTER ×" + size, { color: "#fff", size: 16 + Math.min(size, 12) * 1.5, life: 1.1, vy: -30 });
+      PA.sfx("combo", { pitch: 0.9 + Math.min(size, 12) * 0.04 });
+      if (size >= 6) { PA.flash("rgba(255,255,255,.12)", 180); PA.shake(9 * S, 0.3); }
+      paintHud();
+    }
   }
 
   function beginWaveClear() {
@@ -414,6 +483,8 @@ window.paConfig = {
       stats: [
         ["Wave", wave],
         ["Invaders", kills],
+        ["Best cluster", bestCluster > 1 ? bestCluster : "—"],
+        ["Painted", paints],
         ["Motherships", mothershipHits],
         ["Lives left", Math.max(0, lives)]
       ]
@@ -440,6 +511,7 @@ window.paConfig = {
 
     if (invulnT > 0) invulnT -= dt;
     if (fireCd > 0) fireCd -= dt;
+    if (swapT > 0) swapT -= dt;
 
     const move = (PA.down("ArrowRight", "KeyD", "d") ? 1 : 0) - (PA.down("ArrowLeft", "KeyA", "a") ? 1 : 0);
     if (move && player) {
@@ -457,6 +529,12 @@ window.paConfig = {
 
     for (const a of aliens) {
       if (!a.alive) continue;
+      if (a.flashT > 0) a.flashT -= dt;
+      if (a.popT >= 0) {
+        a.popT -= dt;
+        if (a.popT < 0) { a.popT = -1; const w = alienWorld(a); killAlien(a, w.x, w.y, a.mult); }
+        continue;
+      }
       a.animT += dt;
       if (a.animT > 0.45) { a.anim = 1 - a.anim; a.animT = 0; }
     }
@@ -490,10 +568,10 @@ window.paConfig = {
       }
       let hit = false;
       for (const a of aliens) {
-        if (!a.alive) continue;
+        if (!a.alive || a.popT >= 0) continue;
         const w = alienWorld(a);
         if (rectHit(b.x - b.w / 2, b.y - b.h, b.w, b.h, w.x - a.w / 2, w.y - a.h / 2, a.w, a.h)) {
-          killAlien(a, w.x, w.y);
+          hitAlien(a, b, w);
           hit = true;
           break;
         }
@@ -544,9 +622,10 @@ window.paConfig = {
 
   function drawAlien(a, t) {
     const w = alienWorld(a);
-    const col = COL.alien[a.kind];
+    const col = a.flashT > 0 && Math.sin(a.flashT * 60) > 0 ? "#ffffff" : PAINT[a.paint];
+    const popping = a.popT >= 0;
     const bob = Math.sin(t * 6 + a.col * 0.4 + a.row) * 1.5 * S;
-    const sc = 1 + a.anim * 0.06;
+    const sc = (1 + a.anim * 0.06) * (popping ? 1.15 + Math.sin(simT * 50) * 0.08 : 1);
     ctx.save();
     ctx.translate(w.x, w.y + bob);
     ctx.scale(sc, sc);
@@ -639,9 +718,18 @@ window.paConfig = {
     ctx.strokeStyle = "rgba(255,255,255,.55)";
     ctx.lineWidth = 1.2;
     ctx.stroke();
-    ctx.fillStyle = COL.playerCore;
-    ctx.globalAlpha = 0.55 + 0.25 * Math.sin(t * 8);
-    ctx.fillRect(-w * 0.08, -h * 0.15, w * 0.16, h * 0.35);
+    // The barrel glows in the laser's colour, with the colour wheel underneath.
+    const pc = PAINT[gun], pop = 1 + Math.max(0, swapT) * 2;
+    ctx.fillStyle = pc; ctx.shadowColor = pc; ctx.shadowBlur = 18 * S;
+    ctx.beginPath(); ctx.arc(0, -h * 0.2, h * 0.32 * pop, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < colours; i++) {
+      const dx = (i - (colours - 1) / 2) * 12 * S;
+      ctx.globalAlpha = i === gun ? 1 : 0.35;
+      ctx.fillStyle = PAINT[i];
+      ctx.beginPath(); ctx.arc(dx, h * 0.95, (i === gun ? 4 : 3) * S, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
@@ -671,8 +759,8 @@ window.paConfig = {
 
   function drawBullets() {
     for (const b of pBullets) {
-      ctx.fillStyle = COL.bulletP;
-      ctx.shadowColor = COL.bulletP;
+      ctx.fillStyle = PAINT[b.paint];
+      ctx.shadowColor = PAINT[b.paint];
       ctx.shadowBlur = 10;
       ctx.fillRect(b.x - b.w / 2, b.y - b.h, b.w, b.h);
     }
@@ -718,7 +806,7 @@ window.paConfig = {
     ctx.textAlign = "center";
     ctx.font = "500 " + Math.round(14 * S) + "px Manrope, system-ui, sans-serif";
     ctx.fillStyle = "#8ee9ff";
-    ctx.fillText("Drag anywhere to move · lasers auto-fire", W / 2, floorY - 52 * S);
+    ctx.fillText(PA.isTouch ? "Drag to move · ◐ switches colour · hit a match to chain-pop" : "Space switches colour · hit a match to chain-pop the cluster", W / 2, H * 0.56);
     ctx.restore();
   }
 
@@ -740,7 +828,7 @@ window.paConfig = {
   }
 
   window.__ssiege = () => ({
-    score, wave, lives, invadersLeft, kills, mothershipHits,
+    score, wave, lives, invadersLeft, kills, mothershipHits, gun, bestCluster, paints,
     formX, formY, marchDir, marchDelay,
     player: player ? { x: player.x, y: player.y } : null,
     pBullets: pBullets.length, eBullets: eBullets.length,

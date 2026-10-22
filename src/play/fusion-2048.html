@@ -10,7 +10,7 @@ canvas{display:block;position:fixed;inset:0}
 <script>
 window.paConfig = {
   slug: "fusion-2048", title: "Fusion 2048", native: true, music: "lofi", unit: "points",
-  controls: [["← → ↑ ↓ / WASD", "Slide tiles"], ["Touch / mouse", "Swipe to slide"]]
+  controls: [["← → ↑ ↓ / WASD", "Slide tiles"], ["Touch / mouse", "Swipe to slide"], ["Twins touching", "Chain-fuse on their own"]]
 };
 </script>
 <script src="/games/play/pa-score.js?v=e650da0b4c"></script>
@@ -20,6 +20,9 @@ window.paConfig = {
 (() => {
   const SIZE = 4;
   const ANIM = 0.11;
+  // The twist: chain reactions and lead. A freshly fused tile that lands touching its twin fuses again
+  // on its own, for a growing multiplier. Lead blocks drop in, wall off rows and columns, then decay.
+  const REACT_ANIM = 0.16, LEAD_EVERY = 11, LEAD_LIFE = 9, LEAD_MAX = 2;
   const { clamp, ease, choice } = PA;
 
   const TILE = {
@@ -41,6 +44,7 @@ window.paConfig = {
   let animating, animT, pendingGrid, slideAnims, mergePop;
   let spawnPop = null;
   let reached2048 = false;
+  let lead, moves = 0, chainDepth = 0, bestChain = 0, chains = 0, leadsCleared = 0, animLen = ANIM;
 
   const view = PA.canvas(document.getElementById("c"), { onResize: layout });
   const ctx = view.ctx;
@@ -106,9 +110,14 @@ window.paConfig = {
     const anims = [];
 
     for (let i = 0; i < SIZE; i++) {
-      const slots = lineSlots(dr, dc, i);
+      const all = lineSlots(dr, dc, i);
+      // Lead cells split the line: each run between them slides on its own.
+      const runs = [[]];
+      all.forEach(s => { if (lead[s.r][s.c]) runs.push([]); else runs[runs.length - 1].push(s); });
+      for (const slots of runs) {
+      if (!slots.length) continue;
       const filled = slots.map(s => ({ ...s, v: grid[s.r][s.c] })).filter(e => e.v);
-      const out = new Array(SIZE).fill(0);
+      const out = new Array(slots.length).fill(0);
       let oi = 0;
       let fi = 0;
       while (fi < filled.length) {
@@ -135,6 +144,7 @@ window.paConfig = {
         }
       }
       slots.forEach((s, k) => { newGrid[s.r][s.c] = out[k]; });
+      }
     }
 
     if (!moved) {
@@ -152,6 +162,7 @@ window.paConfig = {
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
         const v = g[r][c];
+        if (lead[r][c]) continue;
         if (!v) return true;
         if (c + 1 < SIZE && g[r][c + 1] === v) return true;
         if (r + 1 < SIZE && g[r + 1][c] === v) return true;
@@ -162,7 +173,7 @@ window.paConfig = {
 
   function spawnRandom(g) {
     const empty = [];
-    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (!g[r][c]) empty.push([r, c]);
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (!g[r][c] && !lead[r][c]) empty.push([r, c]);
     if (!empty.length) return null;
     const [r, c] = choice(empty);
     const v = Math.random() < 0.9 ? 2 : 4;
@@ -170,12 +181,17 @@ window.paConfig = {
     return { r, c, v };
   }
 
-  function mergeFx(tr, tc, nv) {
+  function mergeFx(tr, tc, nv, mult) {
     const [x, y] = cellXY(tr, tc);
     const cx = x + L.cell / 2, cy = y + L.cell / 2;
     const col = tileStyle(nv).glow;
-    fx.burst(cx, cy, { n: 14 + Math.min(20, Math.log2(nv)), color: col, speed: 140, life: 0.45, size: 3.2, shape: "square" });
-    texts.add(cx, cy - 8, "+" + nv, { color: col, size: Math.min(22, 14 + Math.log2(nv)), life: 0.75, vy: -48 });
+    fx.burst(cx, cy, { n: 14 + Math.min(20, Math.log2(nv)) + (mult || 0) * 8, color: col, speed: 140 + (mult || 0) * 40, life: 0.45, size: 3.2, shape: "square" });
+    texts.add(cx, cy - 8, "+" + nv * (mult || 1), { color: col, size: Math.min(22, 14 + Math.log2(nv)), life: 0.75, vy: -48 });
+    if (mult) {
+      texts.add(cx, cy - L.cell * 0.45 - (mult - 2) * L.cell * 0.2, "CHAIN ×" + mult, { color: "#fff", size: 15 + mult * 2, life: 1, vy: -30 });
+      PA.sfx("combo", { pitch: 0.9 + mult * 0.12 });
+      PA.shake(3 + mult * 2, 0.15);
+    }
     const pitch = 0.85 + Math.min(1.1, Math.log2(nv) * 0.06);
     PA.sfx("coin", { pitch });
     if (nv >= 128) PA.shake(Math.min(10, 2 + Math.log2(nv) * 0.5), 0.12);
@@ -186,15 +202,70 @@ window.paConfig = {
     }
   }
 
+  function findReactions(merged) {
+    const g = grid.map(row => row.slice()), used = new Set(), anims = [], pops = [];
+    let gain = 0;
+    chainDepth++;
+    for (const m of merged) {
+      const v = g[m.tr][m.tc];
+      if (!v || used.has(m.tr + "," + m.tc)) continue;
+      for (const [dr, dc] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+        const r = m.tr + dr, c = m.tc + dc;
+        if (r < 0 || c < 0 || r >= SIZE || c >= SIZE || used.has(r + "," + c) || lead[r][c] || g[r][c] !== v) continue;
+        const nv = v * 2;
+        g[m.tr][m.tc] = nv; g[r][c] = 0;
+        used.add(m.tr + "," + m.tc); used.add(r + "," + c);
+        anims.push({ r, c, tr: m.tr, tc: m.tc, v, nv, merge: true, vanish: true });
+        anims.push({ r: m.tr, c: m.tc, tr: m.tr, tc: m.tc, v, nv, merge: true });
+        pops.push({ tr: m.tr, tc: m.tc, nv, mult: chainDepth + 1 });
+        gain += nv * (chainDepth + 1);
+        break;
+      }
+    }
+    return anims.length ? { grid: g, anims, pops, gain } : null;
+  }
+
   function finishAnim() {
     grid = pendingGrid;
     pendingGrid = null;
     animating = false;
+    const merged = mergePop.slice();
     slideAnims = [];
     bestTile = Math.max(bestTile, ...grid.flat());
+    // Chain reaction: fused tiles that now touch their twin fuse again, as a second animated step.
+    const react = merged.length ? findReactions(merged) : null;
+    if (react) {
+      chains++;
+      if (chainDepth + 1 > bestChain) bestChain = chainDepth + 1;
+      score += react.gain;
+      pendingGrid = react.grid;
+      slideAnims = react.anims;
+      mergePop = react.pops;
+      animating = true; animT = 0; animLen = REACT_ANIM;
+      PA.tone({ freq: 300 + chainDepth * 120, to: 900 + chainDepth * 200, type: "sine", dur: 0.14, vol: 0.08 });
+      return;
+    }
+    chainDepth = 0;
+    afterMove();
+  }
+
+  function afterMove() {
+    moves++;
     PA.music.intensity(clamp(Math.log2(Math.max(2, bestTile)) / 12, 0, 1));
+    // Lead decays one step per move and crumbles at zero.
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+      if (!lead[r][c]) continue;
+      lead[r][c]--;
+      if (!lead[r][c]) {
+        leadsCleared++;
+        const [x, y] = cellXY(r, c);
+        fx.burst(x + L.cell / 2, y + L.cell / 2, { n: 22, colors: ["#9aa0b8", "#c8cede", "#5a6078"], speed: 130, life: 0.55, size: 3, shape: "square" });
+        PA.sfx("thud", { pitch: 1.2 });
+      }
+    }
     const sp = spawnRandom(grid);
     if (sp) spawnPop = { ...sp, t: 0 };
+    if (moves % LEAD_EVERY === 0) dropLead();
     if (!canMove(grid)) {
       if (overSent) return;
       overSent = true;
@@ -202,10 +273,26 @@ window.paConfig = {
       const title = bestTile >= 2048 ? "Fusion peak reached" : "No moves left";
       PA.gameOver(score, {
         title,
-        stats: [["Best tile", bestTile], ["Merges score", score], ["Peak tile", bestTile]]
+        stats: [["Best tile", bestTile], ["Best chain", bestChain ? "×" + bestChain : "—"], ["Chain reactions", chains], ["Moves", moves]]
       });
     }
   }
+
+  function dropLead() {
+    let count = 0;
+    const empty = [];
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+      if (lead[r][c]) count++;
+      else if (!grid[r][c] && !(spawnPop && spawnPop.r === r && spawnPop.c === c)) empty.push([r, c]);
+    }
+    if (count >= LEAD_MAX || empty.length < 3) return;
+    const [r, c] = choice(empty);
+    lead[r][c] = LEAD_LIFE + Math.min(4, Math.floor(moves / 60));
+    leadDrop = { r, c, t: 0 };
+    PA.sfx("thud", { pitch: 0.7 });
+    PA.shake(4, 0.12);
+  }
+  let leadDrop = null;
 
   function tryMove(dr, dc) {
     if (animating || PA.state !== "play" || overSent || !grid) return;
@@ -216,12 +303,14 @@ window.paConfig = {
     slideAnims = res.anims;
     mergePop = res.anims.filter(a => a.merge && !a.vanish).map(a => ({ tr: a.tr, tc: a.tc, nv: a.nv }));
     animating = true;
-    animT = 0;
+    animT = 0; animLen = ANIM; chainDepth = 0;
     PA.sfx("whoosh", { pitch: 0.95, vol: 0.45 });
   }
 
   function reset() {
     grid = emptyGrid();
+    lead = emptyGrid();
+    moves = 0; chainDepth = 0; bestChain = 0; chains = 0; leadsCleared = 0; leadDrop = null;
     score = 0;
     bestTile = 2;
     overSent = false;
@@ -275,6 +364,38 @@ window.paConfig = {
     ctx.shadowColor = st.glow;
     ctx.shadowBlur = 10;
     ctx.fillText(label, x + s / 2, y + s / 2 + s * 0.02);
+    ctx.restore();
+  }
+
+  function drawLead(r, c, t) {
+    const [x0, y0] = cellXY(r, c);
+    const { cell } = L;
+    let k = 1;
+    if (leadDrop && leadDrop.r === r && leadDrop.c === c) k = 1.4 - 0.4 * ease.outCubic(clamp(leadDrop.t / 0.3, 0, 1));
+    const s = cell * k, x = x0 + (cell - s) / 2, y = y0 + (cell - s) / 2, n = lead[r][c];
+    ctx.save();
+    roundRect(ctx, x, y, s, s, Math.max(4, s * 0.12));
+    const g = ctx.createLinearGradient(x, y, x + s, y + s);
+    g.addColorStop(0, "#5c6178"); g.addColorStop(0.5, "#3a3e52"); g.addColorStop(1, "#22253a");
+    ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = n <= 2 ? "rgba(255,126,182," + (0.5 + 0.4 * Math.sin(t * 8)) + ")" : "rgba(200,206,222,.55)";
+    ctx.lineWidth = 2; ctx.stroke();
+    // Rivets and cracks that spread as it decays.
+    ctx.fillStyle = "rgba(200,206,222,.5)";
+    [[0.16, 0.16], [0.84, 0.16], [0.16, 0.84], [0.84, 0.84]].forEach(([a, b]) => { ctx.beginPath(); ctx.arc(x + s * a, y + s * b, s * 0.035, 0, Math.PI * 2); ctx.fill(); });
+    const cracks = Math.max(0, 4 - n);
+    ctx.strokeStyle = "rgba(10,12,24,.8)"; ctx.lineWidth = 1.5;
+    for (let i = 0; i < cracks; i++) {
+      ctx.beginPath(); ctx.moveTo(x + s * (0.2 + i * 0.2), y);
+      ctx.lineTo(x + s * (0.3 + i * 0.15), y + s * 0.4); ctx.lineTo(x + s * (0.2 + i * 0.18), y + s * 0.7); ctx.stroke();
+    }
+    ctx.fillStyle = "#c8cede";
+    ctx.font = "700 " + (s * 0.2) + "px 'JetBrains Mono', ui-monospace, monospace";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("LEAD", x + s / 2, y + s * 0.38);
+    ctx.font = "600 " + (s * 0.17) + "px 'JetBrains Mono', ui-monospace, monospace";
+    ctx.fillStyle = n <= 2 ? "#ff9ec4" : "#9aa0b8";
+    ctx.fillText(n + (n === 1 ? " move" : " moves"), x + s / 2, y + s * 0.64);
     ctx.restore();
   }
 
@@ -345,7 +466,7 @@ window.paConfig = {
   function renderBoard(t) {
     if (!grid || !L.cell) return;
     const { bx, by, bw, cell, gap } = L;
-    const prog = animating ? ease.outCubic(clamp(animT / ANIM, 0, 1)) : 1;
+    const prog = animating ? ease.outCubic(clamp(animT / animLen, 0, 1)) : 1;
 
     roundRect(ctx, bx - 10, by - 10, bw + 20, bw + 20, 18);
     ctx.fillStyle = "rgba(6,8,20,.92)";
@@ -367,6 +488,8 @@ window.paConfig = {
         ctx.stroke();
       }
     }
+
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (lead[r][c]) drawLead(r, c, t);
 
     const movingFrom = new Set();
     if (animating) slideAnims.forEach(a => movingFrom.add(a.r + "," + a.c));
@@ -415,7 +538,7 @@ window.paConfig = {
     ctx.save();
     ctx.textAlign = "center";
     ctx.fillStyle = "#f4f1ff";
-    ctx.font = "600 " + Math.max(18, L.cell * 0.55) + "px Manrope, system-ui, sans-serif";
+    ctx.font = "600 " + Math.min(L.portrait ? 24 : 36, Math.max(18, L.cell * 0.3)) + "px Manrope, system-ui, sans-serif";
     ctx.shadowColor = "#ffd27a";
     ctx.shadowBlur = 16;
     ctx.fillText("Fusion 2048", W / 2, L.portrait ? 34 : 48);
@@ -435,6 +558,7 @@ window.paConfig = {
       const rows = [
         ["Score", score || 0, "#8ee9ff"],
         ["Best tile", bestTile || 2, "#ffd27a"],
+        ["Best chain", bestChain ? "×" + bestChain : "—", "#ff7eb6"],
         ["Session best", Math.max(PA.best || 0, score || 0), "#c4a6ff"]
       ];
       const ph = pad + rows.length * rowH + 8;
@@ -444,12 +568,18 @@ window.paConfig = {
         statBlock(px + pad, iy, pw - pad * 2, r[0], r[1], r[2]);
         iy += rowH;
       });
+      ctx.save();
+      ctx.fillStyle = "#9a96b4";
+      ctx.font = "500 11px Manrope, system-ui, sans-serif";
+      ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ["Fused tiles that land next to", "their twin fuse again: chains", "multiply. Lead walls off lines", "until it crumbles."].forEach((ln, i) => ctx.fillText(ln, px + 4, py + ph + 14 + i * 16));
+      ctx.restore();
     }
     if (L.portrait) {
       ctx.fillStyle = "#7a7694";
       ctx.font = "500 11px 'JetBrains Mono', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("SWIPE TO SLIDE · SUM OF MERGES = SCORE", W / 2, H - 16);
+      ctx.fillText("TWINS THAT TOUCH CHAIN-FUSE · LEAD WALLS OFF LINES", W / 2, H - 16);
     }
   }
 
@@ -460,11 +590,12 @@ window.paConfig = {
       spawnPop.t += dt;
       if (spawnPop.t > 0.2) spawnPop = null;
     }
+    if (leadDrop) { leadDrop.t += dt; if (leadDrop.t > 0.3) leadDrop = null; }
     if (PA.state !== "play" || !grid) return;
     if (animating) {
       animT += dt;
-      if (animT >= ANIM) {
-        mergePop.forEach(m => mergeFx(m.tr, m.tc, m.nv));
+      if (animT >= animLen) {
+        mergePop.forEach(m => mergeFx(m.tr, m.tc, m.nv, m.mult));
         finishAnim();
       }
       return;
@@ -498,7 +629,8 @@ window.paConfig = {
 
   window.__f2048 = () => ({
     score,
-    best: bestTile,
+    best: bestTile, moves, bestChain, chains,
+    lead: lead ? lead.map(row => row.slice()) : [],
     grid: grid ? grid.map(row => row.slice()) : []
   });
 
@@ -509,6 +641,7 @@ window.paConfig = {
   });
 
   grid = emptyGrid();
+  lead = emptyGrid();
   score = 0;
   bestTile = 2;
   mergePop = [];

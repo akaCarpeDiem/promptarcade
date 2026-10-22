@@ -24,7 +24,7 @@ html,body{margin:0;height:100%;background:#000;color:#eaf6ff;overflow:hidden;fon
 <script>
 window.paConfig = {
   slug: "gridstorm", title: "Gridstorm", native: true, music: "space", unit: "points",
-  controls: [["WASD", "Move"], ["Mouse", "Aim — hold to fire (or always-fire toggle F)"], ["Space / right-click", "Bomb"], ["Touch", "Left thumb moves · right thumb aims and fires"]]
+  controls: [["WASD / arrows", "Move"], ["Arrows (with WASD)", "Aim and fire"], ["Mouse", "Aim — hold to fire (or always-fire toggle F)"], ["Space / right-click", "Bomb"], ["Touch", "Left thumb moves · right thumb aims and fires"], ["Shockwaves", "Every kill rings out and pops anything it reaches — herd them close and chain them"]]
 };
 </script>
 <script src="/games/play/pa-score.js"></script>
@@ -59,7 +59,7 @@ function gridForce(px, py, force, radius) {
   }
 }
 function updateGrid(dt) {
-  const K = 38, D = 0.9, A = 6;
+  const K = 38, D = 0.9, A = 10, CAP = GS * 1.6;
   const n = gp.length;
   for (let y = 0; y < GY; y++) for (let x = 0; x < GX; x++) {
     const p = gp[gi(x, y)]; if (p.pin) continue;
@@ -72,17 +72,23 @@ function updateGrid(dt) {
     p.vx += fx2 * dt; p.vy += fy2 * dt;
   }
   const damp = Math.pow(1 - D, dt * 6);
-  for (let i = 0; i < n; i++) { const p = gp[i]; if (p.pin) continue; p.vx *= damp; p.vy *= damp; p.x += p.vx * dt; p.y += p.vy * dt; }
+  for (let i = 0; i < n; i++) {
+    const p = gp[i]; if (p.pin) continue;
+    p.vx *= damp; p.vy *= damp; p.x += p.vx * dt; p.y += p.vy * dt;
+    // keep every point within a cell and a half of home so big blasts can't balloon the grid
+    const ox = p.x - p.ox, oy = p.y - p.oy, o = Math.hypot(ox, oy);
+    if (o > CAP) { p.x = p.ox + ox / o * CAP; p.y = p.oy + oy / o * CAP; p.vx *= .5; p.vy *= .5; }
+  }
 }
 
 /* ================= state ================= */
-let P, bullets, enemies, gems, wells, spawnT, t, score, mult, multXp, lives, bombs, nextLife, wave, alive, fireCd, overT, spawnBudget, alwaysFire = false, bombFlash = 0, kills;
+let P, bullets, enemies, gems, wells, waves, bestChain, spawnT, t, score, mult, multXp, lives, bombs, nextLife, wave, alive, fireCd, overT, spawnBudget, alwaysFire = false, bombFlash = 0, kills;
 let mouse = { x: 0, y: 0, down: false, seen: false };
 const COL = { player: "#eaffff", bullet: "#ffe68a", wander: "#b48cff", seek: "#5ef2ff", dodge: "#7dff6b", split: "#ff6bd5", mini: "#ff9be6", snake: "#ffb84d", well: "#ff4d6b", gem: "#7dffb0" };
 
 function reset() {
   P = { x: AW / 2, y: AH / 2, vx: 0, vy: 0, a: 0, inv: 2, dead: 0 };
-  bullets = []; enemies = []; gems = []; wells = [];
+  bullets = []; enemies = []; gems = []; wells = []; waves = []; bestChain = 0;
   spawnT = 1.2; t = 0; score = 0; mult = 1; multXp = 0; lives = 3; bombs = 3; nextLife = 75000; wave = 0; alive = true; fireCd = 0; overT = 0; spawnBudget = 0; kills = 0;
   fx.clear(); texts.clear();
   for (const p of gp) { p.x = p.ox; p.y = p.oy; p.vx = p.vy = 0; }
@@ -141,15 +147,25 @@ function director(dt) {
   if (t > 45 && Math.random() < 0.18 && wells.length < 3) wells.push(spawn("well"));
 }
 
-function killEnemy(e, byBomb) {
+/* shockwaves: every shot kill rings out along the grid, and the ring's front
+   detonates whatever it crosses, which rings out again, so tight packs chain */
+const WAVE_SPEED = 520, WAVE_R = 82, WAVE_GROW = 14, WAVE_MAX = 150, CHAIN_CAP = 8;
+function killEnemy(e, byBomb, from) {
   if (e.dead) return;
   e.dead = true;
   kills++;
   const c = COL[e.type];
+  const depth = from ? from.depth + 1 : 0, root = from ? from.root : { n: 0 };
+  if (!byBomb) {
+    root.n++;
+    if (root.n > bestChain) bestChain = root.n;
+    if (from && (root.n === 3 || root.n % 5 === 0)) texts.add(e.x, e.y - 22, "CHAIN " + root.n, { color: "#fff", size: 12 + Math.min(10, root.n), life: .7 });
+    waves.push({ x: e.x, y: e.y, r: 0, max: Math.min(WAVE_MAX, WAVE_R + depth * WAVE_GROW), depth, root, c, hit: new Set([e]) });
+  }
   fx.burst(e.x, e.y, { n: e.type === "well" ? 120 : 34, color: c, speed: e.type === "well" ? 600 : 360, life: .9, size: 2.6, shape: "spark", drag: 2.6 });
   gridForce(e.x, e.y, e.type === "well" ? 1800 : 520, e.type === "well" ? 260 : 120);
   if (!byBomb) {
-    const pts = TYPES[e.type].pts * mult;
+    const pts = TYPES[e.type].pts * mult * Math.min(CHAIN_CAP, depth + 1);
     score += pts;
     if (pts >= 500) texts.add(e.x, e.y, pts.toLocaleString(), { color: c, size: 14, life: .6 });
     const ng = e.type === "well" ? 8 : e.type === "mini" ? 0 : 1 + (Math.random() < .3);
@@ -179,6 +195,7 @@ function hitPlayer() {
   for (let i = 0; i < 4; i++) gridForce(P.x, P.y, 2600, 600);
   PA.sfx("boom"); PA.shake(20, 1); PA.flash("#ff4d6b", 500);
   // clear the board so respawns are fair
+  waves = [];
   for (const e of enemies) { e.dead = true; fx.burst(e.x, e.y, { n: 8, color: COL[e.type], speed: 200, life: .6, shape: "spark" }); }
   wells = [];
   paint();
@@ -231,8 +248,10 @@ function update(dt) {
     if (P.dead <= 0) { P.x = AW / 2; P.y = AH / 2; P.vx = P.vy = 0; P.inv = 2.5; spawnT = 2; }
   } else {
     P.inv = Math.max(0, P.inv - dt);
-    let mx = (PA.down("KeyD", "ArrowRight") ? 1 : 0) - (PA.down("KeyA", "ArrowLeft") ? 1 : 0);
-    let my = (PA.down("KeyS", "ArrowDown") ? 1 : 0) - (PA.down("KeyW", "ArrowUp") ? 1 : 0);
+    // arrows steer only when WASD isn't in use; with WASD held they aim instead
+    const wasd = PA.down("KeyW", "KeyA", "KeyS", "KeyD");
+    let mx = wasd ? (PA.down("KeyD") ? 1 : 0) - (PA.down("KeyA") ? 1 : 0) : (PA.down("ArrowRight") ? 1 : 0) - (PA.down("ArrowLeft") ? 1 : 0);
+    let my = wasd ? (PA.down("KeyS") ? 1 : 0) - (PA.down("KeyW") ? 1 : 0) : (PA.down("ArrowDown") ? 1 : 0) - (PA.down("ArrowUp") ? 1 : 0);
     if (s1.id != null) { mx = s1.dx; my = s1.dy; }
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
     const SP = 420;
@@ -247,7 +266,7 @@ function update(dt) {
     else if (mouse.seen) { const w = screenToWorld(mouse.x, mouse.y); aim = Math.atan2(w.y - P.y, w.x - P.x); firing = mouse.down || alwaysFire; }
     // keyboard-only: arrow keys aim+fire when WASD is used to move
     const ax = (PA.down("ArrowRight") ? 1 : 0) - (PA.down("ArrowLeft") ? 1 : 0), ay = (PA.down("ArrowDown") ? 1 : 0) - (PA.down("ArrowUp") ? 1 : 0);
-    if ((ax || ay) && PA.down("KeyW", "KeyA", "KeyS", "KeyD")) { aim = Math.atan2(ay, ax); firing = true; }
+    if ((ax || ay) && wasd) { aim = Math.atan2(ay, ax); firing = true; }
     P.aim = aim;
     fireCd -= dt;
     if (firing && aim != null && fireCd <= 0) {
@@ -335,6 +354,7 @@ function update(dt) {
       }
     }
   }
+  updateWaves(dt);
   bullets = bullets.filter((b) => b.life > 0);
   enemies = enemies.filter((e) => !e.dead);
   // gems raise the multiplier
@@ -356,9 +376,32 @@ function update(dt) {
   PA.music.intensity(Math.min(1, enemies.length / 40));
   PA.stat("gs-score", score.toLocaleString());
 }
+function updateWaves(dt) {
+  for (const w of waves) {
+    const r0 = w.r;
+    w.r = Math.min(w.max, w.r + WAVE_SPEED * dt);
+    // ripple the grid along the ring front
+    const R = w.r, x0 = Math.max(1, Math.floor((w.x - R) / GS)), x1 = Math.min(GX - 2, Math.ceil((w.x + R) / GS));
+    const y0 = Math.max(1, Math.floor((w.y - R) / GS)), y1 = Math.min(GY - 2, Math.ceil((w.y + R) / GS));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const p = gp[gi(x, y)], dx = p.ox - w.x, dy = p.oy - w.y, d = Math.hypot(dx, dy) || 1;
+      if (d > r0 - 6 && d <= R + 6) { p.vx += dx / d * 120; p.vy += dy / d * 120; }
+    }
+    for (const e of enemies) {
+      if (e.dead || e.birth > 0 || w.hit.has(e)) continue;
+      const d = Math.hypot(e.x - w.x, e.y - w.y);
+      if (d - e.r > w.r) continue;
+      w.hit.add(e);
+      if (e.type === "well") { e.hp -= 4; e.mass = Math.max(0.6, e.mass - 0.25); if (e.hp <= 0) killEnemy(e, false, w); }
+      else killEnemy(e, false, w);
+    }
+    if (w.r >= w.max) w.life = (w.life == null ? 0.25 : w.life - dt);
+  }
+  waves = waves.filter((w) => w.life == null || w.life > 0);
+}
 function finish() {
   PA.sfx("gameover");
-  PA.gameOver(score, { kicker: "All ships lost", title: score > 200000 ? "Storm legend!" : score > 50000 ? "Electric!" : "Run complete", stats: [["Time", Math.floor(t / 60) + "m " + Math.floor(t % 60) + "s"], ["Kills", kills.toLocaleString()], ["Best multiplier", "×" + mult]] });
+  PA.gameOver(score, { kicker: "All ships lost", title: score > 200000 ? "Storm legend!" : score > 50000 ? "Electric!" : "Run complete", stats: [["Time", Math.floor(t / 60) + "m " + Math.floor(t % 60) + "s"], ["Kills", kills.toLocaleString()], ["Best chain", bestChain], ["Final multiplier", "×" + mult]] });
   if (window.paXP) window.paXP.award("gridstorm", { score, kills });
 }
 
@@ -430,6 +473,15 @@ function render(tt) {
     for (const b of bullets) { ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * .018, b.y - b.vy * .018); }
     ctx.stroke();
     ctx.globalCompositeOperation = "source-over";
+    ctx.globalCompositeOperation = "lighter";
+    for (const w of waves) {
+      const k = w.life == null ? 1 - (w.r / w.max) * .5 : Math.max(0, w.life / .25) * .5;
+      ctx.strokeStyle = w.c; ctx.globalAlpha = .25 * k; ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = .9 * k; ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     for (const e of enemies) shape(e, tt);
     // player
     if (P.dead <= 0 && alive) {
@@ -458,7 +510,7 @@ setInterval(() => { if (PA.state !== "play") gridForce(rand(0, AW), rand(0, AH),
 
 PA.onStart(reset);
 PA.loop(update, render);
-window.__gs = { get state() { return { score, lives, enemies: enemies && enemies.length, t }; }, cheat() { lives = 99; }, warp(s) { t = s; } };
+window.__gs = { get state() { return { score, lives, enemies: enemies && enemies.length, t, bestChain, waves: waves && waves.length, px: P && P.x, py: P && P.y, grid: gp.reduce((m, p) => Math.max(m, Math.hypot(p.x - p.ox, p.y - p.oy)), 0) }; }, cheat() { lives = 99; }, warp(s) { t = s; } };
 })();
 </script>
 </body></html>
