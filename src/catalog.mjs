@@ -156,6 +156,57 @@ export const GAMES = [
     ]
   },
   {
+    slug: "crosstime", title: "Crosstime", added: "2026-10-21",
+    genre: "Arcade", tags: ["arcade", "endless", "crossing"], difficulty: "Mid", accent: "#5ef2ff", accent2: "#ffd36b",
+    unit: "points",
+    classic: "Road and river crosser", twist: "Get hit and time rewinds to your last safe spot, but rewinds run out, and a wall of static creeps up behind you.",
+    tagline: "Hop across an endless night city. Get hit and time rewinds.",
+    about: "Hop a little courier bot across an endless night city: busy roads full of cars, vans, buses and trucks, rivers of drifting logs and diving turtles, and rail crossings where the night train comes through with almost no warning. Get flattened or fall in and the whole street rewinds to the last moment you stood somewhere safe, so you can try that hop again. Rewinds run out, though, and clocks on the grass are the only way to win them back. Don't dawdle: a wall of static follows you up the street.",
+    credit: CLAUDE_NEW,
+    brief: "Remake the road-and-river crossing classic as an endless night city with cars, trucks, logs, diving turtles and trains, and make getting hit rewind time instead of ending the run.",
+    tech: [
+      "Every lane is a pure function of the world clock, so running the clock backwards replays the street in reverse",
+      "The player is snapshotted every frame; a rewind scrubs back to the newest snapshot on solid ground",
+      "Endless lanes are generated in groups with gap rules that keep every crossing possible",
+      "Headlight beams and lamp pools are drawn additively before the cars so they light the road",
+      "Swipes hop the moment they cross a threshold, so touch play feels as quick as the keys"
+    ]
+  },
+  {
+    slug: "echo-maze", title: "Echo Maze", added: "2026-10-21",
+    genre: "Arcade", tags: ["arcade", "maze", "chase"], difficulty: "Mid", accent: "#b48cff", accent2: "#7dffb0",
+    unit: "points",
+    classic: "Pellet maze chase", twist: "Your own path comes back to haunt you: echoes replay your route a few seconds behind you, and every level is a brand-new maze.",
+    tagline: "Clear the maze before your own echo catches you.",
+    about: "Eat every pellet in the maze while four hunters close in, each with its own way of chasing you. The catch is behind you: the maze remembers where you've been, and a few seconds later an echo of you comes along the very same route. Double back, stop to think or loop the same corridor and you'll walk straight into yourself. Power orbs turn the tables on hunters and echoes alike. Every level is a freshly generated maze, and the deeper you go the more echoes follow you.",
+    credit: CLAUDE_NEW,
+    brief: "Remake the pellet-maze chase with an original twist: echoes that replay the player's own recent route, hunters with distinct chase styles, and a new symmetric maze every level.",
+    tech: [
+      "Mazes are carved depth-first on one half, mirrored, then braided so there are no dead ends",
+      "Your route is recorded every frame; each echo binary-searches it to replay where you were seconds ago",
+      "Hunters pick turns at each junction by distance to a target: straight at you, ahead of you, shy, or flanking",
+      "Tile-centre movement with turn buffering, instant reversals and wrap-around tunnels",
+      "Walls are traced once into an offscreen canvas as glowing outlines, so each frame only draws what moves"
+    ]
+  },
+  {
+    slug: "ringfall", title: "Ringfall", added: "2026-10-21",
+    genre: "Shooter", tags: ["shooter", "arcade", "defense"], difficulty: "Mid", accent: "#8ee9ff", accent2: "#ff5c7a",
+    unit: "points",
+    classic: "City missile defence", twist: "The cities sit around a small turning planet, so warheads come from every side, and every blast can set off another for a growing multiplier.",
+    tagline: "Defend a tiny planet from warheads raining in from every side.",
+    about: "Six cities and three batteries ring a small blue planet, and it's under attack from every direction at once. Tap or click ahead of the incoming warheads to burst an interceptor in their path. Catch one in a blast and it explodes too, and every link in that chain multiplies the points. Later waves bring warheads that split in three, warheads that weave, and orbiting bombers that keep dropping more until you take them down. The planet keeps turning the whole time.",
+    credit: CLAUDE_NEW,
+    brief: "Remake the city missile-defence classic around a small rotating planet with three batteries, chain-reaction blasts, splitting and weaving warheads, and orbiting bombers.",
+    tech: [
+      "Interceptors fly curved arcs by easing angle and radius from the launch site, so no shot passes through the planet",
+      "Blasts that catch a warhead spawn a smaller blast of their own, and the chain depth is the multiplier",
+      "The nearest battery with ammo fires, measured by angle round the planet as it turns",
+      "Warheads home on their site as it rotates; a weaving one can still miss and hit open ground",
+      "Aim with the mouse, touch, or the arrow keys and Space"
+    ]
+  },
+  {
     slug: "neon-outrun", title: "Neon Outrun", added: "2026-09-20",
     genre: "Racing", tags: ["racing", "arcade", "3d"], difficulty: "Advanced", accent: "#ff5ca8", accent2: "#ffd36b", unit: "points",
     classic: "Sunset road racer", twist: "A real-3D cyberpunk megacity: draft behind haulers for extra top speed, thread hover cars for near-miss combos and dodge lane closures to beat the checkpoint clock.",
@@ -265,6 +316,7 @@ export const RETIRED = {
 
 /* What's-new feed (newest first). */
 export const NEWS = [
+  { date: "2026-10-21", title: "Three new classics with a twist", body: "Crosstime is a road-and-river crosser where getting hit rewinds time. Echo Maze is a pellet maze where your own path comes back to hunt you. Ringfall is city missile defence wrapped round a small turning planet, with blasts that chain into blasts." },
   { date: "2026-10-21", title: "Classics with a twist", body: "PromptArcade is now an arcade of prompt-made classics with a twist: well-known games remade by AI, each changed enough to play differently. Every game page now says which classic it remakes and what the twist is, and games that aren't remakes have their own Originals shelf. The home page has a new arcade cabinet that plays through the shelf." },
   { date: "2026-10-11", title: "PromptArcade 3.0", body: "A full redesign and eight new games made with Claude Opus 5.5 — including a live multiplayer snake arena, a survivors-style roguelite, a daily word game and a daily dungeon. Plus the Arcade Pass: XP, badges, streaks and daily quests that follow you across every game." },
   { date: "2026-10-11", title: "Retired the one-prompt plates", body: "The early single-prompt experiments and two remakes have been retired so the shelf is all full builds. Old links now land on the games that replaced them." },
@@ -286,5 +338,8 @@ export const QUESTS = [
   { game: "circuit-hop", stat: "score", min: 1500, text: "Score 1,500 in Circuit Hop" },
   { game: "void-rocks", stat: "score", min: 5000, text: "Score 5,000 in Void Rocks" },
   { game: "neon-flap", stat: "score", min: 500, text: "Score 500 in Neon Flap" },
-  { game: "prism-breaker", stat: "score", min: 3000, text: "Score 3,000 in Prism Breaker" }
+  { game: "prism-breaker", stat: "score", min: 3000, text: "Score 3,000 in Prism Breaker" },
+  { game: "crosstime", stat: "score", min: 600, text: "Score 600 in Crosstime" },
+  { game: "echo-maze", stat: "score", min: 3000, text: "Score 3,000 in Echo Maze" },
+  { game: "ringfall", stat: "score", min: 3000, text: "Score 3,000 in Ringfall" }
 ];
