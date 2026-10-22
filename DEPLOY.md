@@ -12,7 +12,8 @@
 | `src/assets/`, `src/fonts/`, `src/vendor/`, `src/shots/`, `src/og/`, `src/icons/`, `src/static/` | Site CSS/JS, self-hosted fonts (OFL), three.js, screenshots, social images, icons, favicon |
 | `scripts/build.mjs` | Static generator: `src/` → `dist/` (pages, source viewers, sitemap, `_redirects`, `_headers`, `pa-data.js`) |
 | `worker/arena/` | Separate Cloudflare Worker + Durable Object for live multiplayer (optional) |
-| `functions/` | **Not in the repo yet** — the live `/api/scores` + `/api/players` Pages Functions (D1) |
+| `functions/` | The live Pages Functions: `/api/scores`, `/api/players`, `/api/auth`, `/api/account` (D1, KV fallback, Workers AI name moderation). `functions/_shared/games.js` is the score allow-list |
+| `wrangler.toml` | Pages config and bindings (D1 `SCORES`, KV `SCORES_KV`, `AI`), with separate preview bindings. Ids only, no secrets |
 
 ## Build + test
 
@@ -25,18 +26,27 @@ No npm dependencies. Node 20+.
 
 ## Deploy the site (Pages)
 
-The live leaderboard API is a set of Pages Functions with a D1 binding that currently live only in
-the deploy folder, not in this repo. **Deploying `dist/` without them removes the API.** So:
+`functions/` and `wrangler.toml` are in the repo and are deployed exactly as they are; don't copy in
+anything from elsewhere or edit bindings for a deploy. `wrangler.toml` sets `pages_build_output_dir`,
+so its bindings override the dashboard's: production uses the `promptarcade-scores` D1 database and
+every other branch uses `promptarcade-scores-preview`, so preview test runs never touch the live boards.
 
-1. Copy the existing `functions/` folder (scores + players) into the repo root, unchanged.
-2. Make sure `wrangler.toml` carries the same D1 binding the live project uses (binding name and
-   database id), because a `wrangler.toml` with `pages_build_output_dir` overrides dashboard bindings.
-3. `npm run build && npx wrangler pages deploy dist --project-name=promptarcade`
-   (use `--branch=v3-preview` first for a preview URL).
-4. Check on the deployment: `/api/scores` returns JSON, a game saves a score, `/games/neon-tetris/` redirects.
+Secrets (`SCORE_SALT`, `RESEND_API_KEY`) live only in the Cloudflare dashboard, never in files.
 
-The scores API must accept the new slugs: glowline-arena, ember-swarm, nebula-drop, wordglow,
-block-bloom, gridstorm, deepdelve, skystack (plus the eight existing ones).
+Deploys are done by hand with wrangler, from an up-to-date `main`:
+
+1. `git checkout main && git pull`, then `npm test` (must pass) and `npm run build`.
+2. Preview first:
+   `npx wrangler pages deploy dist --project-name=promptarcade --branch=v3-preview`
+   and check it (`/api/scores/<slug>` returns JSON, the changed games load without console errors).
+3. Production:
+   `npx wrangler pages deploy dist --project-name=promptarcade --branch=main`
+   Note the previous production deployment id first (`npx wrangler pages deployment list
+   --project-name=promptarcade --environment=production`) so you can roll back to it.
+4. Check production: `/api/scores` returns JSON, the changed pages load, `/games/neon-tetris/` redirects.
+   Don't save test scores to the production boards.
+
+A new game needs its slug added to `functions/_shared/games.js`, or `/api/scores` rejects its scores.
 
 ## Deploy multiplayer (optional)
 
