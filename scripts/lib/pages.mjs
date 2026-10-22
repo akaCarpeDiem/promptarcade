@@ -383,7 +383,7 @@ export function terms(ctx) {
 export function contact(ctx) {
   return prose(ctx, "/contact/", "Contact", "Contact PromptArcade.", `<span class="kicker">Contact</span><h1>Contact</h1>
 <p>Questions, bug reports, game ideas, leaderboard issues or takedown requests — one address handles everything.</p>
-<p style="font:800 clamp(20px,3vw,30px) var(--display)"><a href="mailto:${SITE.email}">${SITE.email}</a></p>
+<p style="font:800 clamp(20px,3vw,30px) var(--display);overflow-wrap:anywhere"><a href="mailto:${SITE.email}">${SITE.email}</a></p>
 <h2>Helpful details</h2><ul><li>The game and what you were doing when something went wrong.</li><li>Your browser and device.</li><li>For leaderboard problems: the game, the player name and the approximate time.</li></ul>`);
 }
 export function notFound(ctx) {
