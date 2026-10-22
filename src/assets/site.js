@@ -98,7 +98,7 @@
         const q = inp.value.trim().toLowerCase();
         const hits = DATA.games.filter((g) => !q || (g.title + " " + g.genre + " " + g.tags.join(" ") + " " + g.maker + " " + (g.model || "") + " " + g.tagline).toLowerCase().includes(q));
         sel = Math.min(sel, Math.max(0, hits.length - 1));
-        ul.innerHTML = hits.map((g, i) => `<li><a href="/games/${g.slug}/" class="${i === sel ? "sel" : ""}"><img src="/shots/${g.slug}.webp" alt="" width="64" height="40"/><div><b>${esc(g.title)}</b><span>${esc(g.genre)} · ${esc(g.model || g.maker)}</span></div></a></li>`).join("") || '<li style="padding:18px;color:var(--muted)">No games match.</li>';
+        ul.innerHTML = hits.map((g, i) => `<li><a href="/games/${g.slug}/" class="${i === sel ? "sel" : ""}"><img src="${g.shot || `/shots/${g.slug}.webp`}" alt="" width="64" height="40"/><div><b>${esc(g.title)}</b><span>${esc(g.genre)} · ${esc(g.model || g.maker)}</span></div></a></li>`).join("") || '<li style="padding:18px;color:var(--muted)">No games match.</li>';
       };
       inp.addEventListener("input", () => { sel = 0; paint(); });
       inp.addEventListener("keydown", (e) => {
@@ -331,7 +331,7 @@
     $("#me-days").innerHTML = Array.from({ length: 30 }, (_, i) => { const d = today - 29 + i; return `<i class="${set.has(d) ? "on" : ""} ${d === today ? "today" : ""}" title="${new Date(d * 864e5).toISOString().slice(0, 10)}"></i>`; }).join("");
     // per-game
     const rows = DATA.games.map((g) => ({ g, best: (p.best || {})[g.slug] || 0, plays: (p.plays || {})[g.slug] || 0 })).sort((x, y) => y.plays - x.plays);
-    $("#me-stats").innerHTML = rows.map(({ g, best, plays }) => `<a class="stat" href="/games/${g.slug}/"><img src="/shots/${g.slug}.webp" alt="" loading="lazy" width="72" height="45"/><div><b>${esc(g.title)}</b><span>${best ? "Best " + fmt(best) : "Not played yet"}</span><small>${plays ? plays + " run" + (plays === 1 ? "" : "s") : "Try it"}</small></div></a>`).join("");
+    $("#me-stats").innerHTML = rows.map(({ g, best, plays }) => `<a class="stat" href="/games/${g.slug}/"><img src="${g.shot || `/shots/${g.slug}.webp`}" alt="" loading="lazy" width="72" height="45"/><div><b>${esc(g.title)}</b><span>${best ? "Best " + fmt(best) : "Not played yet"}</span><small>${plays ? plays + " run" + (plays === 1 ? "" : "s") : "Try it"}</small></div></a>`).join("");
     const reset = $("#me-reset");
     if (reset) reset.addEventListener("click", () => {
       if (!confirm("Reset your Arcade Pass on this device? XP, badges and streaks will be cleared. Leaderboard scores stay.")) return;

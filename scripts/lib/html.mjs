@@ -110,7 +110,7 @@ export function card(g, { feature = false, isNew = false, order = 0, vt = false,
   const daily = g.daily;
   const search = [g.title, g.genre, g.tags.join(" "), g.classic || "original", g.credit.maker, g.credit.model || "", g.tagline].join(" ").toLowerCase();
   return `<a class="card${feature ? " feature" : ""} reveal" href="/games/${g.slug}/" data-slug="${g.slug}" data-genre="${esc(g.genre.toLowerCase())}" data-tags="${esc([...g.tags, shelf].join(" "))}" data-maker="${makerClass(g.credit)}" data-title="${esc(g.title)}" data-added="${g.added}" data-order="${order}" data-search="${esc(search)}" style="--a:${g.accent};--b:${g.accent2}">
-  <div class="card-media"><img src="/shots/${g.slug}.webp" alt="${esc(g.title)} gameplay" loading="lazy" decoding="async" width="800" height="500"${vt ? ` style="view-transition-name:shot-${g.slug}"` : ""}/>
+  <div class="card-media"><img src="${g.shot}" alt="${esc(g.title)} gameplay" loading="lazy" decoding="async" width="800" height="500"${vt ? ` style="view-transition-name:shot-${g.slug}"` : ""}/>
     <div class="card-badges">${isNew ? '<span class="chip new">NEW</span>' : ""}${live ? '<span class="chip live">LIVE MULTIPLAYER</span>' : ""}${daily ? '<span class="chip daily">DAILY</span>' : ""}</div>
     <span class="card-play">${ICON.play}</span></div>
   <div class="card-body">
