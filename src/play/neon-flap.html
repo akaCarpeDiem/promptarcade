@@ -46,17 +46,15 @@ window.paConfig = {
     { hi: "#aef2c4", mid: "#2c9b6c", lo: "#0f4446", rim: "#e2fff0" }
   ];
 
-  // sprite frame counts, canopy blob layout, vine flower colours
-  const BRF = 12;
-  // atlas layout of the pre-rendered characters (written by scripts/ptero-models/bake.py)
-  const MODEL = {"ptero":{"frames":24,"cols":6,"cw":226,"ch":291,"ax":121,"ay":179,"ppu":40,"eye":{"x":148,"y":137,"w":54,"h":25,"top":1455,"cols":6}},"bronto":{"frames":12,"cols":4,"cw":325,"ch":254,"sx":60.84,"sy":[63.62,60.52,58.25,57.42,58.25,60.52,63.62,60.52,58.25,57.42,58.25,60.52],"gy":230.5,"ppu":90},"neck":{"w":66,"h":408,"cx":33,"ppu":90},"head":{"cw":147,"ch":189,"ax":81.5,"ay":67.5,"nx":98.08,"ppu":90}};
-  const BR_STUB = new Float32Array(BRF);
+  // canopy blob layout, vine flower colours
+  // atlas layout of the pre-rendered pterodactyl (written by scripts/ptero-models/bake.py)
+  const MODEL = {"ptero":{"frames":24,"cols":6,"cw":170,"ch":264,"ax":93.12,"ay":149.32,"ppu":44,"eye":{"x":79,"y":110,"w":79,"h":66,"top":1320,"cols":6}}};
   const IMG = {};
   let modelsN = 0;
-  for (const k of ["ptero", "bronto", "neck", "head"]) {
+  for (const k of ["ptero"]) {
     const im = new Image();
     im.onload = () => { modelsN++; buildChars(); };
-    im.src = "/games/play/ptero/" + k + ".webp?v=2";
+    im.src = "/games/play/ptero/" + k + ".webp?v=3";
     IMG[k] = im;
   }
   const BLOBS = [[0, 0.05, 0.62], [-0.48, 0.18, 0.46], [0.48, 0.2, 0.46], [-0.24, -0.38, 0.5], [0.26, -0.36, 0.48], [0, -0.48, 0.5], [0, 0.42, 0.5]];
@@ -483,8 +481,7 @@ window.paConfig = {
   }
 
   /* ================= cached sprites =================
-   * The pterodactyl's flap cycle, the brontosaurus's walk cycle and every obstacle part are
-   * painted once per layout into small offscreen canvases at device resolution. Per frame they
+   * The pterodactyl's flap cycle and every obstacle part are painted once per layout into small offscreen canvases at device resolution. Per frame they
    * are only blitted, so drawing allocates nothing. */
   function sprite(w, h, ox, oy, fn) {
     const k = Math.min(DPR, 2), c = document.createElement("canvas");
@@ -495,12 +492,12 @@ window.paConfig = {
   }
   function blit(s, x, y) { ctx.drawImage(s.c, x - s.ox, y - s.oy, s.w, s.h); }
 
-  /* ---------- the characters: pre-rendered 3D clay models ----------
-   * The pterodactyl and the brontosaurus are procedural soft-clay models (smoothly blended rounded
-   * volumes, ray-marched offline with soft shadows, ambient occlusion, a moonlit key and cool rim
-   * lights; see scripts/ptero-models/). They ship as small sprite atlases (MODEL holds the cell
-   * sizes and anchor points) and are resampled once per layout into cached canvases at their exact
-   * on-screen size, so a frame only blits. */
+  /* ---------- the pterodactyl: a pre-rendered 3D clay model ----------
+   * An original procedural soft-clay character (smoothly blended rounded volumes, ray-marched
+   * offline with soft shadows, ambient occlusion, a moonlit key and cool rim lights; see
+   * scripts/ptero-models/). It ships as one small sprite atlas (MODEL holds the cell size and
+   * anchor) and is resampled once per layout into cached canvases at its exact on-screen size, so
+   * a frame only blits. */
   function cut(img, sx, sy, sw, sh, sc, ax, ay) {
     return sprite(sw * sc, sh * sc, ax * sc, ay * sc, (g) => {
       g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
@@ -508,10 +505,10 @@ window.paConfig = {
     });
   }
   function buildChars() {
-    if (!SPR || modelsN < 4) return;
-    const P = MODEL.ptero, B = MODEL.bronto, N = MODEL.neck, Hd = MODEL.head, gw = gateW();
-    // pterodactyl: one model unit is 1.5 bird radii
-    let sc = 1.5 * birdR() / P.ppu;
+    if (!SPR || modelsN < 1) return;
+    const P = MODEL.ptero;
+    // one model unit is 1.6 bird radii (drawn a little larger than the hit circle, never smaller)
+    const sc = 1.6 * birdR() / P.ppu;
     SPR.pt = [];
     SPR.ptEye = [];
     for (let i = 0; i < P.frames; i++) {
@@ -521,14 +518,6 @@ window.paConfig = {
     }
     const d = P.frames;
     SPR.ptDead = cut(IMG.ptero, (d % P.cols) * P.cw, ((d / P.cols) | 0) * P.ch, P.cw, P.ch, sc, P.ax, P.ay);
-    // brontosaurus: one model unit is 0.6 gate widths
-    sc = 0.6 * gw / B.ppu;
-    SPR.br = [];
-    for (let i = 0; i < B.frames; i++) SPR.br.push(cut(IMG.bronto, (i % B.cols) * B.cw, ((i / B.cols) | 0) * B.ch, B.cw, B.ch, sc, B.sx, B.gy));
-    for (let i = 0; i < B.frames; i++) BR_STUB[i] = (B.gy - B.sy[i]) * sc;
-    SPR.neck = cut(IMG.neck, 0, 0, N.w, N.h, sc, N.cx, 0);
-    SPR.bh = [0, 1].map((i) => cut(IMG.head, i * Hd.cw, 0, Hd.cw, Hd.ch, sc, Hd.ax, Hd.ay));
-    SPR.bhNeckX = (Hd.nx - Hd.ax) * sc;
   }
 
 
@@ -608,7 +597,42 @@ window.paConfig = {
     // vine leaves, glowing vine flowers, the spider, amber and glows
     SPR.leafA = sprite(30 * S, 30 * S, 15 * S, 15 * S, (g) => leafShape(g, 0, 0, 13 * S, 5.5 * S, 0.55, "#1d6a56", "#8ff0bc"));
     SPR.leafB = sprite(30 * S, 30 * S, 15 * S, 15 * S, (g) => leafShape(g, 0, 0, 13 * S, 5.5 * S, Math.PI - 0.55, "#1d6a56", "#8ff0bc"));
-    SPR.munch = sprite(24 * S, 24 * S, 12 * S, 12 * S, (g) => leafShape(g, 0, 0, 9 * S, 3.5 * S, 2.5, "#2f8a4a", "#a8f08a"));
+    // hanging moss: a long drape of soft strands with a ragged, softly glowing hem. Drawn
+    // bottom-aligned, so its hem always sits on the gap edge whatever the gap height.
+    SPR.moss = [];
+    for (let v = 0; v < 2; v++) {
+      const mw = 1.1 * gw, mh = H + 80 * S;
+      SPR.moss.push(sprite(mw, mh, mw / 2, 0, (g) => {
+        const Rr = rng(700 + v * 13), n = 21;
+        for (let pass = 0; pass < 2; pass++) for (let i = 0; i < n; i++) {
+          const u = (i + 0.5) / n, sx = (u - 0.5) * 0.9 * gw + (Rr() - 0.5) * 3 * S;
+          const end = mh - 2 * S - Rr() * 10 * S - (i % 3 === 1 ? 4 * S : 0), wv = (Rr() - 0.5) * 6 * S;
+          g.strokeStyle = pass ? (i % 2 ? "#7fc2a6" : "#5aa48e") : "rgba(10,30,40,.55)";
+          g.lineWidth = (pass ? 3.8 : 5.5) * S;
+          g.beginPath(); g.moveTo(sx + (pass ? 0 : 1.5 * S), 0);
+          for (let y = 30 * S; y < end; y += 30 * S) g.lineTo(sx + Math.sin(y / (17 * S) + i) * 2.2 * S + wv * (y / mh), y);
+          g.lineTo(sx + wv, end); g.stroke();
+          if (pass) {
+            g.strokeStyle = "rgba(220,255,240,.35)"; g.lineWidth = 1 * S;
+            g.beginPath(); g.moveTo(sx - 1 * S, mh - 60 * S); g.lineTo(sx + wv - 1 * S, end - 3 * S); g.stroke();
+            glowDot(g, sx + wv, end, 5 * S, "rgba(150,255,220,A)", 0.7);
+            g.fillStyle = "#d8fff0"; g.beginPath(); g.arc(sx + wv, end, 1.3 * S, 0, TAU); g.fill();
+          }
+        }
+      }));
+    }
+    // a bamboo stalk for the webs strung between two of them
+    const bw = 0.13 * gw, bh = H + 80 * S;
+    SPR.bamboo = sprite(bw, bh, bw / 2, 0, (g) => {
+      const lg = g.createLinearGradient(-bw / 2, 0, bw / 2, 0);
+      lg.addColorStop(0, "#a8e0a0"); lg.addColorStop(0.35, "#4f9a62"); lg.addColorStop(1, "#1d4a40");
+      g.fillStyle = lg; g.fillRect(-bw / 2, 0, bw, bh);
+      for (let y = 16 * S; y < bh; y += 24 * S) {
+        g.fillStyle = "rgba(12,40,34,.55)"; g.fillRect(-bw / 2, y, bw, 2 * S);
+        g.fillStyle = "rgba(220,255,210,.4)"; g.fillRect(-bw / 2, y + 2 * S, bw, 1 * S);
+      }
+      g.fillStyle = "rgba(205,228,255,.35)"; g.fillRect(-bw / 2, 0, 1.2 * S, bh);
+    });
     SPR.flower = FLOWERS.map((c) => sprite(22 * S, 22 * S, 11 * S, 11 * S, (g) => {
       g.save(); g.shadowColor = c; g.shadowBlur = 7 * S; g.fillStyle = c;
       for (let k = 0; k < 5; k++) { const a = k / 5 * TAU; g.beginPath(); g.arc(Math.cos(a) * 3.2 * S, Math.sin(a) * 3.2 * S, 2.4 * S, 0, TAU); g.fill(); }
@@ -668,7 +692,6 @@ window.paConfig = {
   function piece(kind) {
     const p = { kind, seed: rand(0, 1000), ph: rand(TAU), v: (Math.random() * 2) | 0 };
     if (kind === "tree" || kind === "branch") p.pal = (Math.random() * LEAF_PAL.length) | 0;
-    if (kind === "bronto") p.blink = rand(1, 4);
     if (kind === "vines") p.flower = (Math.random() * FLOWERS.length) | 0;
     if (kind === "rock") p.v = (Math.random() * 2) | 0;
     p.mass = (Math.random() * 4) | 0;
@@ -683,15 +706,11 @@ window.paConfig = {
     let gmax = Math.max(lt + m, lb - m);
     const move = gatesPassed > 2 && Math.random() < 0.55 + Math.min(0.35, gatesPassed * 0.02);
     const vy = 48;
-    // Pick obstacles that make sense for the gap: a bronto stands on the ground and needs room to
-    // raise its head, and only stretchy things (a bronto's neck, a dangling web or vines) ride a
-    // moving gap.
-    const brontoMax = floorY() - 140 * S - gh / 2;
-    const bronto = brontoMax > gmin + 10 * S && Math.random() < (move ? 0.7 : 0.38);
-    if (bronto) gmax = Math.min(gmax, brontoMax);
+    // Pick obstacles that make sense for the gap: only things that can stretch or slide (dangling
+    // vines, webs and moss, tall trunks and stalks) ride a moving gap.
     const gapY = rand(gmin, gmax);
-    const topKind = move ? choice(["web", "vines"]) : choice(["branch", "branch", "web", "vines"]);
-    const botKind = bronto ? "bronto" : move ? "tree" : choice(["tree", "tree", "rock"]);
+    const topKind = move ? choice(["web", "vines", "moss"]) : choice(["branch", "branch", "web", "vines", "moss"]);
+    const botKind = move ? choice(["tree", "tree", "webpost"]) : choice(["tree", "tree", "rock", "webpost"]);
     gates.push({
       x, gapY, gapH: gh,
       gapVy: move && gmax > gmin ? rand(-vy, vy) * S : 0,
@@ -766,7 +785,7 @@ window.paConfig = {
     squawk(0.8);
     const px = playerX();
     // a puff of leaves (or web strands) and cartoon stars
-    const leafy = what === "web" ? ["#ffffff", "#dfe6ff"] : what === "bronto" ? ["#86e6da", "#2aa2a0"] : what === "rock" ? ["#b8c2f6", "#6a72ba"] : ["#2fa68f", "#8ff0bc", "#4fa64e"];
+    const leafy = what === "web" || what === "webpost" ? ["#ffffff", "#dfe6ff"] : what === "moss" ? ["#7fc2a6", "#d8fff0", "#5aa48e"] : what === "rock" ? ["#b8c2f6", "#6a72ba"] : ["#2fa68f", "#8ff0bc", "#4fa64e"];
     for (let i = 0; i < 14; i++) debris.push({ x: px, y: b.y, vx: rand(-220, 160) * S, vy: rand(-260, 40) * S, a: rand(TAU), va: rand(-9, 9), s: rand(4, 8) * S, c: choice(leafy), life: rand(0.8, 1.4) });
     fx.burst(px, b.y, { n: 14, colors: ["#fff3a8", "#ffd35c", "#ffffff"], speed: 240, life: 0.6, size: 3, shape: "spark" });
     texts.add(px, b.y - 24 * S, "BONK!", { color: "#fff3a8", size: 30, life: 0.9, vy: -30 });
@@ -781,21 +800,23 @@ window.paConfig = {
   }
   function circleCircle(ax, ay, ar, bx, by, br) { const dx = ax - bx, dy = ay - by, rr = ar + br; return dx * dx + dy * dy < rr * rr; }
 
-  // Hit shapes follow what's drawn: trunks and necks are narrow, crowns and heads are round.
-  // A bronto's head and neck keep their original shapes; its body is a rect a little inside the
-  // rounded back, plus a lower one for the short tail.
+  // Hit shapes follow what's drawn: trunks are narrow, crowns are round, a hanging web is its round
+  // disc of strands (not the empty corners round it), moss is its drape down to the hem, and a web
+  // strung between two stalks is its disc plus the silk fence below it.
+  function webR(gw, len) { return Math.min(0.58 * gw * 1.05, len * 0.5); }
   function collideGate(g, py) {
     const r = birdR() * 0.92, px = playerX(), gw = gateW(), x = g.x;
-    if (px + r < x - 0.7 * gw || px - r > x + 1.8 * gw) return null;
+    if (px + r < x - 0.75 * gw || px - r > x + 0.75 * gw) return null;
     const gt = g.gapY - g.gapH / 2, gb = g.gapY + g.gapH / 2, tk = g.top.kind, bk = g.bot.kind;
     if (tk === "branch") { const R = gw * 0.5; if (circleRect(px, py, r, x - 0.2 * gw, 0, 0.4 * gw, gt - R) || circleCircle(px, py, r, x, gt - R, R * 0.96)) return tk; }
-    else if (tk === "web") { if (circleRect(px, py, r, x - 0.58 * gw, 0, 1.16 * gw, gt)) return tk; }
+    else if (tk === "web") { const wr = webR(gw, gt), cy = gt - wr; if (circleRect(px, py, r, x - 0.58 * gw, 0, 1.16 * gw, cy) || circleCircle(px, py, r, x, cy, wr * 0.96)) return tk; }
+    else if (tk === "moss") { if (circleRect(px, py, r, x - 0.46 * gw, 0, 0.92 * gw, gt - 6 * S)) return tk; }
     else if (circleRect(px, py, r, x - 0.48 * gw, 0, 0.96 * gw, gt)) return tk;
     if (bk === "tree") { const R = gw * 0.6; if (circleCircle(px, py, r, x, gb + R, R * 0.95) || circleRect(px, py, r, x - 0.21 * gw, gb + R, 0.42 * gw, H - gb - R)) return bk; }
     else if (bk === "rock") { if (circleCircle(px, py, r, x, gb + 0.32 * gw, 0.32 * gw) || circleRect(px, py, r, x - 0.4 * gw, gb + 0.22 * gw, 0.8 * gw, H - gb)) return bk; }
     else {
-      const hr = gw * 0.4;
-      if (circleCircle(px, py, r, x - 0.06 * gw, gb + hr, hr) || circleRect(px, py, r, x - 0.21 * gw, gb + hr, 0.42 * gw, H - gb - hr) || circleRect(px, py, r, x - 0.3 * gw, floorY() - 1.1 * gw, 1.45 * gw, H) || circleRect(px, py, r, x + 1.15 * gw, floorY() - 0.8 * gw, 0.5 * gw, H)) return bk;
+      const wr = 0.5 * gw, cy = gb + wr;
+      if (circleCircle(px, py, r, x, cy, wr * 0.96) || circleRect(px, py, r, x - 0.6 * gw, cy - 0.12 * gw, 1.2 * gw, H)) return bk;
     }
     return null;
   }
@@ -1006,24 +1027,8 @@ window.paConfig = {
   }
   const SPOKES = 9, SPC = new Float32Array(SPOKES), SPS = new Float32Array(SPOKES);
   for (let i = 0; i < SPOKES; i++) { const a = i / SPOKES * TAU + 0.2; SPC[i] = Math.cos(a); SPS[i] = Math.sin(a); }
-  function drawVines(x, tip, p, t, web) {
-    const gw = gateW(), n = web ? 4 : 6, half = (web ? 0.58 : 0.48) * gw, anchor = 0;
-    if (tip - anchor < 2) return;
-    ctx.lineCap = "round";
-    for (let i = 0; i < n; i++) {
-      const vx = x - half + (2 * half) * (i / (n - 1)), end = tip - (web ? 0 : (i % 3) * 3 * S) - 2 * S;
-      const sw = Math.sin(t * 1.6 + p.ph + i * 0.9) * 2.5 * S;
-      ctx.strokeStyle = i % 2 ? "#1f6a56" : "#2a8068"; ctx.lineWidth = 4 * S;
-      ctx.beginPath(); ctx.moveTo(vx, anchor - 6 * S); ctx.bezierCurveTo(vx + sw, anchor + (end - anchor) * 0.35, vx - sw, anchor + (end - anchor) * 0.7, vx + sw * 0.4, end); ctx.stroke();
-      for (let y = anchor + 12 * S + (i % 2) * 7 * S; y < end - 6 * S; y += 13 * S) {
-        const k = (y - anchor) / (end - anchor), lx = vx + sw * Math.sin(k * Math.PI) * 0.6;
-        blit((i + Math.round(y / 13)) % 2 ? SPR.leafA : SPR.leafB, lx, y);
-      }
-      if (!web) blit(SPR.flower[p.flower], vx + sw * 0.4, end - 3 * S);
-    }
-    if (!web) return;
-    // the web, strung across the bottom of the curtain, silvered by the moon
-    const r = Math.min(half * 1.05, (tip - anchor) * 0.5), cy = tip - r;
+  function drawWeb(x, cy, r, t, p, hang) {
+    // a round web silvered by the moon, with dew glints and a little spider
     ctx.strokeStyle = "rgba(220,232,255,.85)"; ctx.lineWidth = 1.1 * S;
     ctx.beginPath();
     for (let i = 0; i < SPOKES; i++) { ctx.moveTo(x, cy); ctx.lineTo(x + SPC[i] * r, cy + SPS[i] * r); }
@@ -1040,10 +1045,10 @@ window.paConfig = {
       ctx.stroke();
     }
     ctx.fillStyle = "rgba(235,242,255,.95)";
-    for (let i = 0; i < 4; i++) { const a = t * 0.8 + i * 1.7, rr = r * (0.3 + (i % 3) * 0.22); ctx.beginPath(); ctx.arc(x + Math.cos(a) * rr, cy + Math.sin(a) * rr, 1.2 * S, 0, TAU); ctx.fill(); }
-    // a sleepy little spider bobbing on its thread
-    const sy = cy + r * 0.45 + Math.sin(t * 2.2 + p.ph) * 4 * S, sr = 6.5 * S;
-    ctx.strokeStyle = "rgba(220,232,255,.85)"; ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x, sy); ctx.stroke();
+    for (let i = 0; i < 4; i++) { const a = t * 0.8 + i * 1.7 + p.ph, rr = r * (0.3 + (i % 3) * 0.22); ctx.beginPath(); ctx.arc(x + Math.cos(a) * rr, cy + Math.sin(a) * rr, 1.2 * S, 0, TAU); ctx.fill(); }
+    // the spider: dangling on a thread under a hanging web, sitting near the hub of a standing one
+    const sy = hang ? cy + r * 0.45 + Math.sin(t * 2.2 + p.ph) * 4 * S : cy - r * 0.1 + Math.sin(t * 1.3 + p.ph) * 2 * S, sr = 6.5 * S;
+    if (hang) { ctx.strokeStyle = "rgba(220,232,255,.85)"; ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x, sy); ctx.stroke(); }
     ctx.strokeStyle = "#2a1a5a"; ctx.lineWidth = 1.6 * S;
     ctx.beginPath();
     for (let i = 0; i < 4; i++) for (let sg = -1; sg <= 1; sg += 2) {
@@ -1054,48 +1059,64 @@ window.paConfig = {
     ctx.stroke();
     blit(SPR.spider, x, sy);
   }
+  function drawVines(x, tip, p, t, web) {
+    const gw = gateW(), n = web ? 4 : 6, half = (web ? 0.58 : 0.48) * gw, anchor = 0;
+    if (tip - anchor < 2) return;
+    // a web hangs below its curtain of vines: the vines stop at the web's hub
+    const wr = web ? webR(gw, tip - anchor) : 0, cy = tip - wr;
+    ctx.lineCap = "round";
+    for (let i = 0; i < n; i++) {
+      const vx = x - half + (2 * half) * (i / (n - 1)), end = web ? cy + (i === 0 || i === n - 1 ? -2 * S : 2 * S) : tip - (i % 3) * 3 * S - 2 * S;
+      if (end - anchor < 4 * S) continue;
+      const sw = Math.sin(t * 1.6 + p.ph + i * 0.9) * 2.5 * S;
+      ctx.strokeStyle = i % 2 ? "#1f6a56" : "#2a8068"; ctx.lineWidth = 4 * S;
+      ctx.beginPath(); ctx.moveTo(vx, anchor - 6 * S); ctx.bezierCurveTo(vx + sw, anchor + (end - anchor) * 0.35, vx - sw, anchor + (end - anchor) * 0.7, vx + sw * 0.4, end); ctx.stroke();
+      for (let y = anchor + 12 * S + (i % 2) * 7 * S; y < end - 6 * S; y += 13 * S) {
+        const k = (y - anchor) / (end - anchor), lx = vx + sw * Math.sin(k * Math.PI) * 0.6;
+        blit((i + Math.round(y / 13)) % 2 ? SPR.leafA : SPR.leafB, lx, y);
+      }
+      if (!web) blit(SPR.flower[p.flower], vx + sw * 0.4, end - 3 * S);
+    }
+    if (web) drawWeb(x, cy, wr, t, p, true);
+  }
+  function drawMoss(x, tip, p, t) {
+    const s = SPR.moss[p.v], h = Math.min(tip, s.h);
+    if (h < 1) return;
+    const sw = Math.sin(t * 1.2 + p.ph) * 1.5 * S;
+    ctx.drawImage(s.c, 0, (s.h - h) * s.k, s.c.width, h * s.k, x - s.ox + sw, tip - h, s.w, h);
+  }
+  function drawWebPost(x, gb, p, t) {
+    const gw = gateW(), wr = 0.5 * gw, cy = gb + wr, top = cy - 0.12 * gw;
+    for (let sg = -1; sg <= 1; sg += 2) {
+      const sx = x + sg * 0.5 * gw;
+      drawCrop(SPR.bamboo, sx, top, H, SPR.bamboo.w);
+      blit(sg < 0 ? SPR.leafB : SPR.leafA, sx + sg * 5 * S, top + 4 * S);
+      blit(sg < 0 ? SPR.leafA : SPR.leafB, sx - sg * 4 * S, top + 14 * S);
+    }
+    // guy lines from the web's rim down to the stalks
+    ctx.strokeStyle = "rgba(220,232,255,.6)"; ctx.lineWidth = 1 * S;
+    ctx.beginPath(); ctx.moveTo(x - 0.5 * gw, top + 2 * S); ctx.lineTo(x - wr * 0.7, cy - wr * 0.7); ctx.moveTo(x + 0.5 * gw, top + 2 * S); ctx.lineTo(x + wr * 0.7, cy - wr * 0.7);
+    ctx.moveTo(x - 0.5 * gw, cy + wr * 0.9); ctx.lineTo(x - wr * 0.7, cy + wr * 0.7); ctx.moveTo(x + 0.5 * gw, cy + wr * 0.9); ctx.lineTo(x + wr * 0.7, cy + wr * 0.7); ctx.stroke();
+    // silk threads strung between the stalks all the way down, so the space below the web reads closed
+    ctx.strokeStyle = "rgba(215,228,255,.5)"; ctx.lineWidth = 1 * S;
+    ctx.beginPath();
+    for (let y = cy + wr * 0.95, i = 0; y < H; y += 16 * S, i++) { const sag = 4 * S + (i % 2) * 2 * S; ctx.moveTo(x - 0.5 * gw, y); ctx.quadraticCurveTo(x, y + sag, x + 0.5 * gw, y + (i % 3 - 1) * 2 * S); }
+    ctx.stroke();
+    drawWeb(x, cy, wr, t, p, false);
+  }
   function drawRock(x, gb, p) {
     const gw = gateW();
     drawCrop(SPR.stones[p.v], x, gb + 0.3 * gw, H, SPR.stones[p.v].w);
     blit(SPR.rockCap, x, gb);
   }
-  function drawBronto(x, gb, p, t) {
-    if (!SPR.br) return;
-    const gw = gateW(), hr = gw * 0.4, fy = floorY(), u = 0.6 * gw;
-    const fi = ((((t * 0.55 + p.ph / TAU) % 1) * BRF) | 0) % BRF;
-    const sway = Math.sin(t * 1.3 + p.ph) * 3 * S;
-    const by = fy - 0.17 * gw;  // feet stand on the grass lip
-    // the neck: a seamless clay tube tile, laid in thin slices along a gently swaying curve from the
-    // shoulder up to the head. Drawn first, so the shoulder and the head cover its two ends.
-    const hx = x - 0.06 * gw + sway * 0.5, hy = gb + hr;
-    const sx = x, sy = by - BR_STUB[fi];
-    const tx = hx + SPR.bhNeckX, ty = hy + 1.0 * u;
-    if (sy > ty) {
-      const ns = SPR.neck, k = ns.k, len = sy - ty;
-      const n = Math.max(2, Math.ceil(ns.h / (9 * S))), sl = ns.h / n;  // slice height divides the tile
-      const x1 = sx + 6 * S, x2 = tx - 6 * S + sway;
-      let acc = 0;
-      while (acc < len) {
-        const hgt = Math.min(sl, len - acc), q = (acc + hgt * 0.5) / len, v = 1 - q;
-        const cx = v * v * v * sx + 3 * v * v * q * x1 + 3 * v * q * q * x2 + q * q * q * tx;
-        const wk = 1 - 0.14 * q, w = ns.w * wk;
-        const src = (ns.h - ((acc % ns.h) + hgt)) ;
-        ctx.drawImage(ns.c, 0, Math.max(0, src) * k, ns.c.width, hgt * k, cx - ns.ox * wk, sy - acc - hgt - 0.5, w, hgt + 1);
-        acc += hgt;
-      }
-    }
-    blit(SPR.br[fi], sx, by);
-    const chew = Math.max(0, Math.sin(t * 5 + p.ph)) * 2 * S;
-    blit(SPR.munch, hx - 0.56 * gw, hy + 0.14 * gw + chew * 0.5);
-    blit(SPR.bh[((t + p.blink) % 4) < 0.16 ? 1 : 0], hx, hy);
-  }
   function drawGate(g, t) {
     const gt = g.gapY - g.gapH / 2, gb = g.gapY + g.gapH / 2, x = g.x;
     const tk = g.top.kind, bk = g.bot.kind;
-    if (bk === "bronto") drawBronto(x, gb, g.bot, t);
+    if (bk === "webpost") drawWebPost(x, gb, g.bot, t);
     else if (bk === "rock") drawRock(x, gb, g.bot);
     else drawTree(x, gb, g.bot, t);
     if (tk === "branch") drawBranch(x, gt, g.top, t);
+    else if (tk === "moss") drawMoss(x, gt, g.top, t);
     else drawVines(x, gt, g.top, t, tk === "web");
     blit(SPR.mass[g.top.mass], x, 0);
   }
