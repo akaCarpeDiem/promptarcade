@@ -1,0 +1,353 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ptero Flap character renderer</title></head><body style="margin:0;background:#223">
+<script>
+/* Ptero Flap characters: procedural signed-distance "clay" models (smooth-blended rounded
+ * volumes), ray-marched in WebGL with soft shadows, ambient occlusion, wrap/sheen shading, a
+ * moonlit key light and cool rim lights, then supersampled down into transparent sprite frames. */
+const FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform float uPPU; uniform vec2 uCen; uniform float uYaw, uPitch;
+uniform int uChar; uniform float uWing, uBend, uPhase, uLid, uBonk, uNeckL, uFade;
+out vec4 frag;
+#define PI 3.14159265
+float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
+float smax(float a, float b, float k){ return -smin(-a, -b, k); }
+float sdE(vec3 p, vec3 r){ float k0 = length(p / r), k1 = length(p / (r * r)); return k0 * (k0 - 1.0) / max(k1, 1e-5); }
+float sdS(vec3 p, float r){ return length(p) - r; }
+float sdCap(vec3 p, vec3 a, vec3 b, float r){ vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
+float sdRC(vec3 p, vec3 a, vec3 b, float r1, float r2){
+  vec3 ba = b - a; float l2 = dot(ba, ba), rr = r1 - r2, a2 = l2 - rr * rr, il2 = 1.0 / l2;
+  vec3 pa = p - a; float y = dot(pa, ba), z = y - l2; vec3 xv = pa * l2 - ba * y; float x2 = dot(xv, xv), y2 = y * y * l2, z2 = z * z * l2;
+  float k = sign(rr) * rr * rr * x2;
+  if (sign(z) * a2 * z2 > k) return sqrt(x2 + z2) * il2 - r2;
+  if (sign(y) * a2 * y2 < k) return sqrt(x2 + y2) * il2 - r1;
+  return (sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
+}
+float sdRCyl(vec3 p, float ra, float rb, float h){ vec2 d = vec2(length(p.xz) - 2.0 * ra + rb, abs(p.y) - h); return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - rb; }
+vec3 rotX(vec3 v, float a){ float c = cos(a), s = sin(a); return vec3(v.x, c * v.y - s * v.z, s * v.y + c * v.z); }
+vec3 rotZ(vec3 v, float a){ float c = cos(a), s = sin(a); return vec3(c * v.x - s * v.y, s * v.x + c * v.y, v.z); }
+float tri(float x){ return abs(fract(x) - 0.5) * 2.0; }
+float sdSeg2(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h); }
+
+// material ids
+const float M_BODY = 1., M_TEAL = 2., M_BEAK = 3., M_FOOT = 4., M_EYE = 5., M_LID = 6., M_INK = 7., M_MEMB = 8., M_RIDGE = 9., M_BELLY = 10.;
+float gM; vec3 gEye; float gSide;
+void U(inout float d, float d2, float m, float k){ if (d2 < d) gM = m; d = k > 0.0 ? smin(d, d2, k) : min(d, d2); }
+
+/* ---------------- pterodactyl ---------------- */
+const vec3 HC = vec3(1.22, 0.88, 0.0);
+float wingD(vec3 p, float side, out float wm){
+  vec3 q = p - vec3(0.05, 0.42, side * 0.45); q.z *= side;
+  if (length(q) > 4.6) { wm = M_MEMB; return length(q) - 4.3; }
+  q = rotX(q, uWing);                 // swing about the body axis
+  if (q.z > 1.6) { q -= vec3(0.0, 0.0, 1.6); q = rotX(q, uBend); q += vec3(0.0, 0.0, 1.6); }
+  q.z /= 1.12;
+  q.y -= 0.2 * sin(clamp(q.z / 3.3, 0.0, 1.0) * PI) - 0.06 * q.x;
+  vec2 w = vec2(q.x, q.z);
+  // membrane planform: shoulder, elbow, wrist, tip, finger ends, hip
+  vec2 P[8]; P[0] = vec2(0.38, 0.0); P[1] = vec2(0.36, 0.9); P[2] = vec2(0.2, 1.6); P[3] = vec2(-1.35, 3.25);
+  P[4] = vec2(-1.05, 2.4); P[5] = vec2(-1.08, 1.5); P[6] = vec2(-0.95, 0.7); P[7] = vec2(-0.8, 0.0);
+  float dd = 1e3, s = 1.0;
+  for (int i = 0, j = 7; i < 8; j = i, i++) {
+    vec2 e = P[j] - P[i], v = w - P[i], b = v - e * clamp(dot(v, e) / dot(e, e), 0.0, 1.0);
+    dd = min(dd, dot(b, b));
+    bvec3 c = bvec3(w.y >= P[i].y, w.y < P[j].y, e.x * v.y > e.y * v.x);
+    if (all(c) || all(not(c))) s *= -1.0;
+  }
+  float d2 = s * sqrt(dd);
+  // scalloped trailing edge between the fingers
+  d2 = max(d2, -(length(w - vec2(-1.55, 2.85)) - 0.46));
+  d2 = max(d2, -(length(w - vec2(-1.45, 1.95)) - 0.42));
+  d2 = max(d2, -(length(w - vec2(-1.32, 1.1)) - 0.36));
+  float sag = 0.12 * smoothstep(0.0, 0.6, -d2) - 0.04 * w.y;
+  float y = q.y + sag;
+  vec2 t = vec2(d2, abs(y) - 0.018);
+  float dm = (min(max(t.x, t.y), 0.0) + length(max(t, 0.0)) - 0.012) * 0.9;
+  wm = M_MEMB;
+  // arm bones along the leading edge, and finger ridges across the membrane
+  vec3 S0 = vec3(0.38, 0.0, 0.0), E = vec3(0.36, 0.0, 0.9), Wr = vec3(0.2, 0.0, 1.6), T = vec3(-1.35, 0.0, 3.25);
+  vec3 qa = vec3(q.x, q.y + 0.04 * w.y, q.z);
+  float arm = min(sdRC(qa, S0, E, 0.13, 0.09), sdRC(qa, E, Wr, 0.09, 0.075));
+  arm = min(arm, sdRC(qa, Wr, T, 0.07, 0.022));
+  float rid = min(sdRC(qa, Wr, vec3(-1.05, 0.0, 2.4), 0.04, 0.018), sdRC(qa, Wr, vec3(-1.08, 0.0, 1.5), 0.035, 0.016));
+  rid = min(rid, sdRC(qa, E, vec3(-0.95, 0.0, 0.7), 0.03, 0.015));
+  float claw = sdRC(qa, Wr + vec3(0.04, 0.0, 0.0), Wr + vec3(0.3, 0.02, -0.05), 0.05, 0.012);
+  float d = dm;
+  if (rid < d) wm = M_RIDGE; d = smin(d, rid, 0.04);
+  if (arm < d) wm = M_BODY; d = smin(d, arm, 0.05);
+  if (claw < d) wm = M_TEAL; d = min(d, claw);
+  // teal bands on the membrane next to the arm
+  if (wm == M_MEMB && w.x > -0.12 + 0.05 * w.y && w.y > 0.35 && w.y < 1.4 && fract(w.y * 2.2) < 0.32) wm = M_TEAL;
+  return d;
+}
+float ptero(vec3 p){
+  gM = M_BODY;
+  vec3 bq = abs(p - vec3(0.6, 0.45, 0.0)) - vec3(2.9, 1.7, 1.2);
+  float d = length(max(bq, 0.0)) + 0.05;
+  if (d < 0.3) {
+    d = sdE(p, vec3(0.98, 0.8, 0.78));
+    U(d, sdE(p - vec3(0.2, -0.22, 0.0), vec3(0.85, 0.62, 0.72)), M_BODY, 0.3);
+    U(d, sdRC(p, vec3(0.55, 0.25, 0.0), vec3(1.05, 0.72, 0.0), 0.42, 0.36), M_BODY, 0.3);
+    U(d, sdE(p - HC, vec3(0.62, 0.56, 0.55)), M_BODY, 0.2);
+    // long pointed beak, slightly open when bonked
+    float bo = uBonk * 0.12;
+    U(d, sdRC(p, HC + vec3(0.36, -0.06, 0.0), HC + vec3(1.6, -0.36 + bo * 0.4, 0.0), 0.22, 0.03), M_BEAK, 0.12);
+    U(d, sdRC(p, HC + vec3(0.34, -0.22, 0.0), HC + vec3(1.22, -0.46 - bo, 0.0), 0.15, 0.03), M_BEAK, 0.07);
+    // swept-back crest, a flat fin
+    vec3 q = p; q.z *= 2.4;
+    U(d, sdRC(q, HC + vec3(-0.15, 0.42, 0.0), HC + vec3(-1.05, 0.85, 0.0), 0.2, 0.04) / 2.4, M_TEAL, 0.14);
+    // little back spikes
+    for (int i = 0; i < 4; i++) {
+      float fi = float(i), x = -0.7 + fi * 0.28, yb = 0.6 + 0.12 * sin((fi + 0.5) / 4.0 * PI);
+      vec3 qs = p; qs.z *= 1.8;
+      U(d, sdRC(qs, vec3(x, yb, 0.0), vec3(x - 0.2, yb + 0.26, 0.0), 0.11, 0.02) / 1.8, M_TEAL, 0.06);
+    }
+    // tail with a teal spade
+    U(d, sdRC(p, vec3(-0.85, 0.05, 0.0), vec3(-2.0, -0.12, 0.0), 0.17, 0.035), M_BODY, 0.18);
+    vec3 qt = p - vec3(-2.08, -0.13, 0.0); qt.z *= 3.5;
+    U(d, sdE(qt, vec3(0.2, 0.13, 0.13)) / 3.5, M_TEAL, 0.04);
+    // tiny tucked feet
+    U(d, sdE(p - vec3(-0.05, -0.8, 0.26), vec3(0.2, 0.1, 0.13)), M_FOOT, 0.08);
+    U(d, sdE(p - vec3(0.15, -0.78, -0.24), vec3(0.2, 0.1, 0.13)), M_FOOT, 0.08);
+    // big round sleepy eyes with heavy lids and little brows
+    for (int i = 0; i < 2; i++) {
+      float sd = i == 0 ? 1.0 : -1.0;
+      vec3 ec = HC + vec3(0.26, 0.2, sd * 0.34);
+      float eb = sdS(p - ec, 0.3);
+      if (eb < d) { gM = M_EYE; gEye = ec; gSide = sd; } d = min(d, eb);
+      vec3 nl = normalize(vec3(-0.12 + uBonk * 0.3, 1.0, sd * 0.1));
+      float lid = max(sdS(p - ec, 0.322), -(dot(p - ec, nl) - uLid));
+      if (lid < d) { gM = M_LID; gEye = ec; gSide = sd; } d = smin(d, lid, 0.015);
+      
+    }
+  }
+  float wm, w1 = wingD(p, 1.0, wm);
+  if (w1 < d) gM = wm; d = min(d, w1);
+  float w2 = wingD(p, -1.0, wm);
+  if (w2 < d) gM = wm; d = min(d, w2);
+  return d;
+}
+
+/* ---------------- brontosaurus (faces -x) ---------------- */
+vec3 gFeet[4];
+float bronto(vec3 p){
+  gM = M_BODY;
+  float ph = uPhase * 2.0 * PI, bob = abs(sin(ph)) * 0.07;
+  vec3 pb = p - vec3(0.0, bob + 0.24, 0.0);
+  float d = sdE(pb - vec3(0.1, 0.95, 0.0), vec3(1.3, 0.56, 0.74));
+  U(d, sdE(pb - vec3(0.3, 1.12, 0.0), vec3(0.95, 0.42, 0.62)), M_BODY, 0.35);
+  U(d, sdE(pb - vec3(-0.72, 1.05, 0.0), vec3(0.6, 0.52, 0.58)), M_BODY, 0.3);
+  if (uChar == 1) U(d, sdRC(pb, vec3(-0.6, 1.15, 0.0), vec3(-0.78, 1.95, 0.0), 0.44, 0.36), M_BODY, 0.28);
+  U(d, sdRC(pb, vec3(1.15, 1.0, 0.0), vec3(2.25, 0.62, sin(ph) * 0.12), 0.36, 0.07), M_BODY, 0.28);
+  for (int i = 0; i < 4; i++) {
+    float lx = i < 2 ? -0.75 : 0.85, lz = (i == 0 || i == 3) ? 0.42 : -0.42;
+    float off = (i == 0 || i == 3) ? 0.0 : PI;
+    float sw = sin(ph + off) * 0.2, lift = max(0.0, cos(ph + off)) * 0.12;
+    vec3 hip = vec3(lx, 1.02 + bob, lz), ft = vec3(lx + sw, 0.17 + lift, lz);
+    gFeet[i] = ft;
+    U(d, sdRC(p, ft, hip, 0.235, 0.29), M_BODY, 0.14);
+    U(d, sdRCyl(p - ft + vec3(0.03, 0.03, 0.0), 0.15, 0.08, 0.11), M_BODY, 0.08);
+  }
+  return d;
+}
+float neck(vec3 p){
+  gM = M_BODY;
+  return sdCap(p, vec3(0.0, 0.0, 0.0), vec3(0.0, uNeckL, 0.0), 0.34);
+}
+float bhead(vec3 p){
+  gM = M_BODY;
+  float d = sdE(p - vec3(0.12, 0.1, 0.0), vec3(0.6, 0.52, 0.5));
+  U(d, sdE(p - vec3(-0.42, -0.1, 0.0), vec3(0.5, 0.38, 0.4)), M_BODY, 0.22);
+  U(d, sdRC(p, vec3(0.22, -1.4, 0.0), vec3(0.16, -0.2, 0.0), 0.29, 0.3), M_BODY, 0.25);
+  for (int i = 0; i < 2; i++) {
+    float sd = i == 0 ? 1.0 : -1.0;
+    vec3 ec = vec3(-0.02, 0.42, sd * 0.3);
+    float eb = sdS(p - ec, 0.23);
+    if (eb < d) { gM = M_EYE; gEye = ec; gSide = sd; } d = min(d, eb);
+    vec3 nl = normalize(vec3(0.25, 1.0, sd * 0.25));
+    float lid = max(sdS(p - ec, 0.25), -(dot(p - ec, nl) - uLid));
+    if (lid < d) { gM = M_LID; gEye = ec; gSide = sd; } d = smin(d, lid, 0.015);
+  }
+  // nostrils
+  float ns = min(sdS(p - vec3(-0.86, 0.02, 0.15), 0.05), sdS(p - vec3(-0.86, 0.02, -0.15), 0.05));
+  d = smax(d, -ns, 0.03);
+  return d;
+}
+float map(vec3 p){
+  if (uChar == 0) return ptero(p);
+  if (uChar == 1) return bronto(p);
+  if (uChar == 2) return neck(p);
+  return bhead(p);
+}
+vec3 nrm(vec3 p){
+  const vec2 k = vec2(1, -1); float h = 0.004;
+  float m = gM; vec3 e = gEye; float s = gSide;
+  vec3 n = normalize(k.xyy * map(p + k.xyy * h) + k.yyx * map(p + k.yyx * h) + k.yxy * map(p + k.yxy * h) + k.xxx * map(p + k.xxx * h));
+  gM = m; gEye = e; gSide = s; return n;
+}
+float shadow(vec3 ro, vec3 rd){
+  float res = 1.0, t = 0.03;
+  for (int i = 0; i < 40; i++) { float h = map(ro + rd * t); res = min(res, 10.0 * h / t); t += clamp(h, 0.02, 0.25); if (res < 0.01 || t > 6.0) break; }
+  return clamp(res, 0.0, 1.0);
+}
+float ao(vec3 p, vec3 n){
+  float o = 0.0, s = 1.0;
+  for (int i = 1; i <= 5; i++) { float h = 0.04 + 0.11 * float(i); o += (h - map(p + n * h)) * s; s *= 0.7; }
+  return clamp(1.0 - 1.6 * o, 0.0, 1.0);
+}
+vec3 srgb2lin(vec3 c){ return pow(c, vec3(2.2)); }
+vec3 hex(float r, float g, float b){ return srgb2lin(vec3(r, g, b) / 255.0); }
+void main(){
+  vec2 px = (gl_FragCoord.xy - 0.5 * uRes) / uPPU + uCen;
+  float cy = cos(uYaw), sy = sin(uYaw), cp = cos(uPitch), sp = sin(uPitch);
+  vec3 fw = -vec3(sy * cp, sp, cy * cp);
+  vec3 rt = normalize(cross(fw, vec3(0, 1, 0))), up = cross(rt, fw);
+  vec3 ro = rt * px.x + up * px.y - fw * 12.0, rd = fw;
+  float t = 0.0, d = 1.0; bool hit = false;
+  for (int i = 0; i < 160; i++) { d = map(ro + rd * t); if (d < 0.0012) { hit = true; break; } t += d * 0.9; if (t > 24.0) break; }
+  if (!hit) { frag = vec4(0); return; }
+  vec3 p = ro + rd * t; map(p); float m = gM; vec3 ec = gEye; float side = gSide;
+  vec3 n = nrm(p), v = -rd;
+  if (dot(n, v) < 0.0 && (m == M_MEMB || m == M_RIDGE || m == M_TEAL)) n = -n;
+  // --- material colours ---
+  vec3 base; float spec = 0.22, gloss = 24.0, sheen = 0.25;
+  bool isP = uChar == 0;
+  if (isP) {
+    if (m == M_BODY) {
+      base = hex(228., 224., 250.);
+      // teal stripes over the back and shoulders
+      float st = fract((p.x + 0.35 * p.z * p.z - 0.25 * p.y) * 2.0 + 0.1);
+      if (p.y > 0.42 - 0.15 * p.x && p.x < 0.45 && p.x > -0.75 && st < 0.24) base = hex(46., 196., 186.);
+      if (p.y < -0.35 && p.x > -0.6) base = mix(base, hex(250., 248., 255.), 0.6);
+    } else if (m == M_TEAL) { base = hex(42., 192., 182.); spec = 0.3; }
+    else if (m == M_BEAK) { base = hex(232., 228., 246.); float tip = smoothstep(2.6, 3.1, p.x); base = mix(base, hex(140., 214., 214.), tip * 0.6); spec = 0.35; gloss = 40.0; }
+    else if (m == M_FOOT) base = hex(150., 142., 214.);
+    else if (m == M_MEMB) {
+      base = hex(182., 184., 240.); sheen = 0.1;
+      // fine veins fanning out from the wrist, and a paler trailing rim
+      vec3 q = p - vec3(0.05, 0.42, 0.0); float zz = abs(q.z) - 0.45;
+      float ang = atan(zz - 1.6, q.x - 0.2);
+      if (abs(fract(ang * 5.0) - 0.5) < 0.07) base = hex(146., 146., 216.);
+    }
+    else if (m == M_RIDGE) base = hex(196., 186., 236.);
+    else if (m == M_LID) base = hex(226., 222., 248.);
+    else if (m == M_INK) base = hex(30., 24., 56.);
+    else base = hex(252., 252., 255.);
+  } else {
+    vec3 teal = hex(30., 128., 132.), cream = hex(236., 234., 222.);
+    base = teal;
+    if (m == M_BODY) {
+      if (uChar == 1) {
+        float bob = abs(sin(uPhase * 2.0 * PI)) * 0.07; vec3 pb = p - vec3(0.0, bob + 0.24, 0.0);
+        float jag = 0.07 * (tri(pb.x * 3.2 + pb.y * 1.7) - 0.5);
+        // cream belly and chest, with a jagged edge
+        float bel = dot(pb - vec3(-0.55, 0.92, 0.0), normalize(vec3(-0.55, -1.0, 0.0)));
+        if (bel > 0.1 + jag && pb.x < 0.9 && pb.y > 0.62 + jag) base = cream;
+        if (pb.y > 0.8 && abs(pb.z + 0.04) < 0.3 + jag && pb.x < -0.6 && pb.y < 2.1) base = cream;
+        // red-orange round feet with jagged tops
+        for (int i = 0; i < 4; i++) { vec3 f = gFeet[i]; vec2 r = p.xz - f.xz; if (length(r) < 0.42 && p.y < f.y + 0.1 + 0.05 * (tri(atan(r.y, r.x) * 1.6) - 0.5) * 2.0) { base = hex(234., 84., 44.); spec = 0.3; } }
+      } else if (uChar == 2) {
+        float jag = 0.08 * (tri(p.y * 2.6) - 0.5);
+        if (p.x < -0.2 + jag) base = cream;
+      } else {
+        float jag = 0.06 * (tri(p.x * 3.0) - 0.5);
+        if (p.y < -0.5 ? p.x < -0.01 + 0.08 * (tri(p.y * 2.6) - 0.5) : (p.y < -0.28 + jag && p.x < 0.35)) base = cream;
+      }
+    } else if (m == M_LID) base = hex(36., 150., 150.);
+    else if (m == M_INK) base = hex(18., 30., 36.);
+    else if (m == M_EYE) base = hex(252., 252., 255.);
+  }
+  // eyes: pupils, a lash line along the lid edge
+  if (m == M_EYE) {
+    vec3 e = normalize(p - ec);
+    vec3 look = isP ? normalize(vec3(0.55, -0.2 + uBonk * (side > 0.0 ? 0.6 : -0.4), side * 0.83)) : normalize(vec3(-0.75, -0.35, side * 0.55));
+    float c = dot(e, look);
+    if (c > 0.8) base = hex(22., 18., 44.);
+    if (c > 0.8 && c < 0.86) base = hex(70., 60., 130.);
+    if (c > 0.955) base = hex(10., 8., 22.);
+    if (uBonk > 0.5) {
+      vec3 tx = normalize(cross(look, vec3(0, 1, 0))), ty = cross(tx, look);
+      vec2 q = vec2(dot(e, tx), dot(e, ty)); float r = length(q), an = atan(q.y, q.x);
+      base = hex(252., 252., 255.);
+      if (r < 0.62 && fract(r * 7.0 - an / (2.0 * PI) * side) < 0.42) base = hex(22., 18., 44.);
+    }
+    spec = 0.9; gloss = 120.0; sheen = 0.0;
+  }
+  if (m == M_LID) {
+    vec3 nl = isP ? normalize(vec3(-0.12 + uBonk * 0.3, 1.0, side * 0.1)) : normalize(vec3(0.25, 1.0, side * 0.25));
+    if (dot(p - ec, nl) - uLid < 0.022) base = hex(24., 20., 46.);
+  }
+  // --- lighting: moon key, sky/ground ambient, two rim lights, soft "clay" wrap, sheen ---
+  vec3 Lk = normalize(vec3(-0.55, 0.8, 0.55));
+  vec3 Lr = normalize(vec3(-0.6, 0.35, -0.75)), Lr2 = normalize(vec3(0.75, 0.25, -0.6));
+  float sh = shadow(p + n * 0.01, Lk), occ = ao(p, n);
+  float wrapk = (dot(n, Lk) + 0.35) / 1.35;
+  float dif = clamp(wrapk, 0.0, 1.0) * mix(0.55, 1.0, sh);
+  vec3 col = vec3(0);
+  vec3 moon = vec3(1.0, 0.97, 1.04) * 1.7;
+  col += base * moon * dif;
+  // a touch of subsurface warmth where the light wraps round
+  col += base * base * vec3(1.0, 0.8, 0.9) * 0.35 * clamp(1.0 - abs(dot(n, Lk)), 0.0, 1.0) * sh;
+  vec3 sky = vec3(0.42, 0.5, 0.95), grd = vec3(0.12, 0.14, 0.35);
+  col += base * mix(grd, sky, 0.5 + 0.5 * n.y) * 0.85 * occ;
+  float fr = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 3.0);
+  col += vec3(0.55, 0.7, 1.0) * fr * clamp(dot(n, Lr) + 0.5, 0.0, 1.0) * 1.3 * occ;
+  col += vec3(0.4, 0.5, 0.9) * fr * clamp(dot(n, Lr2) + 0.3, 0.0, 1.0) * 0.6 * occ;
+  col += base * sheen * fr * 0.9;
+  vec3 hh = normalize(Lk + v);
+  col += moon * spec * pow(clamp(dot(n, hh), 0.0, 1.0), gloss) * sh * (gloss / 60.0 + 0.4) * 0.5;
+  if (m == M_MEMB || m == M_RIDGE || (isP && m == M_TEAL && abs(p.z) > 0.9)) {
+    // light glowing through the thin membrane
+    float tr = clamp(dot(-n, Lk), 0.0, 1.0) * 0.8 + clamp(dot(-n, Lr), 0.0, 1.0) * 0.5;
+    col += base * vec3(1.0, 0.86, 0.95) * tr * 0.9;
+  }
+  col *= mix(0.55, 1.0, occ);
+  col = col / (1.0 + col * 0.18);
+  col = pow(col, vec3(1.0 / 2.2));
+  float a = 1.0;
+  if (isP && (m == M_MEMB)) a = 0.86;
+  if (uFade > 0.0) a = smoothstep(uFade, uFade + 0.5, p.y + (uChar == 3 ? 1.4 : 0.0));
+  frag = vec4(col * a, a);
+}`;
+const VS = `#version 300 es
+in vec2 pos; void main(){ gl_Position = vec4(pos, 0, 1); }`;
+let gl, prog, glc;
+function init(){
+  glc = document.createElement('canvas');
+  gl = glc.getContext('webgl2', { premultipliedAlpha: true, preserveDrawingBuffer: true, antialias: false, alpha: true });
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const l = gl.getAttribLocation(prog, 'pos'); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 2, gl.FLOAT, false, 0, 0);
+}
+// render one view: w,h in output px, ppu px per unit, cen model-space view centre (in camera plane units)
+function render(o){
+  const SS = o.ss || 3, W = o.w * SS, H = o.h * SS;
+  glc.width = W; glc.height = H; gl.viewport(0, 0, W, H);
+  const U = (n) => gl.getUniformLocation(prog, n);
+  gl.uniform2f(U('uRes'), W, H); gl.uniform1f(U('uPPU'), o.ppu * SS); gl.uniform2f(U('uCen'), o.cx, o.cy);
+  gl.uniform1f(U('uYaw'), o.yaw); gl.uniform1f(U('uPitch'), o.pitch); gl.uniform1i(U('uChar'), o.char);
+  gl.uniform1f(U('uWing'), o.wing || 0); gl.uniform1f(U('uBend'), o.bend || 0); gl.uniform1f(U('uPhase'), o.phase || 0);
+  gl.uniform1f(U('uLid'), o.lid == null ? 0.02 : o.lid); gl.uniform1f(U('uBonk'), o.bonk || 0); gl.uniform1f(U('uNeckL'), o.neckL || 6); gl.uniform1f(U('uFade'), o.fade || 0);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.SCISSOR_TEST);
+  for (let y = 0; y < H; y += 48) { gl.scissor(0, y, W, 48); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.finish(); }
+  gl.disable(gl.SCISSOR_TEST);
+  // supersample down in two halvings for clean edges
+  const out = document.createElement('canvas'); out.width = o.w; out.height = o.h;
+  const g = out.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(glc, 0, 0, o.w, o.h);
+  return out;
+}
+// project a model point to output pixel coords for a view (same camera maths as the shader)
+function project(o, P){
+  const cy = Math.cos(o.yaw), sy = Math.sin(o.yaw), cp = Math.cos(o.pitch), sp = Math.sin(o.pitch);
+  const fw = [-sy * cp, -sp, -cy * cp];
+  let rt = [fw[1] * 0 - fw[2] * 1, fw[2] * 0 - fw[0] * 0, fw[0] * 1 - fw[1] * 0]; const L = Math.hypot(...rt); rt = rt.map(v => v / L);
+  const up = [rt[1] * fw[2] - rt[2] * fw[1], rt[2] * fw[0] - rt[0] * fw[2], rt[0] * fw[1] - rt[1] * fw[0]];
+  const X = P[0] * rt[0] + P[1] * rt[1] + P[2] * rt[2], Y = P[0] * up[0] + P[1] * up[1] + P[2] * up[2];
+  return [(X - o.cx) * o.ppu + o.w / 2, o.h / 2 - (Y - o.cy) * o.ppu];
+}
+window.R = { init, render, project };
+</script></body></html>

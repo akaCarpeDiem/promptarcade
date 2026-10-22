@@ -40,9 +40,6 @@ window.paConfig = {
 
   // Moonlit clay palette. Light comes from the moon at the upper left, so every rounded form gets
   // its highlight up and to the left and a cool rim light along its upper-left edge.
-  const PT = { body: "#eceafb", hi: "#ffffff", lo: "#a59ed9", deep: "#7c74bb", belly: "#f9f8ff", lid: "#d9d5f3",
-    teal: "#36c8bf", tealHi: "#9af3e6", tealD: "#178893", mem: "#e7e4fb", memD: "#b6afe4", vein: "rgba(120,108,196,.35)", foot: "#8f87cf" };
-  const BR = { body: "#2aa2a0", hi: "#86e6da", lo: "#156670", deep: "#0d4552", belly: "#eef7f4", bellyLo: "#b9d6d6", foot: "#ec5a30", footHi: "#ff9d6c", lid: "#239090" };
   const LEAF_PAL = [
     { hi: "#b9f7de", mid: "#2fa68f", lo: "#0f4b58", rim: "#e4fdff" },
     { hi: "#d8f7a0", mid: "#4fa64e", lo: "#174c3a", rim: "#f2ffd8" },
@@ -50,7 +47,18 @@ window.paConfig = {
   ];
 
   // sprite frame counts, canopy blob layout, vine flower colours
-  const PF = 16, BRF = 8, WN = 9;
+  const BRF = 12;
+  // atlas layout of the pre-rendered characters (written by scripts/ptero-models/bake.py)
+  const MODEL = {"ptero":{"frames":24,"cols":6,"cw":226,"ch":291,"ax":121,"ay":179,"ppu":40,"eye":{"x":148,"y":137,"w":54,"h":25,"top":1455,"cols":6}},"bronto":{"frames":12,"cols":4,"cw":325,"ch":254,"sx":60.84,"sy":[63.62,60.52,58.25,57.42,58.25,60.52,63.62,60.52,58.25,57.42,58.25,60.52],"gy":230.5,"ppu":90},"neck":{"w":66,"h":408,"cx":33,"ppu":90},"head":{"cw":147,"ch":189,"ax":81.5,"ay":67.5,"nx":98.08,"ppu":90}};
+  const BR_STUB = new Float32Array(BRF);
+  const IMG = {};
+  let modelsN = 0;
+  for (const k of ["ptero", "bronto", "neck", "head"]) {
+    const im = new Image();
+    im.onload = () => { modelsN++; buildChars(); };
+    im.src = "/games/play/ptero/" + k + ".webp?v=2";
+    IMG[k] = im;
+  }
   const BLOBS = [[0, 0.05, 0.62], [-0.48, 0.18, 0.46], [0.48, 0.2, 0.46], [-0.24, -0.38, 0.5], [0.26, -0.36, 0.48], [0, -0.48, 0.5], [0, 0.42, 0.5]];
   const FLOWERS = ["#ff7fb8", "#ffd35c", "#ff9b62"];
   let W = 0, H = 0, S = 1, DPR = 1, TW = 1200, HZ = 0;
@@ -487,187 +495,42 @@ window.paConfig = {
   }
   function blit(s, x, y) { ctx.drawImage(s.c, x - s.ox, y - s.oy, s.w, s.h); }
 
-  /* the pterodactyl: pale lavender clay, teal stripes and spikes, big wings, sleepy eyes */
-  // Wings are modelled as a membrane that swings about the body's long axis and is projected in a
-  // gentle three-quarter view, so they stay broad through the whole stroke instead of turning edge-on.
-  function pWing(g, r, k, farW) {
-    const th0 = 1.3 - 2.3 * k, L = r * (farW ? 2.8 : 3.3), side = farW ? -1 : 1;
-    const sx = 0.2 * r, sy = -0.3 * r;
-    const LE = [], TE = [];
-    for (let i = 0; i <= WN; i++) {
-      const u = i / WN, sp = u * L, th = th0 + 0.38 * u * u;
-      const ct = Math.cos(th), st = Math.sin(th);
-      const xl = sx + 0.1 * r - 1.45 * r * Math.pow(u, 1.2), chord = r * (1.4 * (1 - Math.pow(u, 2)) + 0.12);
-      const X = (xx) => xx + side * sp * ct * 0.3, Y = sy - sp * st + side * sp * ct * 0.3;
-      LE.push([X(xl), Y]); TE.push([X(xl - chord), Y + chord * 0.12]);
-    }
-    const sh = farW ? 0.4 : 0, dim = (c) => sh ? mix(c, "#4a4492", sh) : c;
-    const tip = LE[WN];
-    const gr = g.createLinearGradient(sx, sy, tip[0], tip[1]);
-    gr.addColorStop(0, dim(PT.mem)); gr.addColorStop(1, dim(PT.memD));
-    g.fillStyle = gr;
-    g.beginPath(); g.moveTo(LE[0][0], LE[0][1]);
-    for (let i = 1; i <= WN; i++) g.lineTo(LE[i][0], LE[i][1]);
-    // scalloped trailing edge between the finger bones
-    for (let i = WN; i > 0; i--) {
-      const a = TE[i], b = TE[i - 1], mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-      const cx = (LE[i][0] + LE[i - 1][0]) / 2, cy = (LE[i][1] + LE[i - 1][1]) / 2;
-      g.quadraticCurveTo(mx + (cx - mx) * 0.18, my + (cy - my) * 0.18, b[0], b[1]);
-    }
-    g.closePath(); g.fill();
-    g.save(); g.clip();
-    g.strokeStyle = PT.vein; g.lineWidth = 0.05 * r;
-    for (let i = 2; i < WN; i += 2) { g.beginPath(); g.moveTo(LE[i][0], LE[i][1]); g.lineTo(TE[i][0], TE[i][1]); g.stroke(); }
-    // teal bands across the wing, like the markings on a kite
-    g.strokeStyle = dim(PT.teal); g.globalAlpha = 0.75; g.lineWidth = 0.18 * r;
-    for (const i of [2, 5]) { g.beginPath(); g.moveTo(LE[i][0], LE[i][1]); g.lineTo((LE[i][0] + TE[i][0]) / 2, (LE[i][1] + TE[i][1]) / 2 + 0.05 * r); g.stroke(); }
-    g.globalAlpha = 1;
-    // a soft shadow on the membrane next to the arm
-    g.strokeStyle = farW ? "rgba(40,30,110,.2)" : "rgba(120,108,196,.25)"; g.lineWidth = 0.3 * r;
-    g.beginPath(); g.moveTo(LE[0][0] - 0.2 * r, LE[0][1] + 0.05 * r); for (let i = 1; i <= WN; i++) g.lineTo(LE[i][0] - 0.2 * r * (1 - i / WN), LE[i][1] + 0.05 * r); g.stroke();
-    g.restore();
-    // the arm along the leading edge, with a teal cuff at the wrist
-    g.strokeStyle = dim(PT.body); g.lineWidth = r * 0.2;
-    g.beginPath(); g.moveTo(LE[0][0], LE[0][1]); for (let i = 1; i <= WN; i++) g.lineTo(LE[i][0], LE[i][1]); g.stroke();
-    if (!farW) { g.strokeStyle = "#ffffff"; g.lineWidth = r * 0.07; g.beginPath(); g.moveTo(LE[0][0], LE[0][1] - r * 0.05); for (let i = 1; i <= 5; i++) g.lineTo(LE[i][0], LE[i][1] - r * 0.05); g.stroke(); }
-    const w = LE[4];
-    g.fillStyle = dim(PT.teal); g.beginPath(); g.arc(w[0], w[1], r * 0.13, 0, TAU); g.fill();
-    g.strokeStyle = dim(PT.tealD); g.lineWidth = r * 0.06;
-    for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(w[0], w[1]); g.lineTo(w[0] + 0.22 * r + i * 0.02 * r, w[1] - 0.06 * r + i * 0.08 * r); g.stroke(); }
+  /* ---------- the characters: pre-rendered 3D clay models ----------
+   * The pterodactyl and the brontosaurus are procedural soft-clay models (smoothly blended rounded
+   * volumes, ray-marched offline with soft shadows, ambient occlusion, a moonlit key and cool rim
+   * lights; see scripts/ptero-models/). They ship as small sprite atlases (MODEL holds the cell
+   * sizes and anchor points) and are resampled once per layout into cached canvases at their exact
+   * on-screen size, so a frame only blits. */
+  function cut(img, sx, sy, sw, sh, sc, ax, ay) {
+    return sprite(sw * sc, sh * sc, ax * sc, ay * sc, (g) => {
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+      g.drawImage(img, sx, sy, sw, sh, -ax * sc, -ay * sc, sw * sc, sh * sc);
+    });
   }
-  function paintPtero(g, r, k, eye) {
-    pWing(g, r, k, true);
-    // tail with a teal spade
-    g.fillStyle = PT.lo;
-    g.beginPath(); g.moveTo(-0.75 * r, -0.12 * r); g.quadraticCurveTo(-1.4 * r, 0, -1.85 * r, 0.16 * r); g.quadraticCurveTo(-1.3 * r, 0.26 * r, -0.75 * r, 0.24 * r); g.fill();
-    g.fillStyle = PT.teal; g.beginPath(); g.moveTo(-1.75 * r, 0.16 * r); g.lineTo(-2.0 * r, 0.0); g.lineTo(-2.15 * r, 0.2 * r); g.lineTo(-1.95 * r, 0.34 * r); g.closePath(); g.fill();
-    // feet tucked under
-    g.fillStyle = PT.foot;
-    g.beginPath(); g.ellipse(-0.25 * r, 0.66 * r, 0.17 * r, 0.11 * r, 0.3, 0, TAU); g.ellipse(0.14 * r, 0.7 * r, 0.17 * r, 0.11 * r, 0.3, 0, TAU); g.fill();
-    // chubby body
-    clay(g, 0, 0, 1.05 * r, 0.74 * r, PT.hi, PT.body, PT.lo, "#ffffff");
-    g.save(); g.beginPath(); g.ellipse(0, 0, 1.05 * r, 0.74 * r, 0, 0, TAU); g.clip();
-    g.fillStyle = "rgba(255,255,255,.5)"; g.beginPath(); g.ellipse(0.25 * r, 0.48 * r, 0.75 * r, 0.32 * r, -0.1, 0, TAU); g.fill();
-    g.strokeStyle = PT.teal; g.globalAlpha = 0.8; g.lineWidth = 0.1 * r;
-    for (const sx of [-0.5, -0.18, 0.14]) { g.beginPath(); g.moveTo(sx * r - 0.05 * r, -0.72 * r); g.quadraticCurveTo(sx * r + 0.1 * r, -0.35 * r, sx * r - 0.02 * r, 0.0); g.stroke(); }
-    g.restore();
-    // teal back spikes
-    for (let i = 0; i < 4; i++) {
-      const bx = -0.62 * r + i * 0.3 * r, by = -0.62 * r - Math.sin((i + 0.5) / 4 * Math.PI) * 0.08 * r, s = (0.85 + 0.15 * Math.sin(i)) * r;
-      const sg = g.createLinearGradient(bx, by - 0.25 * s, bx, by + 0.05 * s);
-      sg.addColorStop(0, PT.tealHi); sg.addColorStop(1, PT.tealD);
-      g.fillStyle = sg;
-      g.beginPath(); g.moveTo(bx - 0.13 * s, by + 0.06 * s); g.quadraticCurveTo(bx - 0.16 * s, by - 0.12 * s, bx - 0.24 * s, by - 0.24 * s); g.quadraticCurveTo(bx + 0.02 * s, by - 0.14 * s, bx + 0.12 * s, by + 0.04 * s); g.closePath(); g.fill();
+  function buildChars() {
+    if (!SPR || modelsN < 4) return;
+    const P = MODEL.ptero, B = MODEL.bronto, N = MODEL.neck, Hd = MODEL.head, gw = gateW();
+    // pterodactyl: one model unit is 1.5 bird radii
+    let sc = 1.5 * birdR() / P.ppu;
+    SPR.pt = [];
+    SPR.ptEye = [];
+    for (let i = 0; i < P.frames; i++) {
+      SPR.pt.push(cut(IMG.ptero, (i % P.cols) * P.cw, ((i / P.cols) | 0) * P.ch, P.cw, P.ch, sc, P.ax, P.ay));
+      const e = P.eye;
+      SPR.ptEye.push(cut(IMG.ptero, (i % e.cols) * e.w, e.top + ((i / e.cols) | 0) * e.h, e.w, e.h, sc, P.ax - e.x, P.ay - e.y));
     }
-    // neck
-    g.strokeStyle = PT.body; g.lineWidth = 0.48 * r;
-    g.beginPath(); g.moveTo(0.55 * r, -0.25 * r); g.quadraticCurveTo(1.0 * r, -0.35 * r, 1.3 * r, -0.62 * r); g.stroke();
-    g.strokeStyle = "rgba(255,255,255,.7)"; g.lineWidth = 0.1 * r;
-    g.beginPath(); g.moveTo(0.6 * r, -0.42 * r); g.quadraticCurveTo(0.95 * r, -0.52 * r, 1.18 * r, -0.76 * r); g.stroke();
-    const hx = 1.42 * r, hy = -0.72 * r;
-    // swept-back teal crest
-    let gr = g.createLinearGradient(hx, hy - 0.4 * r, hx - 1.3 * r, hy - 0.9 * r);
-    gr.addColorStop(0, PT.teal); gr.addColorStop(0.6, PT.tealD); gr.addColorStop(1, PT.teal);
-    g.fillStyle = gr;
-    g.beginPath(); g.moveTo(hx + 0.05 * r, hy - 0.3 * r); g.quadraticCurveTo(hx - 0.5 * r, hy - 0.9 * r, hx - 1.35 * r, hy - 0.92 * r); g.quadraticCurveTo(hx - 0.55 * r, hy - 0.42 * r, hx - 0.3 * r, hy - 0.05 * r); g.closePath(); g.fill();
-    g.strokeStyle = PT.tealHi; g.lineWidth = 0.05 * r; g.beginPath(); g.moveTo(hx - 0.05 * r, hy - 0.38 * r); g.quadraticCurveTo(hx - 0.5 * r, hy - 0.84 * r, hx - 1.2 * r, hy - 0.9 * r); g.stroke();
-    // long pointed beak
-    g.fillStyle = PT.lo;
-    g.beginPath(); g.moveTo(hx + 0.3 * r, hy + 0.1 * r); g.lineTo(hx + 1.6 * r, hy + 0.26 * r); g.lineTo(hx + 0.25 * r, hy + 0.32 * r); g.closePath(); g.fill();
-    gr = g.createLinearGradient(0, hy - 0.24 * r, 0, hy + 0.18 * r);
-    gr.addColorStop(0, PT.hi); gr.addColorStop(0.6, PT.body); gr.addColorStop(1, PT.lo);
-    g.fillStyle = gr;
-    g.beginPath(); g.moveTo(hx + 0.22 * r, hy - 0.24 * r); g.quadraticCurveTo(hx + 1.05 * r, hy - 0.08 * r, hx + 1.95 * r, hy + 0.2 * r); g.quadraticCurveTo(hx + 0.95 * r, hy + 0.2 * r, hx + 0.22 * r, hy + 0.14 * r); g.closePath(); g.fill();
-    g.strokeStyle = "rgba(120,108,190,.45)"; g.lineWidth = 0.04 * r; g.beginPath(); g.moveTo(hx + 0.6 * r, hy + 0.1 * r); g.lineTo(hx + 1.7 * r, hy + 0.2 * r); g.stroke();
-    // head
-    clay(g, hx, hy, 0.56 * r, 0.47 * r, PT.hi, PT.body, PT.lo, "#ffffff", -0.15);
-    g.fillStyle = "rgba(255,160,210,.28)"; g.beginPath(); g.ellipse(hx + 0.18 * r, hy + 0.2 * r, 0.16 * r, 0.09 * r, 0, 0, TAU); g.fill();
-    // a big round, droopy, heavy-lidded eye
-    const ex = hx + 0.1 * r, ey = hy - 0.14 * r, er = 0.31 * r;
-    if (eye === 2) {
-      g.strokeStyle = COL.ink; g.lineWidth = 0.08 * r;
-      g.beginPath(); g.moveTo(ex - 0.14 * r, ey - 0.14 * r); g.lineTo(ex + 0.14 * r, ey + 0.14 * r); g.moveTo(ex + 0.14 * r, ey - 0.14 * r); g.lineTo(ex - 0.14 * r, ey + 0.14 * r); g.stroke();
-    } else {
-      g.fillStyle = "#ffffff"; g.beginPath(); g.ellipse(ex, ey, er, er * 1.05, 0, 0, TAU); g.fill();
-      g.strokeStyle = "rgba(40,30,100,.25)"; g.lineWidth = 0.04 * r; g.stroke();
-      g.fillStyle = COL.ink; g.beginPath(); g.arc(ex + 0.04 * r, ey + 0.13 * r, 0.15 * r, 0, TAU); g.fill();
-      g.fillStyle = "#ffffff"; g.beginPath(); g.arc(ex, ey + 0.08 * r, 0.05 * r, 0, TAU); g.fill();
-      const lidY = eye === 1 ? er * 0.95 : -er * 0.3;
-      g.save(); g.beginPath(); g.ellipse(ex, ey, er * 1.02, er * 1.07, 0, 0, TAU); g.clip();
-      const lg = g.createLinearGradient(0, ey - er, 0, ey + lidY);
-      lg.addColorStop(0, PT.hi); lg.addColorStop(1, PT.lid);
-      g.fillStyle = lg;
-      g.beginPath(); g.moveTo(ex - er * 1.2, ey - er * 1.3); g.lineTo(ex + er * 1.2, ey - er * 1.3); g.lineTo(ex + er * 1.2, ey + lidY + er * 0.04);
-      g.quadraticCurveTo(ex, ey + lidY + er * 0.26, ex - er * 1.2, ey + lidY + er * 0.24); g.closePath(); g.fill();
-      g.restore();
-      g.strokeStyle = COL.ink; g.lineWidth = 0.08 * r;
-      g.beginPath(); g.moveTo(ex - er * 1.0, ey + lidY + er * 0.24); g.quadraticCurveTo(ex, ey + lidY + er * 0.26, ex + er * 1.0, ey + lidY + er * 0.05); g.stroke();
-      g.lineWidth = 0.05 * r; g.beginPath(); g.moveTo(ex - er * 0.95, ey + lidY + er * 0.25); g.lineTo(ex - er * 1.3, ey + lidY + er * 0.42); g.stroke();
-      g.lineWidth = 0.05 * r; g.beginPath(); g.moveTo(ex - er * 0.6, ey - er * 1.3); g.quadraticCurveTo(ex + er * 0.1, ey - er * 1.55, ex + er * 0.8, ey - er * 1.25); g.stroke();
-    }
-    pWing(g, r, k, false);
+    const d = P.frames;
+    SPR.ptDead = cut(IMG.ptero, (d % P.cols) * P.cw, ((d / P.cols) | 0) * P.ch, P.cw, P.ch, sc, P.ax, P.ay);
+    // brontosaurus: one model unit is 0.6 gate widths
+    sc = 0.6 * gw / B.ppu;
+    SPR.br = [];
+    for (let i = 0; i < B.frames; i++) SPR.br.push(cut(IMG.bronto, (i % B.cols) * B.cw, ((i / B.cols) | 0) * B.ch, B.cw, B.ch, sc, B.sx, B.gy));
+    for (let i = 0; i < B.frames; i++) BR_STUB[i] = (B.gy - B.sy[i]) * sc;
+    SPR.neck = cut(IMG.neck, 0, 0, N.w, N.h, sc, N.cx, 0);
+    SPR.bh = [0, 1].map((i) => cut(IMG.head, i * Hd.cw, 0, Hd.cw, Hd.ch, sc, Hd.ax, Hd.ay));
+    SPR.bhNeckX = (Hd.nx - Hd.ax) * sc;
   }
 
-  /* the brontosaurus: teal clay, white belly and neck patch, red-orange feet, sleepy eyes */
-  function brontoBob(ph) { return -Math.abs(Math.sin(ph)) * 0.035; }
-  function paintBrontoBody(g, gw, ph) {
-    const rx = 1.05 * gw, ry = 0.34 * gw, bob = brontoBob(ph) * gw;
-    const leg = (lx, lp, farLeg) => {
-      const dx = Math.sin(lp) * 0.09 * gw, lift = Math.max(0, Math.cos(lp)) * 0.06 * gw;
-      const top = bob + 0.1 * gw, footY = 0.4 * gw - lift, x1 = lx + dx;
-      g.strokeStyle = farLeg ? BR.deep : BR.lo; g.lineWidth = 0.3 * gw;
-      g.beginPath(); g.moveTo(lx, top); g.lineTo(x1, footY - 0.04 * gw); g.stroke();
-      if (!farLeg) {
-        g.strokeStyle = BR.body; g.lineWidth = 0.21 * gw; g.beginPath(); g.moveTo(lx - 0.02 * gw, top); g.lineTo(x1 - 0.02 * gw, footY - 0.05 * gw); g.stroke();
-        g.strokeStyle = "rgba(170,250,240,.6)"; g.lineWidth = 0.05 * gw; g.beginPath(); g.moveTo(lx - 0.09 * gw, top + 0.04 * gw); g.lineTo(x1 - 0.09 * gw, footY - 0.08 * gw); g.stroke();
-      }
-      clay(g, x1 - 0.01 * gw, footY, 0.19 * gw, 0.1 * gw, BR.footHi, BR.foot, farLeg ? "#7a2414" : "#a83a20");
-      if (!farLeg) { g.fillStyle = "rgba(255,225,200,.8)"; for (let n = -1; n <= 1; n++) { g.beginPath(); g.arc(x1 + n * 0.07 * gw - 0.06 * gw, footY + 0.04 * gw, 0.025 * gw, 0, TAU); g.fill(); } }
-    };
-    leg(-0.35 * gw, ph + Math.PI, true); leg(0.8 * gw, ph, true);
-    const tg = g.createLinearGradient(0, bob - ry, 0, ry);
-    tg.addColorStop(0, BR.body); tg.addColorStop(1, BR.lo);
-    g.fillStyle = tg;
-    const tw = Math.sin(ph) * 0.04 * gw;
-    g.beginPath(); g.moveTo(rx * 0.55, bob - 0.29 * gw); g.quadraticCurveTo(rx * 1.45, bob - 0.3 * gw + tw, rx * 1.62, -0.05 * gw + tw);
-    g.quadraticCurveTo(rx * 1.25, 0.14 * gw + bob, rx * 0.55, bob + 0.26 * gw); g.closePath(); g.fill();
-    clay(g, 0, bob, rx, ry, BR.hi, BR.body, BR.lo, "#c8fff4");
-    g.save(); g.beginPath(); g.ellipse(0, bob, rx, ry, 0, 0, TAU); g.clip();
-    g.fillStyle = BR.belly; g.beginPath(); g.moveTo(-rx, bob + ry * 0.1);
-    for (let i = 0; i <= 12; i++) g.lineTo(-rx + (1.45 * rx) * i / 12, bob + ry * (i % 2 ? 0.28 : 0.46) + (i / 12) * ry * 0.2);
-    g.lineTo(0.45 * rx, bob + ry); g.lineTo(-rx, bob + ry); g.closePath(); g.fill();
-    const bg = g.createLinearGradient(0, bob, 0, bob + ry);
-    bg.addColorStop(0, "rgba(10,60,70,0)"); bg.addColorStop(1, "rgba(10,60,70,.35)");
-    g.fillStyle = bg; g.fillRect(-rx, bob, rx * 2, ry);
-    g.restore();
-    leg(-0.6 * gw, ph, false); leg(0.55 * gw, ph + Math.PI, false);
-  }
-  function paintBrontoHead(g, hr, blink) {
-    clay(g, 0, 0, hr * 1.08, hr * 0.92, BR.hi, BR.body, BR.lo, "#c8fff4");
-    clay(g, -hr * 0.55, hr * 0.2, hr * 0.66, hr * 0.55, BR.hi, BR.body, BR.lo, "#c8fff4");
-    g.fillStyle = BR.belly; g.globalAlpha = 0.9; g.beginPath(); g.ellipse(-hr * 0.4, hr * 0.62, hr * 0.5, hr * 0.14, 0.05, 0, TAU); g.fill(); g.globalAlpha = 1;
-    g.fillStyle = BR.deep; g.beginPath(); g.ellipse(-hr * 0.98, hr * 0.04, hr * 0.07, hr * 0.05, 0, 0, TAU); g.fill();
-    g.strokeStyle = BR.deep; g.lineWidth = hr * 0.08;
-    g.beginPath(); g.moveTo(-hr * 1.12, hr * 0.4); g.quadraticCurveTo(-hr * 0.7, hr * 0.6, -hr * 0.25, hr * 0.44); g.stroke();
-    const ex = hr * 0.08, ey = -hr * 0.48, erx = hr * 0.4, ery = hr * 0.43;
-    g.fillStyle = "#ffffff"; g.beginPath(); g.ellipse(ex, ey, erx, ery, 0, 0, TAU); g.fill();
-    g.strokeStyle = "rgba(10,50,60,.3)"; g.lineWidth = hr * 0.04; g.stroke();
-    g.fillStyle = COL.ink; g.beginPath(); g.arc(ex - hr * 0.06, ey + hr * 0.19, hr * 0.17, 0, TAU); g.fill();
-    g.fillStyle = "#ffffff"; g.beginPath(); g.arc(ex - hr * 0.11, ey + hr * 0.13, hr * 0.055, 0, TAU); g.fill();
-    const lidY = blink ? ery * 0.92 : -ery * 0.3;
-    g.save(); g.beginPath(); g.ellipse(ex, ey, erx * 1.02, ery * 1.02, 0, 0, TAU); g.clip();
-    const lg = g.createLinearGradient(0, ey - ery, 0, ey + lidY);
-    lg.addColorStop(0, BR.hi); lg.addColorStop(1, BR.lid);
-    g.fillStyle = lg;
-    g.beginPath(); g.moveTo(ex - erx * 1.2, ey - ery * 1.3); g.lineTo(ex + erx * 1.2, ey - ery * 1.3); g.lineTo(ex + erx * 1.2, ey + lidY + ery * 0.24);
-    g.quadraticCurveTo(ex, ey + lidY + ery * 0.26, ex - erx * 1.2, ey + lidY + ery * 0.04); g.closePath(); g.fill();
-    g.restore();
-    g.strokeStyle = COL.ink; g.lineWidth = hr * 0.09;
-    g.beginPath(); g.moveTo(ex - erx * 1.0, ey + lidY + ery * 0.05); g.quadraticCurveTo(ex, ey + lidY + ery * 0.26, ex + erx * 1.0, ey + lidY + ery * 0.24); g.stroke();
-    g.lineWidth = hr * 0.055; g.beginPath(); g.moveTo(ex + erx * 0.95, ey + lidY + ery * 0.25); g.lineTo(ex + erx * 1.3, ey + lidY + ery * 0.45); g.stroke();
-    g.lineWidth = hr * 0.06;
-    g.beginPath(); g.moveTo(ex - erx * 0.7, ey - ery * 1.3); g.quadraticCurveTo(ex, ey - ery * 1.6, ex + erx * 0.7, ey - ery * 1.38); g.stroke();
-  }
 
   /* obstacles */
   function paintCanopy(g, R, pal, seed, flip) {
@@ -695,24 +558,9 @@ window.paConfig = {
     }
   }
   function buildSprites() {
-    const gw = gateW(), r = birdR() * 1.4;
+    const gw = gateW();
     SPR = {};
-    // pterodactyl flap cycle: PF wing poses, with the sleepy eyes open, mid-blink, and a bonked face
-    const pw = 6.4 * r, ph = 7.2 * r, pox = 2.9 * r, poy = 4.0 * r;
-    SPR.pOpen = []; SPR.pBlink = [];
-    for (let i = 0; i < PF; i++) {
-      const k = i / (PF - 1);
-      SPR.pOpen.push(sprite(pw, ph, pox, poy, (g) => paintPtero(g, r, k, 0)));
-      SPR.pBlink.push(sprite(pw, ph, pox, poy, (g) => paintPtero(g, r, k, 1)));
-    }
-    SPR.pDead = sprite(pw, ph, pox, poy, (g) => paintPtero(g, r, 0.3, 2));
-    // brontosaurus walk cycle, head and neck shading
-    SPR.bronto = [];
-    for (let i = 0; i < BRF; i++) SPR.bronto.push(sprite(3.2 * gw, 1.15 * gw, 1.25 * gw, 0.55 * gw, (g) => paintBrontoBody(g, gw, i / BRF * TAU)));
-    const hr = gw * 0.4;
-    SPR.bHead = sprite(3.2 * hr, 2.5 * hr, 1.85 * hr, 1.4 * hr, (g) => paintBrontoHead(g, hr, false));
-    SPR.bHeadB = sprite(3.2 * hr, 2.5 * hr, 1.85 * hr, 1.4 * hr, (g) => paintBrontoHead(g, hr, true));
-    SPR.neckGrad = null; // made on first draw (the main context may not exist yet during the first layout)
+    buildChars();
     // tree crowns (upright) and branch crowns (hanging), two shapes per palette
     SPR.crown = []; SPR.hang = [];
     for (let p = 0; p < LEAF_PAL.length; p++) for (let v = 0; v < 2; v++) {
@@ -802,7 +650,7 @@ window.paConfig = {
     score = 0; gatesPassed = 0; coinsGot = 0; nearMisses = 0; comboNear = 0;
     gates = []; debris.length = 0; overT = 0; overSent = false; started = false;
     fx.clear(); texts.clear();
-    bird = { y: H * 0.46, vy: 0, rot: 0, alive: true, flapT: 1, blink: rand(2, 5), cd: 0 };
+    bird = { y: H * 0.46, vy: 0, rot: 0, alive: true, flapT: 1, blink: rand(2, 5), cd: 0, wph: 0, boost: 0 };
     spawnX = W + 80 * S;
     spawnGate(spawnX);
     for (let i = 0; i < 3; i++) spawnGate(spawnX + (SPACING + rand(-20, 40)) * S);
@@ -838,7 +686,7 @@ window.paConfig = {
     // Pick obstacles that make sense for the gap: a bronto stands on the ground and needs room to
     // raise its head, and only stretchy things (a bronto's neck, a dangling web or vines) ride a
     // moving gap.
-    const brontoMax = floorY() - 110 * S - gh / 2;
+    const brontoMax = floorY() - 140 * S - gh / 2;
     const bronto = brontoMax > gmin + 10 * S && Math.random() < (move ? 0.7 : 0.38);
     if (bronto) gmax = Math.min(gmax, brontoMax);
     const gapY = rand(gmin, gmax);
@@ -886,6 +734,7 @@ window.paConfig = {
     started = true;
     b.vy = -420 * S;
     b.flapT = 0;
+    b.boost = 1;
     PA.sfx("flap", { pitch: 1.05 + Math.min(0.2, gatesPassed * 0.008), vary: 0.08 });
     for (let i = 0; i < 4; i++) fx.burst(playerX() - 8 * S, b.y + 10 * S, { n: 1, color: "rgba(230,236,255,.5)", speed: 70, life: 0.35, size: 3, vy: 40, spread: Math.PI * 0.7, angle: Math.PI * 0.6 });
   }
@@ -933,10 +782,11 @@ window.paConfig = {
   function circleCircle(ax, ay, ar, bx, by, br) { const dx = ax - bx, dy = ay - by, rr = ar + br; return dx * dx + dy * dy < rr * rr; }
 
   // Hit shapes follow what's drawn: trunks and necks are narrow, crowns and heads are round.
-  // (Same shapes and sizes as before the night repaint.)
+  // A bronto's head and neck keep their original shapes; its body is a rect a little inside the
+  // rounded back, plus a lower one for the short tail.
   function collideGate(g, py) {
     const r = birdR() * 0.92, px = playerX(), gw = gateW(), x = g.x;
-    if (px + r < x - 0.7 * gw || px - r > x + 2.4 * gw) return null;
+    if (px + r < x - 0.7 * gw || px - r > x + 1.8 * gw) return null;
     const gt = g.gapY - g.gapH / 2, gb = g.gapY + g.gapH / 2, tk = g.top.kind, bk = g.bot.kind;
     if (tk === "branch") { const R = gw * 0.5; if (circleRect(px, py, r, x - 0.2 * gw, 0, 0.4 * gw, gt - R) || circleCircle(px, py, r, x, gt - R, R * 0.96)) return tk; }
     else if (tk === "web") { if (circleRect(px, py, r, x - 0.58 * gw, 0, 1.16 * gw, gt)) return tk; }
@@ -945,7 +795,7 @@ window.paConfig = {
     else if (bk === "rock") { if (circleCircle(px, py, r, x, gb + 0.32 * gw, 0.32 * gw) || circleRect(px, py, r, x - 0.4 * gw, gb + 0.22 * gw, 0.8 * gw, H - gb)) return bk; }
     else {
       const hr = gw * 0.4;
-      if (circleCircle(px, py, r, x - 0.06 * gw, gb + hr, hr) || circleRect(px, py, r, x - 0.21 * gw, gb + hr, 0.42 * gw, H - gb - hr) || circleRect(px, py, r, x - 0.35 * gw, floorY() - 0.8 * gw, 2.65 * gw, H)) return bk;
+      if (circleCircle(px, py, r, x - 0.06 * gw, gb + hr, hr) || circleRect(px, py, r, x - 0.21 * gw, gb + hr, 0.42 * gw, H - gb - hr) || circleRect(px, py, r, x - 0.3 * gw, floorY() - 1.1 * gw, 1.45 * gw, H) || circleRect(px, py, r, x + 1.15 * gw, floorY() - 0.8 * gw, 0.5 * gw, H)) return bk;
     }
     return null;
   }
@@ -1025,7 +875,13 @@ window.paConfig = {
     debris.length = n;
     speed = scrollSpeed();
     const b = bird;
-    if (b) { b.flapT += dt; b.blink -= dt; if (b.blink < -0.14) b.blink = rand(2, 5); }
+    if (b) {
+      b.flapT += dt; b.blink -= dt; if (b.blink < -0.14) b.blink = rand(2, 5);
+      // wing beat: a lazy glide beat, sped up into hard strokes for a moment after each flap
+      b.boost = Math.max(0, b.boost - dt * 1.8);
+      const rate = PA.state !== "play" || !started ? 1.5 : 1.15 + 2.9 * b.boost;
+      b.wph = (b.wph + dt * rate) % 1;
+    }
 
     if (PA.state !== "play" || !b) {
       scroll += 40 * S * dt;
@@ -1203,50 +1059,35 @@ window.paConfig = {
     drawCrop(SPR.stones[p.v], x, gb + 0.3 * gw, H, SPR.stones[p.v].w);
     blit(SPR.rockCap, x, gb);
   }
-  const NK = 18, NX = new Float32Array(NK + 1), NY = new Float32Array(NK + 1), NR = new Float32Array(NK + 1);
   function drawBronto(x, gb, p, t) {
-    const gw = gateW(), hr = gw * 0.4, fy = floorY();
-    const bx = x + 0.75 * gw, by = fy - 0.5 * gw;
+    if (!SPR.br) return;
+    const gw = gateW(), hr = gw * 0.4, fy = floorY(), u = 0.6 * gw;
     const fi = ((((t * 0.55 + p.ph / TAU) % 1) * BRF) | 0) % BRF;
-    const bob = brontoBob(fi / BRF * TAU) * gw;
     const sway = Math.sin(t * 1.3 + p.ph) * 3 * S;
-    // neck first, so the shoulder in the body sprite covers its base
-    const hy = gb + hr, sx = 0.12 * gw, sy = by - 0.06 * gw + bob;
-    if (sy > hy) {
-      const x1 = sx + 6 * S, y1 = sy - (sy - hy) * 0.4, x2 = -6 * S + sway, y2 = hy + (sy - hy) * 0.35, x3 = sway * 0.5;
-      for (let i = 0; i <= NK; i++) {
-        const k = i / NK, u = 1 - k;
-        NX[i] = u * u * u * sx + 3 * u * u * k * x1 + 3 * u * k * k * x2 + k * k * k * x3;
-        NY[i] = u * u * u * sy + 3 * u * u * k * y1 + 3 * u * k * k * y2 + k * k * k * hy;
-        NR[i] = gw * (0.31 - 0.1 * k);
+    const by = fy - 0.17 * gw;  // feet stand on the grass lip
+    // the neck: a seamless clay tube tile, laid in thin slices along a gently swaying curve from the
+    // shoulder up to the head. Drawn first, so the shoulder and the head cover its two ends.
+    const hx = x - 0.06 * gw + sway * 0.5, hy = gb + hr;
+    const sx = x, sy = by - BR_STUB[fi];
+    const tx = hx + SPR.bhNeckX, ty = hy + 1.0 * u;
+    if (sy > ty) {
+      const ns = SPR.neck, k = ns.k, len = sy - ty;
+      const n = Math.max(2, Math.ceil(ns.h / (9 * S))), sl = ns.h / n;  // slice height divides the tile
+      const x1 = sx + 6 * S, x2 = tx - 6 * S + sway;
+      let acc = 0;
+      while (acc < len) {
+        const hgt = Math.min(sl, len - acc), q = (acc + hgt * 0.5) / len, v = 1 - q;
+        const cx = v * v * v * sx + 3 * v * v * q * x1 + 3 * v * q * q * x2 + q * q * q * tx;
+        const wk = 1 - 0.14 * q, w = ns.w * wk;
+        const src = (ns.h - ((acc % ns.h) + hgt)) ;
+        ctx.drawImage(ns.c, 0, Math.max(0, src) * k, ns.c.width, hgt * k, cx - ns.ox * wk, sy - acc - hgt - 0.5, w, hgt + 1);
+        acc += hgt;
       }
-      ctx.save(); ctx.translate(x, 0);
-      if (!SPR.neckGrad) {
-        SPR.neckGrad = ctx.createLinearGradient(-0.32 * gw, 0, 0.36 * gw, 0);
-        SPR.neckGrad.addColorStop(0, BR.hi); SPR.neckGrad.addColorStop(0.32, BR.body); SPR.neckGrad.addColorStop(1, BR.deep);
-      }
-      ctx.fillStyle = SPR.neckGrad;
-      ctx.beginPath(); ctx.moveTo(NX[0] - NR[0], NY[0]);
-      for (let i = 1; i <= NK; i++) ctx.lineTo(NX[i] - NR[i], NY[i]);
-      for (let i = NK; i >= 0; i--) ctx.lineTo(NX[i] + NR[i], NY[i]);
-      ctx.closePath(); ctx.fill();
-      // white front patch with a ragged inner edge
-      ctx.fillStyle = BR.belly;
-      ctx.beginPath(); ctx.moveTo(NX[0] - NR[0] * 0.9, NY[0]);
-      for (let i = 1; i <= NK; i++) ctx.lineTo(NX[i] - NR[i] * 0.9, NY[i]);
-      for (let i = NK; i >= 0; i--) ctx.lineTo(NX[i] - NR[i] * (i % 2 ? 0.28 : 0.5), NY[i]);
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "rgba(205,245,255,.5)"; ctx.lineWidth = 1.6 * S; ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(NX[0] - NR[0] + 1 * S, NY[0]);
-      for (let i = 1; i <= NK; i++) ctx.lineTo(NX[i] - NR[i] + 1 * S, NY[i]);
-      ctx.stroke();
-      ctx.restore();
     }
-    blit(SPR.bronto[fi], bx, by);
-    const hx = x - 0.06 * gw + sway * 0.5;
+    blit(SPR.br[fi], sx, by);
     const chew = Math.max(0, Math.sin(t * 5 + p.ph)) * 2 * S;
-    blit(SPR.munch, hx - hr * 0.95, hy + hr * 0.45 + chew * 0.5);
-    blit(((t + p.blink) % 4) < 0.16 ? SPR.bHeadB : SPR.bHead, hx, hy);
+    blit(SPR.munch, hx - 0.56 * gw, hy + 0.14 * gw + chew * 0.5);
+    blit(SPR.bh[((t + p.blink) % 4) < 0.16 ? 1 : 0], hx, hy);
   }
   function drawGate(g, t) {
     const gt = g.gapY - g.gapH / 2, gb = g.gapY + g.gapH / 2, x = g.x;
@@ -1260,21 +1101,15 @@ window.paConfig = {
   }
 
   /* ---------- the pterodactyl ---------- */
-  function wingK(b) {
-    if (PA.state !== "play") return 0.5 + 0.5 * Math.sin(simT * 6);
-    if (!started) return 0.5 + 0.5 * Math.sin(simT * 7);
-    const t = b.flapT;
-    if (t < 0.09) return PA.ease.outCubic(t / 0.09);
-    if (t < 0.42) return 1 - PA.ease.inOut((t - 0.09) / 0.33);
-    return 0.08 + 0.06 * Math.sin(simT * 3);
-  }
   function drawPtero(b) {
-    if (!b) return;
-    const s = !b.alive ? SPR.pDead : (b.blink > 0 ? SPR.pOpen : SPR.pBlink)[Math.round(clamp(wingK(b), 0, 1) * (PF - 1))];
+    if (!b || !SPR.pt) return;
+    const fi = ((b.wph * SPR.pt.length) | 0) % SPR.pt.length;
+    const s = b.alive ? SPR.pt[fi] : SPR.ptDead;
     ctx.save();
     ctx.translate(playerX(), b.y);
     ctx.rotate(b.rot);
     ctx.drawImage(s.c, -s.ox, -s.oy, s.w, s.h);
+    if (b.alive && b.blink <= 0) { const e = SPR.ptEye[fi]; ctx.drawImage(e.c, -e.ox, -e.oy, e.w, e.h); }
     ctx.restore();
   }
 
