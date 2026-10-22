@@ -237,18 +237,18 @@ export const GAMES = [
     about: "A real-time 3D flight down an endless neon hyperlane. Bank between walls, gates and laser bars, string energy orbs into a multiplier, and burn boost when you dare.",
     credit: CLAUDE_CURSOR,
     brief: "A three.js endless flyer: a banking ship, pooled 3D obstacles, a boost meter, an orb multiplier and color-shifting sectors.",
-    tech: ["three.js scene with object pooling", "Colour-shifting sectors", "Boost meter and orb multiplier"]
+    tech: ["three.js lane built to the ship's limits, so every obstacle sits where you can fly", "Six colour-shifting sectors that narrow the gates and raise the speed", "Gates, sweeping laser bars, pillar clusters and orb lines on a distance-based rhythm", "Boost meter and orb multiplier"]
   },
   {
     slug: "circuit-hop", title: "Circuit Hop", added: "2026-09-20",
     genre: "Platformer", tags: ["platformer"], difficulty: "Advanced", accent: "#7dffb0", accent2: "#5ef2ff", unit: "points",
     original: true,
     tagline: "A tight neon platformer through circuit-board levels.",
-    about: "A tight neon platformer through handcrafted circuit-board levels. Wall-jump, stomp patrol bots, dodge laser gates and grab every data chip on the way to the exit portal.",
+    about: "A tight neon platformer through six handcrafted circuit-board sectors. Wall-jump up shafts, stomp patrol bots, time the laser gates, hop the spike beds and grab every data chip on the way to the exit portal.",
     credit: CLAUDE_CURSOR,
     brief: "A tile-based platformer with coyote time, jump buffering, wall jumps, hazards, enemies, checkpoints and handcrafted levels.",
     process: "Built by an AI coding agent from a multi-step brief: movement feel first, then the level set, hazards and enemies, then camera, effects and touch buttons.",
-    tech: ["Coyote time and jump buffering", "Wall jumps and checkpoints", "Handcrafted level set"]
+    tech: ["Coyote time, jump buffering and hold-to-jump-higher", "Wall slides, wall jumps and a checkpoint in every sector", "Six handcrafted sectors, each checked by a reachability test so every chip and exit can be reached"]
   },
   {
     slug: "void-rocks", title: "Void Rocks", added: "2026-09-20",

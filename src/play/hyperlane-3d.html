@@ -16,6 +16,9 @@ html,body{margin:0;height:100%;background:#03050c;color:#f4f1ff;overflow:hidden;
 #hl-boost.boosting i{box-shadow:0 0 22px rgba(255,210,122,.75);background:linear-gradient(90deg,#ffd27a,#8ee9ff,#c4a6ff)}
 #hl-hint{position:fixed;left:0;right:0;bottom:max(18px,env(safe-area-inset-bottom));z-index:28;text-align:center;font-size:.82rem;color:#a8a3c0;pointer-events:none;text-shadow:0 2px 8px #000;opacity:0;transition:opacity .35s;padding:0 1rem}
 #hl-hint.on{opacity:.85}
+#hl-banner{position:fixed;left:0;right:0;top:22%;z-index:27;text-align:center;pointer-events:none;font:600 clamp(1.4rem,4vw,2.2rem)/1.1 Manrope,system-ui,sans-serif;letter-spacing:-.01em;color:#f4f1ff;text-shadow:0 0 24px rgba(142,233,255,.6),0 2px 10px #000;opacity:0;transform:translateY(8px);transition:opacity .4s,transform .4s}
+#hl-banner small{display:block;margin-bottom:.35rem;font:600 .72rem/1 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.28em;text-transform:uppercase;color:#8ee9ff}
+#hl-banner.on{opacity:1;transform:none}
 @media (pointer:coarse),(max-width:520px){#hl-hint.on{display:none}}
 </style></head><body>
 <div id="game" aria-label="Hyperlane 3D playfield"></div>
@@ -23,9 +26,11 @@ html,body{margin:0;height:100%;background:#03050c;color:#f4f1ff;overflow:hidden;
   <div class="pa-stat" id="s-score"><small>Score</small><b>0</b></div>
   <div class="pa-stat" id="s-mult"><small>Multiplier</small><b>×1.0</b></div>
   <div class="pa-stat" id="s-dist"><small>Distance</small><b>0 m</b></div>
+  <div class="pa-stat" id="s-sector"><small>Sector</small><b>1</b></div>
   <div id="hl-boost-wrap"><small>Boost</small><div id="hl-boost" aria-hidden="true"><i id="hl-boost-fill"></i></div></div>
 </div>
-<p id="hl-hint">← → / A D steer · ↑ ↓ climb · Shift / Space boost · drag to fly</p>
+<p id="hl-hint">← → / A D steer · ↑ ↓ climb · Shift / Space boost · fly through the gaps in the gates</p>
+<div id="hl-banner" aria-live="polite"></div>
 <script>
 window.paConfig = {
   slug: "hyperlane-3d",
@@ -37,7 +42,8 @@ window.paConfig = {
     ["← → / A D", "Steer & bank"],
     ["↑ ↓ / W S", "Climb / dive"],
     ["Shift / Space", "Boost (uses meter)"],
-    ["Drag", "Steer on touch"]
+    ["Drag", "Steer on touch"],
+    ["Gates", "Fly through the gap"]
   ]
 };
 </script>
@@ -52,44 +58,46 @@ import * as THREE from "/vendor/three/three.module.min.js";
   const PA = window.PA;
   const { clamp, rand, lerp } = PA;
 
-  const COL = {
-    sky: 0x05070f,
-    fog: 0x080c18,
-    lane: 0x8ee9ff,
-    laneAlt: 0xc4a6ff,
-    ship: 0x7ee7f5,
-    shipCore: 0x8ee9ff,
-    wing: 0xc4a6ff,
-    obs: 0xff5e8a,
-    obsCore: 0xff7eb6,
-    orb: 0xffd27a,
-    orbRing: 0x8ee9ff
-  };
-
-  const LANES = { x: 9, y: 5.5 };
+  // The lane is a box: the ship flies inside it and every obstacle is built to its walls.
+  const LANE = { x: 10, y: 4.2 };              // half width / half height of the tunnel
+  const SHIP_LIM = { x: 8.6, y: 3.3 };         // how far the ship's centre may go
+  const SHIP_HALF = { x: 1.15, y: 0.32, z: 1.0 };
   const SHIP_Z = 0;
-  const CAM_BACK = 14;
-  const CAM_UP = 3.2;
+  const CAM_BACK = 12.5;
+  const CAM_UP = 2.7;
+  const SPAWN_Z = -165;
+  const SECTOR_LEN = 650;                      // metres per sector
+
+  // Each sector shifts the palette and tightens the course.
+  const SECTORS = [
+    { name: "Cyan Drift", lane: 0x5ef2ff, alt: 0xc4a6ff, obs: 0xff5e8a, fog: 0x07101c, sky: 0x03060e },
+    { name: "Violet Run", lane: 0xc4a6ff, alt: 0xff7eb6, obs: 0xffb35c, fog: 0x0e0820, sky: 0x060312 },
+    { name: "Ember Gate", lane: 0xffb35c, alt: 0xff5e8a, obs: 0x5ef2ff, fog: 0x1a0a08, sky: 0x0c0403 },
+    { name: "Toxic Line", lane: 0x7dffb0, alt: 0x5ef2ff, obs: 0xff5ef2, fog: 0x061610, sky: 0x020a06 },
+    { name: "Redshift", lane: 0xff5e8a, alt: 0xffd27a, obs: 0x8ee9ff, fog: 0x1a0610, sky: 0x0c0208 },
+    { name: "White Noise", lane: 0xf4f1ff, alt: 0x8ee9ff, obs: 0xff4d6d, fog: 0x0c0e18, sky: 0x05060c }
+  ];
 
   let W = innerWidth, H = innerHeight;
   let running = false, overSent = false, simT = 0;
-  let score = 0, distance = 0, multiplier = 1, orbs = 0, nearMisses = 0;
-  let boost = 100, boosting = false, speed = 0, baseSpeed = 52;
-  let spawnCd = 0, lanePulse = 0;
+  let score = 0, distance = 0, multiplier = 1, peakMult = 1, orbs = 0, nearMisses = 0, gatesCleared = 0;
+  let boost = 100, boosting = false, speed = 0, sector = 0, spawnGap = 0, nextSpawn = 0, pattern = 0;
   let shipX = 0, shipY = 0, velX = 0, velY = 0, bank = 0, pitch = 0;
   let ptrActive = false, ptrNX = 0, ptrNY = 0;
+  let bannerT = 0;
 
   const mount = document.getElementById("game");
   const hud = document.getElementById("hl-hud");
   const hint = document.getElementById("hl-hint");
   const boostEl = document.getElementById("hl-boost");
   const boostFill = document.getElementById("hl-boost-fill");
+  const banner = document.getElementById("hl-banner");
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(COL.sky);
-  scene.fog = new THREE.FogExp2(COL.fog, 0.028);
+  scene.background = new THREE.Color(SECTORS[0].sky);
+  scene.fog = new THREE.Fog(SECTORS[0].fog, 40, 175);
 
-  const camera = new THREE.PerspectiveCamera(62, W / H, 0.1, 420);
+  const camera = new THREE.PerspectiveCamera(64, W / H, 0.1, 400);
   camera.position.set(0, CAM_UP, CAM_BACK);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -97,130 +105,264 @@ import * as THREE from "/vendor/three/three.module.min.js";
   renderer.setSize(W, H);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.15;
   mount.appendChild(renderer.domElement);
 
-  const hemi = new THREE.HemisphereLight(0x8ee9ff, 0x180818, 0.55);
-  scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xffffff, 0.85);
+  scene.add(new THREE.HemisphereLight(0xbfe9ff, 0x1a0820, 0.7));
+  const key = new THREE.DirectionalLight(0xffffff, 0.9);
   key.position.set(4, 12, 8);
   scene.add(key);
 
+  /* ---------------- ship ---------------- */
   const ship = new THREE.Group();
-  const hull = new THREE.Mesh(
-    new THREE.ConeGeometry(0.55, 2.4, 8),
-    new THREE.MeshStandardMaterial({ color: COL.ship, emissive: COL.shipCore, emissiveIntensity: 0.35, metalness: 0.65, roughness: 0.25, flatShading: true })
-  );
-  hull.rotation.x = Math.PI / 2;
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x7ee7f5, emissive: 0x8ee9ff, emissiveIntensity: 0.35, metalness: 0.65, roughness: 0.25, flatShading: true });
+  const hull = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.4, 8), hullMat);
+  hull.rotation.x = -Math.PI / 2;
   ship.add(hull);
   const cockpit = new THREE.Mesh(
-    new THREE.SphereGeometry(0.32, 10, 10),
-    new THREE.MeshStandardMaterial({ color: 0x0a1220, emissive: COL.shipCore, emissiveIntensity: 0.8, metalness: 0.2, roughness: 0.1 })
+    new THREE.SphereGeometry(0.32, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0x0a1220, emissive: 0x8ee9ff, emissiveIntensity: 0.8, metalness: 0.2, roughness: 0.1 })
   );
-  cockpit.position.set(0, 0.35, -0.15);
+  cockpit.position.set(0, 0.3, -0.1);
   ship.add(cockpit);
-  const wingGeo = new THREE.BoxGeometry(2.6, 0.08, 0.85);
-  const wingMat = new THREE.MeshStandardMaterial({ color: COL.wing, emissive: COL.laneAlt, emissiveIntensity: 0.25, metalness: 0.5, roughness: 0.35, transparent: true, opacity: 0.92 });
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0xc4a6ff, emissive: 0xc4a6ff, emissiveIntensity: 0.3, metalness: 0.5, roughness: 0.35 });
+  const wingGeo = new THREE.BoxGeometry(2.4, 0.08, 0.85);
   const wingL = new THREE.Mesh(wingGeo, wingMat);
-  wingL.position.set(-0.95, 0, 0.35);
-  wingL.rotation.z = 0.08;
-  const wingR = wingL.clone();
-  wingR.position.x = 0.95;
-  wingR.rotation.z = -0.08;
+  wingL.position.set(-0.95, 0, 0.35); wingL.rotation.z = 0.08;
+  const wingR = new THREE.Mesh(wingGeo, wingMat);
+  wingR.position.set(0.95, 0, 0.35); wingR.rotation.z = -0.08;
   ship.add(wingL, wingR);
+  const tipMat = new THREE.MeshBasicMaterial({ color: 0xff7eb6 });
+  for (const sx of [-2.1, 2.1]) {
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.9), tipMat);
+    tip.position.set(sx, 0.02 + Math.abs(sx) * 0.035, 0.35);
+    ship.add(tip);
+  }
   const thruster = new THREE.Mesh(
     new THREE.CylinderGeometry(0.22, 0.35, 0.5, 8),
-    new THREE.MeshStandardMaterial({ color: 0x1a2244, emissive: 0xff9ec4, emissiveIntensity: 0.15, metalness: 0.4, roughness: 0.5 })
+    new THREE.MeshStandardMaterial({ color: 0x1a2244, emissive: 0xff9ec4, emissiveIntensity: 0.25, metalness: 0.4, roughness: 0.5 })
   );
   thruster.rotation.x = Math.PI / 2;
   thruster.position.z = 1.05;
   ship.add(thruster);
-  const flame = new THREE.Mesh(
-    new THREE.ConeGeometry(0.28, 1.1, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })
-  );
-  flame.rotation.x = -Math.PI / 2;
-  flame.position.z = 1.55;
-  flame.visible = false;
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0x8ee9ff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.26, 1.2, 10), flameMat);
+  flame.rotation.x = Math.PI / 2;
+  flame.position.z = 1.75;
   ship.add(flame);
-  ship.position.set(0, 0, SHIP_Z);
   scene.add(ship);
-
-  const shipLight = new THREE.PointLight(0x8ee9ff, 1.6, 28);
-  shipLight.position.set(0, 0.4, -1.2);
+  const shipLight = new THREE.PointLight(0x8ee9ff, 2.2, 26);
+  shipLight.position.set(0, 0.6, -1.5);
   ship.add(shipLight);
+  // a soft shadow on the floor shows height at a glance
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.scale.set(1.6, 0.9, 1);
+  scene.add(shadow);
 
-  const tunnel = new THREE.Group();
-  scene.add(tunnel);
-
-  const gridMat = new THREE.LineBasicMaterial({ color: COL.lane, transparent: true, opacity: 0.35 });
-  const gridAlt = new THREE.LineBasicMaterial({ color: COL.laneAlt, transparent: true, opacity: 0.22 });
-  const floorLines = new THREE.Group();
-  const ceilLines = floorLines.clone();
-  for (let i = -10; i <= 10; i++) {
-    const zSpan = 240;
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(i * 2.2, 0, -zSpan),
-      new THREE.Vector3(i * 2.2, 0, zSpan)
-    ]);
-    const line = new THREE.Line(geo, i % 3 === 0 ? gridAlt : gridMat);
-    line.position.y = -3.2;
-    floorLines.add(line);
-    const geo2 = geo.clone();
-    const line2 = new THREE.Line(geo2, line.material);
-    line2.position.y = 3.2;
-    ceilLines.add(line2);
+  /* ---------------- the lane ---------------- */
+  const laneMat = new THREE.LineBasicMaterial({ color: SECTORS[0].lane, transparent: true, opacity: 0.7, fog: true });
+  const laneAltMat = new THREE.LineBasicMaterial({ color: SECTORS[0].alt, transparent: true, opacity: 0.85, fog: true });
+  const lane = new THREE.Group();
+  scene.add(lane);
+  const SEG = 8, SPAN = 200;
+  function addLines(pts, mat) {
+    const g = new THREE.BufferGeometry().setFromPoints(pts);
+    lane.add(new THREE.LineSegments(g, mat));
   }
-  for (let z = -200; z <= 200; z += 8) {
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-24, -3.2, z),
-      new THREE.Vector3(24, -3.2, z)
-    ]);
-    const line = new THREE.Line(geo, z % 16 === 0 ? gridAlt : gridMat);
-    floorLines.add(line);
-    const geo2 = geo.clone();
-    const line2 = new THREE.Line(geo2, line.material);
-    line2.position.y = 6.4;
-    ceilLines.add(line2);
+  {
+    const p = [], q = [];
+    // lengthwise lines on floor and ceiling
+    for (let i = -5; i <= 5; i++) {
+      const x = i * 2;
+      for (const y of [-LANE.y, LANE.y]) (i % 5 === 0 ? q : p).push(new THREE.Vector3(x, y, -SPAN), new THREE.Vector3(x, y, 40));
+    }
+    // lengthwise lines on the side walls
+    for (let j = -2; j <= 2; j++) for (const x of [-LANE.x, LANE.x]) (j === 0 ? q : p).push(new THREE.Vector3(x, j * LANE.y / 2, -SPAN), new THREE.Vector3(x, j * LANE.y / 2, 40));
+    // cross frames: a full rectangle every SEG units
+    for (let z = -SPAN; z <= 40; z += SEG) {
+      const m = (Math.round(z / SEG) % 4 === 0) ? q : p;
+      const c = [[-LANE.x, -LANE.y], [LANE.x, -LANE.y], [LANE.x, LANE.y], [-LANE.x, LANE.y]];
+      for (let k = 0; k < 4; k++) m.push(new THREE.Vector3(c[k][0], c[k][1], z), new THREE.Vector3(c[(k + 1) % 4][0], c[(k + 1) % 4][1], z));
+    }
+    addLines(p, laneMat);
+    addLines(q, laneAltMat);
   }
-  tunnel.add(floorLines, ceilLines);
+  // faint glass panels so the walls read as surfaces
+  const panelMat = new THREE.MeshBasicMaterial({ color: SECTORS[0].lane, transparent: true, opacity: 0.045, side: THREE.DoubleSide, depthWrite: false, fog: true });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(LANE.x * 2, SPAN + 40), panelMat);
+  floor.rotation.x = -Math.PI / 2; floor.position.set(0, -LANE.y, -SPAN / 2 + 20);
+  const ceil = floor.clone(); ceil.position.y = LANE.y;
+  const wallL = new THREE.Mesh(new THREE.PlaneGeometry(SPAN + 40, LANE.y * 2), panelMat);
+  wallL.rotation.y = Math.PI / 2; wallL.position.set(-LANE.x, 0, -SPAN / 2 + 20);
+  const wallR = wallL.clone(); wallR.position.x = LANE.x;
+  scene.add(floor, ceil, wallL, wallR);
 
-  const sideWallMat = new THREE.MeshStandardMaterial({
-    color: 0x0c1024, emissive: COL.laneAlt, emissiveIntensity: 0.08, metalness: 0.3, roughness: 0.85, transparent: true, opacity: 0.35, side: THREE.BackSide
-  });
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 520, 24, 1, true), sideWallMat);
-  tube.rotation.x = Math.PI / 2;
-  scene.add(tube);
+  // speed streaks
+  const streakN = 160;
+  const streakPos = new Float32Array(streakN * 6);
+  const streakGeo = new THREE.BufferGeometry();
+  streakGeo.setAttribute("position", new THREE.BufferAttribute(streakPos, 3));
+  const streakMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+  const streaks = new THREE.LineSegments(streakGeo, streakMat);
+  scene.add(streaks);
+  const streakData = [];
+  for (let i = 0; i < streakN; i++) streakData.push({ x: rand(-LANE.x, LANE.x), y: rand(-LANE.y, LANE.y), z: rand(SPAWN_Z, 10) });
 
-  const starsGeo = new THREE.BufferGeometry();
-  const starN = 900;
-  const starPos = new Float32Array(starN * 3);
-  for (let i = 0; i < starN; i++) {
-    starPos[i * 3] = rand(-40, 40);
-    starPos[i * 3 + 1] = rand(-18, 18);
-    starPos[i * 3 + 2] = rand(-180, -20);
-  }
-  starsGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-  const stars = new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: 0xc4a6ff, size: 0.12, transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending }));
-  scene.add(stars);
-
-  const obstacles = [];
-  const pickups = [];
-  const obsGeo = new THREE.BoxGeometry(1, 1, 1);
-  const obsMat = new THREE.MeshStandardMaterial({ color: COL.obs, emissive: COL.obsCore, emissiveIntensity: 0.55, metalness: 0.4, roughness: 0.35, flatShading: true });
+  /* ---------------- obstacles ---------------- */
+  const obstacles = [], pickups = [];
+  const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+  const edgeGeo = new THREE.EdgesGeometry(boxGeo);
   const orbGeo = new THREE.OctahedronGeometry(0.55, 0);
-  const orbMat = new THREE.MeshStandardMaterial({ color: COL.orb, emissive: COL.orb, emissiveIntensity: 0.85, metalness: 0.25, roughness: 0.2 });
-  const orbRingGeo = new THREE.TorusGeometry(0.72, 0.06, 8, 24);
+  const orbRingGeo = new THREE.TorusGeometry(0.75, 0.06, 8, 28);
+  const orbMat = new THREE.MeshStandardMaterial({ color: 0xffd27a, emissive: 0xffd27a, emissiveIntensity: 0.9, metalness: 0.25, roughness: 0.2 });
+  const orbRingMat = new THREE.MeshBasicMaterial({ color: 0x8ee9ff, transparent: true, opacity: 0.85 });
+  let obsMat = null, obsEdgeMat = null, laserMat = null;
+  function makeMats() {
+    const c = SECTORS[sector % SECTORS.length];
+    obsMat = new THREE.MeshStandardMaterial({ color: 0x0c0c1c, emissive: c.obs, emissiveIntensity: 0.42, metalness: 0.5, roughness: 0.35, flatShading: true, transparent: true });
+    obsEdgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, fog: true, transparent: true });
+    laserMat = new THREE.MeshBasicMaterial({ color: c.obs, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  }
+  makeMats();
+
+  // a solid piece: a box mesh with glowing edges; boxes[] holds world-space AABBs relative to the group
+  function solid(group, boxes, cx, cy, w, h, d) {
+    if (w <= 0.01 || h <= 0.01) return;
+    const m = new THREE.Mesh(boxGeo, obsMat);
+    m.scale.set(w, h, d); m.position.set(cx, cy, 0);
+    const e = new THREE.LineSegments(edgeGeo, obsEdgeMat);
+    e.scale.copy(m.scale); e.position.copy(m.position);
+    group.add(m, e);
+    boxes.push({ x: cx, y: cy, hx: w / 2, hy: h / 2, hz: d / 2 });
+  }
+  function addObstacle(group, boxes, extra) {
+    // each obstacle gets its own copy of the sector materials so it can fade once it is behind the ship
+    const mats = new Map();
+    group.traverse((c) => {
+      if (!c.material || c.material === laserMat) return;
+      if (!mats.has(c.material)) mats.set(c.material, c.material.clone());
+      c.material = mats.get(c.material);
+    });
+    extra = Object.assign({ mats: [...mats.values()] }, extra);
+    group.position.z = SPAWN_Z;
+    scene.add(group);
+    obstacles.push(Object.assign({ group, boxes, near: false, passed: false }, extra));
+  }
+
+  // 1. a cluster of pillars and blocks
+  function spawnBlocks() {
+    const group = new THREE.Group(), boxes = [];
+    const n = sector >= 2 ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      const tall = Math.random() < 0.5;
+      const w = tall ? rand(1.4, 2.4) : rand(2.2, 4.2), h = tall ? LANE.y * 2 : rand(1.6, 3.2);
+      const x = rand(-LANE.x + w / 2, LANE.x - w / 2), y = tall ? 0 : rand(-LANE.y + h / 2, LANE.y - h / 2);
+      solid(group, boxes, x, y, w, h, rand(2, 4));
+    }
+    addObstacle(group, boxes, { kind: "blocks" });
+  }
+  // 2. a wall across the whole lane with one opening
+  function spawnGate() {
+    const group = new THREE.Group(), boxes = [];
+    const gw = clamp(6.2 - sector * 0.45, 3.6, 6.2), gh = clamp(4.4 - sector * 0.3, 2.6, 4.4), d = 1.2;
+    const gx = rand(-LANE.x + gw / 2 + 0.4, LANE.x - gw / 2 - 0.4), gy = rand(-LANE.y + gh / 2 + 0.3, LANE.y - gh / 2 - 0.3);
+    const l = gx - gw / 2, r = gx + gw / 2, b = gy - gh / 2, t = gy + gh / 2;
+    solid(group, boxes, (-LANE.x + l) / 2, 0, l + LANE.x, LANE.y * 2, d);
+    solid(group, boxes, (r + LANE.x) / 2, 0, LANE.x - r, LANE.y * 2, d);
+    solid(group, boxes, gx, (-LANE.y + b) / 2, gw, b + LANE.y, d);
+    solid(group, boxes, gx, (t + LANE.y) / 2, gw, LANE.y - t, d);
+    // a bright frame round the opening
+    const frame = new THREE.Group(), fm = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true });
+    for (const [x, y, w, h] of [[0, gh / 2, gw + 0.24, 0.12], [0, -gh / 2, gw + 0.24, 0.12], [gw / 2, 0, 0.12, gh], [-gw / 2, 0, 0.12, gh]]) {
+      const bar = new THREE.Mesh(boxGeo, fm);
+      bar.scale.set(w, h, 0.12); bar.position.set(x, y, 0);
+      frame.add(bar);
+    }
+    frame.position.set(gx, gy, d / 2 + 0.07);
+    group.add(frame);
+    addObstacle(group, boxes, { kind: "gate", frame });
+  }
+  // 3. laser bars across the lane; later sectors make them sweep
+  function spawnLasers() {
+    const group = new THREE.Group(), boxes = [];
+    const vertical = Math.random() < 0.4, count = sector >= 3 ? 2 : 1;
+    const bars = [];
+    for (let i = 0; i < count; i++) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, vertical ? LANE.y * 2 : LANE.x * 2, 8), laserMat);
+      if (!vertical) m.rotation.z = Math.PI / 2;
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, vertical ? LANE.y * 2 : LANE.x * 2, 8), new THREE.MeshBasicMaterial({ color: laserMat.color, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      glow.rotation.copy(m.rotation);
+      const bar = new THREE.Group(); bar.add(m, glow);
+      const lim = vertical ? LANE.x - 1.2 : LANE.y - 0.9;
+      const base = count === 2 ? (i ? 1 : -1) * lim * 0.5 : rand(-lim * 0.6, lim * 0.6);
+      bars.push({ bar, vertical, base, lim, amp: sector >= 1 ? rand(0.4, 0.9) * lim * 0.6 : 0, ph: rand(TAU), sp: rand(0.9, 1.5), z: i * 3 });
+      bar.position.z = -i * 3;
+      group.add(bar);
+    }
+    addObstacle(group, boxes, { kind: "lasers", bars });
+  }
+  function spawnOrbs() {
+    // a short line of orbs to steer through
+    const x0 = rand(-SHIP_LIM.x * 0.8, SHIP_LIM.x * 0.8), y0 = rand(-SHIP_LIM.y * 0.8, SHIP_LIM.y * 0.8);
+    const dx = rand(-0.6, 0.6), dy = rand(-0.3, 0.3);
+    for (let i = 0; i < 4; i++) {
+      const group = new THREE.Group();
+      group.add(new THREE.Mesh(orbGeo, orbMat));
+      const ring = new THREE.Mesh(orbRingGeo, orbRingMat);
+      group.add(ring);
+      group.position.set(clamp(x0 + dx * i * 3, -SHIP_LIM.x, SHIP_LIM.x), clamp(y0 + dy * i * 3, -SHIP_LIM.y, SHIP_LIM.y), SPAWN_Z - i * 6);
+      scene.add(group);
+      pickups.push({ group, spin: rand(TAU) });
+    }
+  }
+
+  function disposeGroup(g, mats) {
+    scene.remove(g);
+    if (mats) mats.forEach((m) => m.dispose());
+    g.traverse((c) => {
+      if (c.geometry && c.geometry !== boxGeo && c.geometry !== edgeGeo && c.geometry !== orbGeo && c.geometry !== orbRingGeo) c.geometry.dispose();
+    });
+  }
+  function clearWorld() {
+    obstacles.forEach((o) => disposeGroup(o.group, o.mats));
+    pickups.forEach((p) => scene.remove(p.group));
+    obstacles.length = 0;
+    pickups.length = 0;
+  }
+
+  function setSector(i, announce) {
+    sector = i;
+    const c = SECTORS[i % SECTORS.length];
+    scene.background.setHex(c.sky);
+    scene.fog.color.setHex(c.fog);
+    laneMat.color.setHex(c.lane);
+    laneAltMat.color.setHex(c.alt);
+    panelMat.color.setHex(c.lane);
+    shipLight.color.setHex(c.lane);
+    makeMats();
+    if (announce) {
+      banner.innerHTML = "<small>Sector " + (i + 1) + "</small>" + c.name;
+      banner.classList.add("on");
+      bannerT = 2.2;
+      PA.sfx("levelup", { pitch: 1 + i * 0.04 });
+      PA.flash("rgba(" + ((c.lane >> 16) & 255) + "," + ((c.lane >> 8) & 255) + "," + (c.lane & 255) + ",.25)", 420);
+    }
+    PA.stat("s-sector", String(i + 1));
+  }
 
   function resize() {
     W = innerWidth;
     H = innerHeight;
     camera.aspect = W / H;
+    // keep the whole lane width in view on tall phones
+    camera.fov = W / H < 0.8 ? 78 : 64;
     camera.updateProjectionMatrix();
     renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
     renderer.setSize(W, H);
   }
   addEventListener("resize", resize);
+  resize();
 
   function paintHud() {
     PA.stat("s-score", Math.floor(score).toLocaleString());
@@ -230,49 +372,20 @@ import * as THREE from "/vendor/three/three.module.min.js";
     boostEl.classList.toggle("boosting", boosting && boost > 2);
   }
 
-  function clearWorld() {
-    obstacles.forEach((o) => {
-      scene.remove(o.mesh);
-      if (o.mesh.material) o.mesh.material.dispose();
-    });
-    pickups.forEach((p) => {
-      scene.remove(p.group);
-      p.group.traverse((c) => {
-        if (c.geometry) c.geometry.dispose();
-      });
-    });
-    obstacles.length = 0;
-    pickups.length = 0;
-  }
-
   function reset() {
     clearWorld();
-    running = true;
-    overSent = false;
-    simT = 0;
-    score = 0;
-    distance = 0;
-    multiplier = 1;
-    orbs = 0;
-    nearMisses = 0;
-    boost = 100;
-    boosting = false;
-    speed = baseSpeed;
-    spawnCd = 0.4;
-    shipX = 0;
-    shipY = 0;
-    velX = 0;
-    velY = 0;
-    bank = 0;
-    pitch = 0;
-    ptrActive = false;
-    ptrNX = 0;
-    ptrNY = 0;
-    flame.visible = false;
-    ship.position.set(0, 0, SHIP_Z);
+    running = true; overSent = false; simT = 0;
+    score = 0; distance = 0; multiplier = 1; peakMult = 1; orbs = 0; nearMisses = 0; gatesCleared = 0;
+    boost = 100; boosting = false;
+    spawnGap = 34; nextSpawn = 60; pattern = 0;
+    shipX = 0; shipY = -1; velX = 0; velY = 0; bank = 0; pitch = 0;
+    ptrActive = false; ptrNX = 0; ptrNY = 0;
+    setSector(0, false);
+    ship.position.set(0, shipY, SHIP_Z);
     ship.rotation.set(0, 0, 0);
-    tunnel.position.set(0, 0, 0);
-    stars.position.set(0, 0, 0);
+    ship.visible = true;
+    lane.position.z = 0;
+    banner.classList.remove("on");
     hud.classList.add("on");
     hint.classList.add("on");
     PA.music.intensity(0.12);
@@ -286,10 +399,10 @@ import * as THREE from "/vendor/three/three.module.min.js";
       { label: "◀", key: "ArrowLeft", code: "ArrowLeft", aria: "Steer left" },
       { label: "▶", key: "ArrowRight", code: "ArrowRight", aria: "Steer right" }
     ],
-    right: [{ label: "⚡", key: " ", code: "Space", aria: "Boost", wide: true }],
-    center: [
-      { label: "↑", key: "ArrowUp", code: "ArrowUp", aria: "Climb" },
-      { label: "↓", key: "ArrowDown", code: "ArrowDown", aria: "Dive" }
+    right: [
+      { label: "▲", key: "ArrowUp", code: "ArrowUp", aria: "Climb" },
+      { label: "▼", key: "ArrowDown", code: "ArrowDown", aria: "Dive" },
+      { label: "⚡", key: " ", code: "Space", aria: "Boost" }
     ]
   });
 
@@ -304,162 +417,160 @@ import * as THREE from "/vendor/three/three.module.min.js";
     if (PA.down("ArrowUp", "KeyW", "w")) ay += 1;
     if (PA.down("ArrowDown", "KeyS", "s")) ay -= 1;
     if (ptrActive) {
-      ax = clamp(ptrNX, -1, 1);
-      ay = clamp(ptrNY, -1, 1);
+      // steer toward where the finger is, relative to the ship on screen
+      const p = ship.position.clone().project(camera);
+      ax = clamp((ptrNX - p.x) * 3, -1, 1);
+      ay = clamp((ptrNY - p.y) * 3, -1, 1);
     }
     return { ax, ay };
   }
 
-  mount.addEventListener("pointerdown", (e) => {
-    if (PA.state !== "play" || !running) return;
-    ptrActive = true;
-    ptrNX = clamp((e.clientX / W - 0.5) * 2.2, -1, 1);
-    ptrNY = clamp((0.5 - e.clientY / H) * 2.2, -1, 1);
-  });
-  mount.addEventListener("pointermove", (e) => {
-    if (!ptrActive) return;
-    ptrNX = clamp((e.clientX / W - 0.5) * 2.2, -1, 1);
-    ptrNY = clamp((0.5 - e.clientY / H) * 2.2, -1, 1);
-  });
+  function ptr(e) {
+    ptrNX = (e.clientX / W) * 2 - 1;
+    ptrNY = 1 - (e.clientY / H) * 2;
+  }
+  mount.addEventListener("pointerdown", (e) => { if (PA.state !== "play" || !running) return; ptrActive = true; ptr(e); });
+  addEventListener("pointermove", (e) => { if (ptrActive) ptr(e); });
   addEventListener("pointerup", () => { ptrActive = false; });
   addEventListener("pointercancel", () => { ptrActive = false; });
-
-  function spawnObstacle() {
-    const w = rand(1.2, 3.4);
-    const h = rand(1.2, 3.8);
-    const d = rand(2.5, 5.5);
-    const mesh = new THREE.Mesh(obsGeo, obsMat.clone());
-    mesh.scale.set(w, h, d);
-    mesh.position.set(rand(-LANES.x, LANES.x), rand(-LANES.y, LANES.y), -rand(120, 200));
-    scene.add(mesh);
-    obstacles.push({ mesh, w, h, d, near: false });
-  }
-
-  function spawnOrb() {
-    const group = new THREE.Group();
-    const core = new THREE.Mesh(orbGeo, orbMat.clone());
-    const ring = new THREE.Mesh(orbRingGeo, new THREE.MeshStandardMaterial({ color: COL.orbRing, emissive: COL.orbRing, emissiveIntensity: 0.65, metalness: 0.3, roughness: 0.25, transparent: true, opacity: 0.85 }));
-    ring.rotation.x = Math.PI / 2;
-    group.add(core, ring);
-    group.position.set(rand(-LANES.x * 0.85, LANES.x * 0.85), rand(-LANES.y * 0.85, LANES.y * 0.85), -rand(110, 190));
-    scene.add(group);
-    pickups.push({ group, spin: rand(0, TAU) });
-  }
-
-  function scrollWorld(dz) {
-    tunnel.position.z += dz;
-    stars.position.z += dz * 0.35;
-    if (tunnel.position.z > 8) tunnel.position.z -= 8;
-    if (stars.position.z > 40) stars.position.z -= 40;
-  }
-
-  function hitBox(o) {
-    const s = o.mesh.scale;
-    return { x: o.mesh.position.x, y: o.mesh.position.y, z: o.mesh.position.z, hx: s.x * 0.48, hy: s.y * 0.48, hz: s.z * 0.48 };
-  }
-
-  function collideShip(box) {
-    const sx = shipX, sy = shipY, sz = SHIP_Z;
-    const shx = 0.75, shy = 0.55, shz = 1.1;
-    return Math.abs(sx - box.x) < shx + box.hx && Math.abs(sy - box.y) < shy + box.hy && Math.abs(sz - box.z) < shz + box.hz;
-  }
 
   function endRun(reason) {
     if (overSent || !running) return;
     running = false;
     overSent = true;
     hint.classList.remove("on");
+    banner.classList.remove("on");
+    ship.visible = false;
     PA.shake(10, 0.45);
     PA.hitstop(110);
     PA.flash("rgba(255,94,138,.38)", 320);
     PA.sfx("explode", { pitch: 0.82, vol: 0.7 });
     PA.gameOver(Math.floor(score), {
       title: reason || "Hull breach",
-      kicker: "Hyperlane offline",
+      kicker: "Hyperlane offline · sector " + (sector + 1),
       stats: [
         ["Distance", Math.floor(distance) + " m"],
+        ["Gates", gatesCleared],
         ["Orbs", orbs],
-        ["Peak multiplier", "×" + multiplier.toFixed(1)],
+        ["Peak multiplier", "×" + peakMult.toFixed(1)],
         ["Near misses", nearMisses]
       ]
     });
   }
 
+  function spawnNext() {
+    // a rhythm instead of pure chance: obstacles, then a breather with orbs now and then
+    pattern++;
+    const r = Math.random();
+    if (pattern % 5 === 0) spawnOrbs();
+    else if (r < 0.34) spawnGate();
+    else if (r < 0.62 || sector === 0 && r < 0.75) spawnBlocks();
+    else spawnLasers();
+    spawnGap = clamp(36 - sector * 3 - distance / 400, 20, 36) * (boosting ? 1.15 : 1);
+  }
+
   function update(dt, t) {
+    if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) banner.classList.remove("on"); }
     if (PA.state !== "play" || !running) return;
 
     simT += dt;
-    if (simT > 4) hint.classList.remove("on");
+    if (simT > 5) hint.classList.remove("on");
 
     boosting = wantBoost();
-    if (boosting) {
-      boost -= 38 * dt;
-      if (boost <= 0) { boost = 0; boosting = false; }
-    } else {
-      boost = Math.min(100, boost + 16 * dt);
-    }
+    if (boosting) { boost -= 34 * dt; if (boost <= 0) { boost = 0; boosting = false; } }
+    else boost = Math.min(100, boost + 14 * dt);
 
-    const difficulty = clamp(1 + distance / 900, 1, 2.4);
-    baseSpeed = lerp(52, 92, clamp(distance / 2400, 0, 1));
-    speed = baseSpeed * (boosting ? 1.55 : 1) * difficulty;
+    const sec = Math.floor(distance / SECTOR_LEN);
+    if (sec !== sector) setSector(sec, true);
+    const cruise = Math.min(118, 46 + sector * 9 + (distance % SECTOR_LEN) * 0.012);
+    speed = lerp(speed || cruise, cruise * (boosting ? 1.5 : 1), 1 - Math.pow(0.02, dt));
 
     const { ax, ay } = steerInput();
-    const steer = 13.5 * difficulty;
-    velX = lerp(velX, ax * steer, 1 - Math.pow(0.001, dt));
-    velY = lerp(velY, ay * steer * 0.72, 1 - Math.pow(0.001, dt));
-    shipX = clamp(shipX + velX * dt, -LANES.x, LANES.x);
-    shipY = clamp(shipY + velY * dt, -LANES.y, LANES.y);
-    if (Math.abs(ax) < 0.05) velX *= Math.pow(0.04, dt);
+    const steer = 15 + sector * 0.8;
+    velX = lerp(velX, ax * steer, 1 - Math.pow(0.0006, dt));
+    velY = lerp(velY, ay * steer * 0.75, 1 - Math.pow(0.0006, dt));
+    shipX = clamp(shipX + velX * dt, -SHIP_LIM.x, SHIP_LIM.x);
+    shipY = clamp(shipY + velY * dt, -SHIP_LIM.y, SHIP_LIM.y);
+    if (Math.abs(shipX) >= SHIP_LIM.x) velX *= 0.5;
+    if (Math.abs(shipY) >= SHIP_LIM.y) velY *= 0.5;
 
-    bank = lerp(bank, -ax * 0.62 - velX * 0.04, 1 - Math.pow(0.0004, dt));
-    pitch = lerp(pitch, ay * 0.18 + (boosting ? -0.08 : 0), 1 - Math.pow(0.001, dt));
+    bank = lerp(bank, -velX * 0.045, 1 - Math.pow(0.0004, dt));
+    pitch = lerp(pitch, velY * 0.025, 1 - Math.pow(0.001, dt));
 
     const move = speed * dt;
-    distance += move * 0.22;
-    score += move * 0.35 * multiplier;
-    scrollWorld(move);
+    distance += move * 0.5;
+    score += move * 0.4 * multiplier;
 
+    lane.position.z = (lane.position.z + move) % (SEG * 4);
     ship.position.set(shipX, shipY, SHIP_Z);
     ship.rotation.set(pitch, 0, bank);
-    flame.visible = boosting;
-    flame.scale.set(1, 1 + Math.sin(t * 28) * 0.15, 1);
-    flame.material.opacity = 0.55 + (boost / 100) * 0.35;
+    shadow.position.set(shipX, -LANE.y + 0.02, SHIP_Z + 0.3);
+    shadow.material.opacity = 0.18 + 0.25 * (1 - (shipY + SHIP_LIM.y) / (SHIP_LIM.y * 2));
+    flame.scale.set(1, (boosting ? 1.9 : 1) + Math.sin(t * 30) * 0.15, 1);
+    flameMat.color.setHex(boosting ? 0xffd27a : 0x8ee9ff);
+    shipLight.intensity = boosting ? 3.2 : 2.2;
 
-    camera.position.x = lerp(camera.position.x, shipX * 0.35, 1 - Math.pow(0.0008, dt));
-    camera.position.y = lerp(camera.position.y, CAM_UP + shipY * 0.25, 1 - Math.pow(0.0008, dt));
-    camera.lookAt(shipX * 0.4, shipY * 0.35, -30);
+    camera.position.x = lerp(camera.position.x, shipX * 0.55, 1 - Math.pow(0.002, dt));
+    camera.position.y = lerp(camera.position.y, CAM_UP + shipY * 0.3, 1 - Math.pow(0.002, dt));
+    camera.lookAt(shipX * 0.45, shipY * 0.5, -30);
+    const fovT = (W / H < 0.8 ? 78 : 64) + (boosting ? 7 : 0);
+    if (Math.abs(camera.fov - fovT) > 0.05) { camera.fov = lerp(camera.fov, fovT, 1 - Math.pow(0.01, dt)); camera.updateProjectionMatrix(); }
 
-    spawnCd -= dt;
-    if (spawnCd <= 0) {
-      const orbChance = clamp(0.22 + multiplier * 0.04, 0.18, 0.42);
-      if (Math.random() < orbChance) spawnOrb();
-      else spawnObstacle();
-      spawnCd = rand(0.55, 1.05) / difficulty;
+    // streaks
+    for (let i = 0; i < streakN; i++) {
+      const s = streakData[i];
+      s.z += move * 1.4;
+      if (s.z > 12) { s.z = SPAWN_Z + rand(0, 20); s.x = rand(-LANE.x, LANE.x); s.y = rand(-LANE.y, LANE.y); }
+      const len = 0.6 + speed * 0.025 * (boosting ? 2 : 1);
+      streakPos.set([s.x, s.y, s.z, s.x, s.y, s.z - len], i * 6);
     }
+    streakGeo.attributes.position.needsUpdate = true;
+    streakMat.opacity = boosting ? 0.6 : 0.3;
+
+    nextSpawn -= move;
+    if (nextSpawn <= 0) { spawnNext(); nextSpawn = spawnGap; }
 
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const o = obstacles[i];
-      o.mesh.position.z += move;
-      o.mesh.rotation.y += dt * 0.8;
-      o.mesh.rotation.x += dt * 0.35;
-      const box = hitBox(o);
-      if (!o.near && o.mesh.position.z > -6 && o.mesh.position.z < 4) {
-        const dx = Math.abs(shipX - box.x), dy = Math.abs(shipY - box.y);
-        if (dx < box.hx + 2.2 && dy < box.hy + 2.2) {
-          o.near = true;
-          nearMisses++;
-          score += 25 * multiplier;
-          PA.sfx("whoosh", { pitch: 1.2, vol: 0.35 });
+      o.group.position.z += move;
+      const gz = o.group.position.z;
+      if (o.kind === "lasers") {
+        o.boxes.length = 0;
+        for (const b of o.bars) {
+          const off = b.base + Math.sin(t * b.sp + b.ph) * b.amp;
+          if (b.vertical) { b.bar.position.x = off; o.boxes.push({ x: off, y: 0, hx: 0.22, hy: LANE.y, hz: 0.22, dz: -b.z }); }
+          else { b.bar.position.y = off; o.boxes.push({ x: 0, y: off, hx: LANE.x, hy: 0.22, hz: 0.22, dz: -b.z }); }
         }
       }
-      if (collideShip(box)) {
-        endRun("Obstacle impact");
-        return;
+      if (o.frame) o.frame.children[0].material.color.setHSL((t * 0.4) % 1, 0.7, 0.72);
+      // collision
+      if (gz > -12 && gz < 10) {
+        let hit = false;
+        for (const b of o.boxes) {
+          const bz = gz + (b.dz || 0);
+          if (Math.abs(shipX - b.x) < SHIP_HALF.x + b.hx && Math.abs(shipY - b.y) < SHIP_HALF.y + b.hy && Math.abs(SHIP_Z - bz) < SHIP_HALF.z + b.hz) { hit = true; break; }
+        }
+        if (hit) { endRun(o.kind === "gate" ? "Missed the gate" : o.kind === "lasers" ? "Cut by a laser" : "Obstacle impact"); return; }
       }
-      if (o.mesh.position.z > 24) {
-        scene.remove(o.mesh);
-        obstacles.splice(i, 1);
+      // passed it: near-miss and gate bonuses
+      if (!o.passed && gz > SHIP_Z + 1.5) {
+        o.passed = true;
+        if (o.kind === "gate") {
+          gatesCleared++;
+          multiplier = clamp(multiplier + 0.2, 1, 6); peakMult = Math.max(peakMult, multiplier);
+          score += 60 * multiplier;
+          PA.sfx("select", { pitch: 1.3 + Math.min(0.6, gatesCleared * 0.02) });
+        } else {
+          let close = false;
+          for (const b of o.boxes) if (Math.abs(shipX - b.x) < SHIP_HALF.x + b.hx + 1.2 && Math.abs(shipY - b.y) < SHIP_HALF.y + b.hy + 1.0) close = true;
+          if (close) { nearMisses++; score += 40 * multiplier; PA.sfx("whoosh", { pitch: 1.3, vol: 0.4 }); }
+        }
       }
+      if (gz > SHIP_Z + 2) {
+        const fade = clamp(1 - (gz - SHIP_Z - 2) / 6, 0, 1);
+        for (const m of o.mats) m.opacity = fade * (m.userData.base == null ? (m.userData.base = m.opacity) : m.userData.base);
+      }
+      if (gz > camera.position.z - 1) { disposeGroup(o.group, o.mats); obstacles.splice(i, 1); }
     }
 
     for (let i = pickups.length - 1; i >= 0; i--) {
@@ -467,31 +578,26 @@ import * as THREE from "/vendor/three/three.module.min.js";
       p.group.position.z += move;
       p.spin += dt * 2.4;
       p.group.rotation.y = p.spin;
-      p.group.rotation.x = Math.sin(p.spin * 0.7) * 0.35;
-      const dx = shipX - p.group.position.x;
-      const dy = shipY - p.group.position.y;
-      const dz = SHIP_Z - p.group.position.z;
-      if (dx * dx + dy * dy + dz * dz < 1.35 * 1.35) {
+      const dx = shipX - p.group.position.x, dy = shipY - p.group.position.y, dz = SHIP_Z - p.group.position.z;
+      if (dx * dx + dy * dy + dz * dz < 1.6 * 1.6) {
         orbs++;
-        multiplier = clamp(multiplier + 0.35, 1, 5);
-        const bonus = Math.floor(120 * multiplier);
-        score += bonus;
-        boost = Math.min(100, boost + 18);
+        multiplier = clamp(multiplier + 0.25, 1, 6); peakMult = Math.max(peakMult, multiplier);
+        score += Math.floor(100 * multiplier);
+        boost = Math.min(100, boost + 15);
         PA.sfx("coin", { pitch: 0.95 + multiplier * 0.08 });
-        PA.tone({ freq: 520 + multiplier * 40, to: 920 + multiplier * 60, type: "sine", dur: 0.07, vol: 0.05 });
         scene.remove(p.group);
         pickups.splice(i, 1);
         continue;
       }
-      if (p.group.position.z > 24) {
+      if (p.group.position.z > 20) {
+        // a missed orb cools the multiplier a little
+        multiplier = Math.max(1, multiplier - 0.1);
         scene.remove(p.group);
         pickups.splice(i, 1);
       }
     }
 
-    lanePulse += dt * (0.8 + speed * 0.01);
-    gridMat.opacity = 0.28 + Math.sin(lanePulse) * 0.08;
-    PA.music.intensity(clamp(0.12 + distance / 3200, 0.12, 0.92));
+    PA.music.intensity(clamp(0.15 + sector * 0.14 + (boosting ? 0.1 : 0), 0.15, 0.95));
     paintHud();
   }
 
@@ -502,18 +608,20 @@ import * as THREE from "/vendor/three/three.module.min.js";
   window.__hyperlane = () => ({
     score: Math.floor(score),
     distance: Math.floor(distance),
+    sector: sector + 1,
     multiplier,
     orbs,
+    gates: gatesCleared,
     nearMisses,
     boost: Math.round(boost),
     boosting,
     speed,
     alive: running && PA.state === "play",
     ship: { x: shipX, y: shipY, bank, pitch },
-    obstacles: obstacles.length,
-    pickups: pickups.length,
-    vel: { x: velX, y: velY }
+    obstacles: obstacles.map((o) => ({ kind: o.kind, z: o.group.position.z, boxes: o.boxes.map((b) => ({ ...b })) })),
+    pickups: pickups.length
   });
+  window.__hyperlaneWarp = (m) => { distance = m; };
 
   PA.loop(update, render);
 })();

@@ -109,10 +109,13 @@ function move(dx) {
 function turn(dir) {
   if (!piece || over) return;
   const r = rotated(piece.cells, dir);
+  // turn about the piece's middle rather than its top-left corner (trunc keeps a turn and its undo symmetric)
+  const a = size(piece.cells), z = size(r);
+  const cx = Math.trunc((a.w - z.w) / 2), cy = Math.trunc((a.h - z.h) / 2);
   // small wall kicks so a piece can turn next to a wall or another block
   for (const [kx, ky] of [[0, 0], [-1, 0], [1, 0], [-2, 0], [2, 0], [0, -1], [-1, -1], [1, -1]]) {
-    if (fits(r, piece.x + kx, piece.y + ky)) {
-      piece.cells = r; piece.x += kx; piece.y += ky;
+    if (fits(r, piece.x + cx + kx, piece.y + cy + ky)) {
+      piece.cells = r; piece.x += cx + kx; piece.y += cy + ky;
       touchLock();
       PA.sfx("select", { pitch: 1.5, vol: .35 });
       return;
