@@ -180,19 +180,19 @@ export const GAMES = [
   },
   {
     slug: "echo-maze", title: "Echo Maze", added: "2026-10-21",
-    genre: "Arcade", tags: ["arcade", "maze", "chase"], difficulty: "Mid", accent: "#b48cff", accent2: "#7dffb0",
+    genre: "Arcade", tags: ["arcade", "maze", "stealth"], difficulty: "Mid", accent: "#6ee1ff", accent2: "#b48cff",
     unit: "points",
-    classic: "Pellet maze chase", twist: "Your own path comes back to haunt you: echoes replay your route a few seconds behind you, and every level is a brand-new maze.",
-    tagline: "Clear the maze before your own echo catches you.",
-    about: "Eat every pellet in the maze while four hunters close in, each with its own way of chasing you. The catch is behind you: the maze remembers where you've been, and a few seconds later an echo of you comes along the very same route. Double back, stop to think or loop the same corridor and you'll walk straight into yourself. Power orbs turn the tables on hunters and echoes alike. Every level is a freshly generated maze, and the deeper you go the more echoes follow you.",
+    classic: "Maze chase", twist: "You're a bat in a pitch-black cave who sees by sonar. Every ping lights the tunnels but tells the hunters where you are.",
+    tagline: "A bat, a black cave and a sonar ping that gives you away.",
+    about: "You're a young bat lost in a pitch-black cave, and you can only see a little way around you. Ping and a wave of sound races down the tunnels and lights them for a moment, but the things in the cave hunt by sound. Spiders come to where they heard you, stone lurkers stalk you and freeze only while light is on them, and owls glide straight over the rock toward your last ping. Find every crystal to unseal the moonlit way out. Glowcaps flash and stun everything nearby, fireflies light the way, and the fewer pings you use the bigger your escape bonus.",
     credit: CLAUDE_NEW,
-    brief: "Remake the pellet-maze chase with an original twist: echoes that replay the player's own recent route, hunters with distinct chase styles, and a new symmetric maze every level.",
+    brief: "Rework the maze chase so it no longer resembles the famous pellet maze: a bat that sees by sonar in a dark cave, hunters that react to sound and light, crystals to collect and an exit to reach, with new art throughout.",
     tech: [
-      "Mazes are carved depth-first on one half, mirrored, then braided so there are no dead ends",
-      "Your route is recorded every frame; each echo binary-searches it to replay where you were seconds ago",
-      "Hunters pick turns at each junction by distance to a target: straight at you, ahead of you, shy, or flanking",
-      "Tile-centre movement with turn buffering, instant reversals and wrap-around tunnels",
-      "Walls are traced once into an offscreen canvas as glowing outlines, so each frame only draws what moves"
+      "Each ping is a breadth-first flood through the tunnels, so the light follows the cave instead of passing through rock",
+      "Creatures react to sound and light: spiders chase the last noise, lurkers freeze while lit, owls fly over walls",
+      "Caves are carved depth-first with long horizontal runs, then partly braided into loops with a few hidden nooks",
+      "Darkness is one value per tile, scaled up smoothly, with the tunnels you've seen faintly remembered",
+      "On tall screens the whole cave turns a quarter-turn so it still fills the screen"
     ]
   },
   {
