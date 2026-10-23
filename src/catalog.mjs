@@ -117,16 +117,16 @@ export const GAMES = [
     slug: "gridstorm", title: "Gridstorm", added: "2026-10-11", featured: 6,
     genre: "Shooter", tags: ["shooter", "twin-stick", "arcade"], difficulty: "Advanced", accent: "#5ef2ff", accent2: "#ffe68a",
     unit: "points",
-    classic: "Twin-stick arena", twist: "Every kill sends out a shockwave along the grid, and the ring blows up whatever it reaches, so packed swarms go off in chain reactions worth more with every link.",
-    tagline: "A twin-stick shooter where every kill sends out a chain-reaction shockwave.",
-    about: "Move with one hand, aim with the other, and survive an escalating storm of geometric enemies — dodgers that sidestep your shots, splitters, armored snakes and gravity wells that bend bullets and swallow everything nearby. Every kill sends a shockwave through the grid, and anything the ring reaches explodes and sends out its own. Let them bunch up, then set off the whole pack. Collect gems to climb the multiplier.",
+    classic: "Twin-stick arena", twist: "Fight inside a thunderstorm: every kill sends out a shockwave that blows up whatever it reaches, so packed swarms go off in chain reactions, while thunderheads call lightning down on where you're heading.",
+    tagline: "A twin-stick shooter inside a thunderstorm, where every kill sets off a chain-reaction shockwave.",
+    about: "Fly a little storm-chaser drone over a honeycomb of charge cells floating in a thunderstorm. Move with one hand, aim with the other, and survive the storm's creatures: jellies of static that drift on the breeze, darts that take aim and lunge, shellbacks whose shield always faces you, seeders that circle and sow mines, eels that zigzag at right angles, and thunderheads that call lightning down where you're about to be. Every kill sends out a shockwave, and anything the ring reaches explodes and sends out its own. Let them bunch up, then set off the whole pack. Collect charge motes to climb the multiplier, and save a Surge for when it all goes wrong.",
     credit: CLAUDE_NEW,
-    brief: "A neon twin-stick arena shooter with a warping spring-mass background grid, several enemy behaviours, bombs and a score multiplier.",
+    brief: "A twin-stick arena shooter set inside a thunderstorm, with its own cast of storm creatures, a honeycomb floor that lights up with every blast, chain-reaction shockwaves, surges and a score multiplier.",
     tech: [
-      "1,500-point spring-mass grid simulated every frame and pushed by explosions",
-      "Gravity wells that pull the grid, your ship, enemies and bullets",
-      "Kill shockwaves run along the spring grid and chain from enemy to enemy, with points that scale with chain depth",
-      "Additive-blend vector rendering with dual-stroke glow — no shaders needed"
+      "Over a thousand honeycomb cells hold charge: blasts, shockwaves and lightning light them up and it bleeds away",
+      "Darts telegraph their lunge, shellbacks block shots from the front, and lightning lands where you're heading after a warning ring",
+      "Kill shockwaves chain from enemy to enemy, with points that scale with chain depth",
+      "The cloud floor is painted once offscreen, and lit cells are grouped by brightness so each group is drawn as one path"
     ]
   },
   {

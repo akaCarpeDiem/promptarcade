@@ -9,7 +9,7 @@ html,body{margin:0;height:100%;background:#000;color:#eaf6ff;overflow:hidden;fon
 #gs-score b{min-width:5ch}
 .gs-stick{position:fixed;z-index:40;width:130px;height:130px;margin:-65px 0 0 -65px;border-radius:50%;border:2px solid rgba(120,220,255,.3);display:none;pointer-events:none}
 .gs-stick i{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:rgba(120,220,255,.3)}
-#gs-bomb{position:fixed;right:16px;bottom:170px;z-index:42;width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,120,200,.6);background:rgba(255,80,180,.15);color:#ffb3e6;font:800 11px Manrope,sans-serif;display:none}
+#gs-bomb{position:fixed;right:16px;bottom:170px;z-index:42;width:64px;height:64px;border-radius:50%;border:2px solid rgba(150,215,255,.6);background:rgba(120,190,255,.15);color:#cfeaff;font:800 11px Manrope,sans-serif;display:none}
 @media (pointer:coarse){#gs-bomb{display:block}}
 </style></head><body>
 <canvas id="c" aria-label="Gridstorm arena"></canvas>
@@ -17,14 +17,14 @@ html,body{margin:0;height:100%;background:#000;color:#eaf6ff;overflow:hidden;fon
   <div class="pa-stat" id="gs-score"><small>Score</small><b>0</b></div>
   <div class="pa-stat" id="gs-mult"><small>Multiplier</small><b>×1</b></div>
   <div class="pa-stat" id="gs-lives"><small>Ships</small><b>3</b></div>
-  <div class="pa-stat" id="gs-bombs"><small>Bombs</small><b>3</b></div>
+  <div class="pa-stat" id="gs-bombs"><small>Surges</small><b>3</b></div>
 </div>
 <div class="gs-stick" id="gs-s1"><i></i></div><div class="gs-stick" id="gs-s2"><i></i></div>
-<button type="button" id="gs-bomb">BOMB</button>
+<button type="button" id="gs-bomb">SURGE</button>
 <script>
 window.paConfig = {
   slug: "gridstorm", title: "Gridstorm", native: true, music: "space", unit: "points",
-  controls: [["WASD / arrows", "Move"], ["Arrows (with WASD)", "Aim and fire"], ["Mouse", "Aim — hold to fire (or always-fire toggle F)"], ["Space / right-click", "Bomb"], ["Touch", "Left thumb moves · right thumb aims and fires"], ["Shockwaves", "Every kill rings out and pops anything it reaches — herd them close and chain them"]]
+  controls: [["WASD / arrows", "Move"], ["Arrows (with WASD)", "Aim and fire"], ["Mouse", "Aim — hold to fire (or always-fire toggle F)"], ["Space / right-click", "Surge: clears the arena"], ["Touch", "Left thumb moves · right thumb aims and fires"], ["Shockwaves", "Every kill rings out and pops anything it reaches — herd them close and chain them"], ["Shellbacks", "Shielded on the side facing you: flank them, or catch them in a shockwave"], ["Thunderheads", "Watch for the bright warning ring — lightning lands there a moment later"]]
 };
 </script>
 <script src="/games/play/pa-score.js"></script>
@@ -41,57 +41,67 @@ const ctx = view.ctx;
 const fx = new PA.Particles(2400), texts = new PA.Texts();
 const AW = 1700, AH = 1050;
 
-/* ================= warping spring grid ================= */
-const GS = 34, GX = Math.round(AW / GS) + 1, GY = Math.round(AH / GS) + 1;
-const gp = [];
-for (let y = 0; y < GY; y++) for (let x = 0; x < GX; x++) gp.push({ ox: x * GS, oy: y * GS, x: x * GS, y: y * GS, vx: 0, vy: 0, pin: x === 0 || y === 0 || x === GX - 1 || y === GY - 1 });
-const gi = (x, y) => y * GX + x;
-function gridForce(px, py, force, radius) {
-  // push grid points (negative force pulls)
-  const x0 = Math.max(0, Math.floor((px - radius) / GS)), x1 = Math.min(GX - 1, Math.ceil((px + radius) / GS));
-  const y0 = Math.max(0, Math.floor((py - radius) / GS)), y1 = Math.min(GY - 1, Math.ceil((py + radius) / GS));
+/* ================= storm floor =================
+   The arena is a honeycomb of charge cells over a sea of storm cloud. Cells don't move: they light up.
+   Blasts, shockwaves and lightning pour charge into nearby cells, and the charge bleeds away again. */
+const HS = 26, HW = Math.sqrt(3) * HS, HR = HS * 1.5;           // hex radius, column step, row step
+const HX = Math.ceil(AW / HW) + 2, HY = Math.ceil(AH / HR) + 2;
+const hexC = new Float32Array(HX * HY), hexPos = [];
+for (let y = 0; y < HY; y++) for (let x = 0; x < HX; x++) hexPos.push([x * HW + (y & 1 ? HW / 2 : 0) - HW / 2, y * HR - HR / 2]);
+function zap(px, py, force, radius) {
+  // force is roughly how hard the blast hits; negative values (old pulls) do nothing
+  if (force <= 0) return;
+  const amt = Math.min(1.2, force / 900), R = radius + HS;
+  const y0 = Math.max(0, Math.floor((py - R) / HR)), y1 = Math.min(HY - 1, Math.ceil((py + R) / HR) + 1);
+  const x0 = Math.max(0, Math.floor((px - R) / HW)), x1 = Math.min(HX - 1, Math.ceil((px + R) / HW) + 1);
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const p = gp[gi(x, y)]; if (p.pin) continue;
-    const dx = p.x - px, dy = p.y - py, d2 = dx * dx + dy * dy;
-    if (d2 > radius * radius) continue;
-    const d = Math.sqrt(d2) + 10, k = force * (1 - d / (radius + 10));
-    p.vx += dx / d * k; p.vy += dy / d * k;
+    const i = y * HX + x, [cx, cy] = hexPos[i], d = Math.hypot(cx - px, cy - py);
+    if (d > R) continue;
+    hexC[i] = Math.min(1.4, hexC[i] + amt * (1 - d / R));
   }
 }
 function updateGrid(dt) {
-  const K = 38, D = 0.9, A = 30, CAP = GS * 1.6; // A 30: settles in about a second after a bomb or death (10 left the grid bulged for 3+ s)
-  const n = gp.length;
-  for (let y = 0; y < GY; y++) for (let x = 0; x < GX; x++) {
-    const p = gp[gi(x, y)]; if (p.pin) continue;
-    // anchor back to rest + neighbour springs
-    let fx2 = (p.ox - p.x) * A, fy2 = (p.oy - p.y) * A;
-    if (x > 0) { const q = gp[gi(x - 1, y)]; fx2 += (q.x - p.x + GS) * K; fy2 += (q.y - p.y) * K; }
-    if (x < GX - 1) { const q = gp[gi(x + 1, y)]; fx2 += (q.x - p.x - GS) * K; fy2 += (q.y - p.y) * K; }
-    if (y > 0) { const q = gp[gi(x, y - 1)]; fx2 += (q.x - p.x) * K; fy2 += (q.y - p.y + GS) * K; }
-    if (y < GY - 1) { const q = gp[gi(x, y + 1)]; fx2 += (q.x - p.x) * K; fy2 += (q.y - p.y - GS) * K; }
-    p.vx += fx2 * dt; p.vy += fy2 * dt;
+  const k = Math.exp(-dt * 2.6);
+  for (let i = 0; i < hexC.length; i++) hexC[i] *= k;
+  // now and then the storm flickers somewhere on its own
+  if (Math.random() < dt * .4) zap(rand(0, AW), rand(0, AH), rand(120, 320), rand(90, 220));
+}
+// the floor art is drawn once: dark cloud banks with faint honeycomb seams
+const FLOOR_S = 1.5, floor = document.createElement("canvas");
+(function paintFloor() {
+  floor.width = AW * FLOOR_S; floor.height = AH * FLOOR_S;
+  const g = floor.getContext("2d"); g.scale(FLOOR_S, FLOOR_S);
+  const bg = g.createLinearGradient(0, 0, AW, AH); bg.addColorStop(0, "#070b1c"); bg.addColorStop(.5, "#0b1426"); bg.addColorStop(1, "#090a1d");
+  g.fillStyle = bg; g.fillRect(0, 0, AW, AH);
+  // billowing cloud banks
+  for (let i = 0; i < 70; i++) {
+    const x = Math.random() * AW, y = Math.random() * AH, r = 80 + Math.random() * 220;
+    const c = g.createRadialGradient(x, y, 0, x, y, r);
+    const tint = Math.random() < .5 ? "60,80,130" : "40,90,120";
+    c.addColorStop(0, `rgba(${tint},${.10 + Math.random() * .10})`); c.addColorStop(1, `rgba(${tint},0)`);
+    g.fillStyle = c; g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  const damp = Math.pow(1 - D, dt * 6);
-  for (let i = 0; i < n; i++) {
-    const p = gp[i]; if (p.pin) continue;
-    p.vx *= damp; p.vy *= damp; p.x += p.vx * dt; p.y += p.vy * dt;
-    // keep every point within a cell and a half of home so big blasts can't balloon the grid
-    const ox = p.x - p.ox, oy = p.y - p.oy, o = Math.hypot(ox, oy);
-    if (o > CAP) { p.x = p.ox + ox / o * CAP; p.y = p.oy + oy / o * CAP; p.vx *= .5; p.vy *= .5; }
-  }
+  g.strokeStyle = "rgba(130,190,255,.11)"; g.lineWidth = 1.2;
+  g.beginPath();
+  for (const [cx, cy] of hexPos) hexPath(g, cx, cy, HS - 1.5);
+  g.stroke();
+})();
+function hexPath(g, cx, cy, r) {
+  for (let k = 0; k < 6; k++) { const a = Math.PI / 6 + k * Math.PI / 3, x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; k ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.closePath();
 }
 
 /* ================= state ================= */
-let P, bullets, enemies, gems, wells, waves, bestChain, spawnT, t, score, mult, multXp, lives, bombs, nextLife, wave, alive, fireCd, overT, spawnBudget, alwaysFire = false, bombFlash = 0, kills;
+let P, bullets, enemies, gems, clouds, strikes, waves, bestChain, spawnT, t, score, mult, multXp, lives, bombs, nextLife, wave, alive, fireCd, overT, spawnBudget, alwaysFire = false, bombFlash = 0, kills;
 let mouse = { x: 0, y: 0, down: false, seen: false };
-const COL = { player: "#eaffff", bullet: "#ffe68a", wander: "#b48cff", seek: "#5ef2ff", dodge: "#7dff6b", split: "#ff6bd5", mini: "#ff9be6", snake: "#ffb84d", well: "#ff4d6b", gem: "#7dffb0" };
+const COL = { player: "#eaffff", bullet: "#ffe68a", drift: "#9fd8ff", dart: "#ff7a59", shell: "#7dffcf", seeder: "#ffd34d", mine: "#fff3b0", eel: "#c58bff", cloud: "#8fa6ff", gem: "#7dffb0", bolt: "#f4f7ff" };
 
 function reset() {
   P = { x: AW / 2, y: AH / 2, vx: 0, vy: 0, a: 0, inv: 2, dead: 0 };
-  bullets = []; enemies = []; gems = []; wells = []; waves = []; bestChain = 0;
+  bullets = []; enemies = []; gems = []; clouds = []; strikes = []; waves = []; bestChain = 0;
   spawnT = 1.2; t = 0; score = 0; mult = 1; multXp = 0; lives = 3; bombs = 3; nextLife = 75000; wave = 0; alive = true; fireCd = 0; overT = 0; spawnBudget = 0; kills = 0;
   fx.clear(); texts.clear();
-  for (const p of gp) { p.x = p.ox; p.y = p.oy; p.vx = p.vy = 0; }
+  hexC.fill(0);
   paint();
 }
 function paint() {
@@ -102,15 +112,24 @@ function paint() {
 }
 
 /* ================= enemies ================= */
+/* the storm's own cast:
+   drift      jelly sparks that wander on the breeze
+   dart       needles that stop, take aim (you see the line) and lunge
+   shell      shellbacks: a shield faces you, so flank them or use a shockwave
+   seeder     pods that circle at range and sow mines
+   mine       sown by seeders; fizzle out after a while, but make great chain fuel
+   eel        zigzag current that only moves in straight runs and right-angle turns
+   cloud      thunderheads: call lightning onto the spot you're heading for */
 const TYPES = {
-  wander: { r: 16, hp: 1, pts: 25, speed: 70 },
-  seek: { r: 15, hp: 1, pts: 50, speed: 190 },
-  dodge: { r: 15, hp: 1, pts: 100, speed: 210 },
-  split: { r: 18, hp: 1, pts: 100, speed: 120 },
-  mini: { r: 8, hp: 1, pts: 50, speed: 260 },
-  snake: { r: 13, hp: 1, pts: 150, speed: 170 },
-  well: { r: 22, hp: 14, pts: 200, speed: 0 }
+  drift: { r: 14, hp: 1, pts: 25, speed: 62 },
+  dart: { r: 14, hp: 1, pts: 50, speed: 560 },
+  shell: { r: 17, hp: 2, pts: 100, speed: 95 },
+  seeder: { r: 16, hp: 2, pts: 100, speed: 150 },
+  mine: { r: 7, hp: 1, pts: 10, speed: 0 },
+  eel: { r: 12, hp: 1, pts: 150, speed: 210 },
+  cloud: { r: 30, hp: 14, pts: 200, speed: 28 }
 };
+const CARD = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
 function spawn(type, x, y) {
   const T = TYPES[type];
   if (x == null) {
@@ -118,9 +137,13 @@ function spawn(type, x, y) {
     for (let i = 0; i < 12; i++) { x = rand(40, AW - 40); y = rand(40, AH - 40); if (Math.hypot(x - P.x, y - P.y) > 300) break; }
   }
   const e = { type, x, y, vx: 0, vy: 0, r: T.r, hp: T.hp, a: rand(0, TAU), birth: 0.7, seed: Math.random() };
-  if (type === "wander") { e.dir = rand(0, TAU); }
-  if (type === "snake") { e.tail = []; for (let i = 0; i < 18; i++) e.tail.push([x, y]); }
-  if (type === "well") { e.mass = 1; e.pulse = 0; }
+  if (type === "drift") { e.dir = rand(0, TAU); }
+  if (type === "dart") { e.mode = "aim"; e.timer = rand(0.6, 1.2); e.dashA = 0; }
+  if (type === "shell") { e.face = Math.atan2(P.y - y, P.x - x); }
+  if (type === "seeder") { e.drop = rand(1.2, 2.4); e.orb = Math.atan2(y - P.y, x - P.x); }
+  if (type === "mine") { e.life = 9; }
+  if (type === "eel") { e.tail = []; for (let i = 0; i < 18; i++) e.tail.push([x, y]); e.dir = CARD[(Math.random() * 4) | 0]; e.turnT = rand(0.5, 1); }
+  if (type === "cloud") { e.charge = 2.4; e.pulse = 0; }
   enemies.push(e);
   return e;
 }
@@ -137,14 +160,14 @@ function director(dt) {
   spawnT = Math.max(0.8, 2.5 - lvl * 0.3);
   const r = Math.random();
   const pick = (arr) => arr[(Math.random() * arr.length) | 0];
-  const pool = ["wander", "seek"];
-  if (t > 20) pool.push("dodge");
-  if (t > 35) pool.push("split");
-  if (t > 55) pool.push("snake");
+  const pool = ["drift", "dart"];
+  if (t > 20) pool.push("shell");
+  if (t > 35) pool.push("seeder");
+  if (t > 55) pool.push("eel");
   const n = Math.min(20, 4 + Math.floor(lvl * 2.4));
   if (r < 0.18 && t > 25) spawnCorners(pick(pool), n + 4);
   else for (let i = 0; i < n; i++) spawn(pick(pool));
-  if (t > 45 && Math.random() < 0.18 && wells.length < 3) wells.push(spawn("well"));
+  if (t > 45 && Math.random() < 0.18 && clouds.length < 2) clouds.push(spawn("cloud"));
 }
 
 /* shockwaves: every shot kill rings out along the grid, and the ring's front
@@ -162,19 +185,19 @@ function killEnemy(e, byBomb, from) {
     if (from && (root.n === 3 || root.n % 5 === 0)) texts.add(e.x, e.y - 22, "CHAIN " + root.n, { color: "#fff", size: 12 + Math.min(10, root.n), life: .7 });
     waves.push({ x: e.x, y: e.y, r: 0, max: Math.min(WAVE_MAX, WAVE_R + depth * WAVE_GROW), depth, root, c, hit: new Set([e]) });
   }
-  fx.burst(e.x, e.y, { n: e.type === "well" ? 120 : 34, color: c, speed: e.type === "well" ? 600 : 360, life: .9, size: 2.6, shape: "spark", drag: 2.6 });
-  gridForce(e.x, e.y, e.type === "well" ? 1800 : 520, e.type === "well" ? 260 : 120);
+  const big = e.type === "cloud";
+  fx.burst(e.x, e.y, { n: big ? 120 : 34, color: c, speed: big ? 600 : 360, life: .9, size: 2.6, shape: "spark", drag: 2.6 });
+  zap(e.x, e.y, big ? 1800 : 520, big ? 260 : 120);
   if (!byBomb) {
     const pts = TYPES[e.type].pts * mult * Math.min(CHAIN_CAP, depth + 1);
     score += pts;
     if (pts >= 500) texts.add(e.x, e.y, pts.toLocaleString(), { color: c, size: 14, life: .6 });
-    const ng = e.type === "well" ? 8 : e.type === "mini" ? 0 : 1 + (Math.random() < .3);
+    const ng = big ? 8 : e.type === "mine" ? 0 : 1 + (Math.random() < .3);
     for (let i = 0; i < ng; i++) gems.push({ x: e.x, y: e.y, vx: rand(-90, 90), vy: rand(-90, 90), life: 7 });
   }
-  if (e.type === "split" && !byBomb) for (let i = 0; i < 3; i++) { const m = spawn("mini", e.x + rand(-10, 10), e.y + rand(-10, 10)); m.birth = 0; m.orbit = i / 3 * TAU; }
-  if (e.type === "well") { wells = wells.filter((w) => w !== e); PA.sfx("boom"); PA.shake(10, .5); }
+  if (big) { clouds = clouds.filter((w) => w !== e); strikes = strikes.filter((k) => k.from !== e || k.t <= 0); PA.sfx("boom"); PA.shake(10, .5); }
   else PA.sfx("explode", { pitch: 1.5 + Math.random() * .6, vol: .35 });
-  if (score >= nextLife) { nextLife += 75000; lives++; bombs++; texts.add(P.x, P.y - 40, "+1 SHIP +1 BOMB", { color: "#fff", size: 18, life: 1.6 }); PA.sfx("levelup"); }
+  if (score >= nextLife) { nextLife += 75000; lives++; bombs++; texts.add(P.x, P.y - 40, "+1 SHIP +1 SURGE", { color: "#fff", size: 18, life: 1.6 }); PA.sfx("levelup"); }
   paint();
 }
 function bomb() {
@@ -182,7 +205,8 @@ function bomb() {
   bombs--;
   bombFlash = 1;
   for (const e of enemies) killEnemy(e, true);
-  for (let i = 0; i < 6; i++) gridForce(P.x, P.y, 2400, 900);
+  strikes = [];
+  for (let i = 0; i < 6; i++) zap(P.x, P.y, 2400, 900);
   PA.sfx("boom"); PA.shake(16, .8); PA.flash("#ffffff", 500);
   P.inv = Math.max(P.inv, 1.2);
   paint();
@@ -192,12 +216,12 @@ function hitPlayer() {
   lives--; mult = 1; multXp = 0;
   P.dead = 2;
   fx.burst(P.x, P.y, { n: 200, colors: ["#fff", "#5ef2ff", "#ffe68a"], speed: 700, life: 1.4, size: 3, shape: "spark" });
-  for (let i = 0; i < 4; i++) gridForce(P.x, P.y, 2600, 600);
+  for (let i = 0; i < 4; i++) zap(P.x, P.y, 2600, 600);
   PA.sfx("boom"); PA.shake(20, 1); PA.flash("#ff4d6b", 500);
   // clear the board so respawns are fair
   waves = [];
   for (const e of enemies) { e.dead = true; fx.burst(e.x, e.y, { n: 8, color: COL[e.type], speed: 200, life: .6, shape: "spark" }); }
-  wells = [];
+  clouds = []; strikes = [];
   paint();
   if (lives <= 0) { alive = false; overT = 1.6; }
 }
@@ -259,7 +283,7 @@ function update(dt) {
     P.x = clamp(P.x + P.vx * dt, 14, AW - 14); P.y = clamp(P.y + P.vy * dt, 14, AH - 14);
     if (ml > 0.1) P.a = Math.atan2(my, mx);
     // gentle wake in the grid
-    if (ml > 0.1) gridForce(P.x - P.vx * .05, P.y - P.vy * .05, 40, 60);
+    if (ml > 0.1) zap(P.x - P.vx * .05, P.y - P.vy * .05, 40, 60);
     // aim + fire
     let aim = null, firing = false;
     if (s2.id != null && Math.hypot(s2.dx, s2.dy) > 0.25) { aim = Math.atan2(s2.dy, s2.dx); firing = true; }
@@ -286,9 +310,7 @@ function update(dt) {
   // bullets
   for (const b of bullets) {
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-    // gravity wells bend shots
-    for (const w of wells) { const dx = w.x - b.x, dy = w.y - b.y, d2 = dx * dx + dy * dy + 400; if (d2 < 160000) { const k = 900000 * w.mass / d2; b.vx += dx / Math.sqrt(d2) * k * dt; b.vy += dy / Math.sqrt(d2) * k * dt; } }
-    if (b.x < 0 || b.y < 0 || b.x > AW || b.y > AH) { b.life = 0; fx.burst(clamp(b.x, 0, AW), clamp(b.y, 0, AH), { n: 3, color: COL.bullet, speed: 120, life: .25, shape: "spark" }); gridForce(b.x, b.y, 90, 50); }
+    if (b.x < 0 || b.y < 0 || b.x > AW || b.y > AH) { b.life = 0; fx.burst(clamp(b.x, 0, AW), clamp(b.y, 0, AH), { n: 3, color: COL.bullet, speed: 120, life: .25, shape: "spark" }); zap(b.x, b.y, 90, 50); }
   }
   // enemies
   for (const e of enemies) {
@@ -297,35 +319,55 @@ function update(dt) {
     const T = TYPES[e.type], dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 1;
     const chase = P.dead > 0 ? 0 : 1;
     e.a += dt * 3;
-    if (e.type === "wander") { e.dir += rand(-2, 2) * dt; e.vx = Math.cos(e.dir) * T.speed; e.vy = Math.sin(e.dir) * T.speed; }
-    else if (e.type === "seek" || e.type === "split") { e.vx += (dx / d * T.speed * chase - e.vx) * dt * 3; e.vy += (dy / d * T.speed * chase - e.vy) * dt * 3; }
-    else if (e.type === "mini") { e.orbit = (e.orbit || 0) + dt * 6; e.vx += (dx / d * T.speed * chase + Math.cos(e.orbit) * 160 - e.vx) * dt * 3; e.vy += (dy / d * T.speed * chase + Math.sin(e.orbit) * 160 - e.vy) * dt * 3; }
-    else if (e.type === "dodge") {
-      let ax2 = dx / d * T.speed * chase, ay2 = dy / d * T.speed * chase;
-      // sidestep incoming bullets
-      for (const b of bullets) { const bx = e.x - b.x, by = e.y - b.y, bd = Math.hypot(bx, by); if (bd < 110 && (b.vx * bx + b.vy * by) > 0) { const s = Math.sign(b.vx * by - b.vy * bx) || 1; ax2 += -b.vy / 1050 * 520 * s; ay2 += b.vx / 1050 * 520 * s; break; } }
-      e.vx += (ax2 - e.vx) * dt * 5; e.vy += (ay2 - e.vy) * dt * 5;
-    } else if (e.type === "snake") {
-      e.dir = e.dir == null ? Math.atan2(dy, dx) : e.dir;
-      let da = Math.atan2(dy, dx) - e.dir; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
-      e.dir += clamp(da, -2.4 * dt, 2.4 * dt) + Math.sin(t * 5 + e.seed * 9) * dt * 2;
+    if (e.type === "drift") {
+      e.dir += Math.sin(t * 1.7 + e.seed * 9) * dt * 1.4;
+      e.vx = Math.cos(e.dir) * T.speed + dx / d * 28 * chase; e.vy = Math.sin(e.dir) * T.speed + dy / d * 28 * chase;
+    } else if (e.type === "dart") {
+      e.timer -= dt;
+      if (e.mode === "aim") {
+        const k = Math.pow(0.02, dt); e.vx *= k; e.vy *= k;
+        if (chase) e.dashA = Math.atan2(dy, dx);
+        if (e.timer <= 0 && chase) { e.mode = "dash"; e.timer = 0.42; e.vx = Math.cos(e.dashA) * T.speed; e.vy = Math.sin(e.dashA) * T.speed; PA.sfx("laser", { pitch: .7, vol: .12 }); }
+      } else {
+        const k = Math.pow(0.4, dt); e.vx *= k; e.vy *= k;
+        if (e.timer <= 0) { e.mode = "aim"; e.timer = rand(0.7, 1.2); }
+      }
+    } else if (e.type === "shell") {
+      let da = Math.atan2(dy, dx) - e.face; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+      e.face += clamp(da, -1.5 * dt, 1.5 * dt);
+      e.vx += (dx / d * T.speed * chase - e.vx) * dt * 2; e.vy += (dy / d * T.speed * chase - e.vy) * dt * 2;
+    } else if (e.type === "seeder") {
+      e.orb += dt * 0.45;
+      const gx = clamp(P.x + Math.cos(e.orb) * 330, 40, AW - 40), gy = clamp(P.y + Math.sin(e.orb) * 330, 40, AH - 40);
+      const sx = gx - e.x, sy = gy - e.y, sd = Math.hypot(sx, sy) || 1, sp = Math.min(T.speed, sd * 2);
+      e.vx += (sx / sd * sp - e.vx) * dt * 2.5; e.vy += (sy / sd * sp - e.vy) * dt * 2.5;
+      e.drop -= dt;
+      if (e.drop <= 0 && chase) {
+        e.drop = rand(1.6, 2.6);
+        if (enemies.filter((o) => o.type === "mine").length < 36) { const m = spawn("mine", e.x, e.y); m.birth = 0.25; PA.sfx("blip", { pitch: .6, vol: .15 }); }
+      }
+    } else if (e.type === "mine") {
+      e.vx = e.vy = 0; e.life -= dt;
+      if (e.life <= 0) { e.dead = true; fx.burst(e.x, e.y, { n: 5, color: COL.mine, speed: 60, life: .3 }); }
+    } else if (e.type === "eel") {
+      e.turnT -= dt;
+      if (e.turnT <= 0 && chase) {
+        e.turnT = rand(0.45, 1.0);
+        // right-angle turns only: head along whichever axis has more ground to cover, now and then the other
+        const horiz = (Math.abs(dx) > Math.abs(dy)) !== (Math.random() < 0.25);
+        e.dir = horiz ? (dx > 0 ? 0 : Math.PI) : (dy > 0 ? Math.PI / 2 : -Math.PI / 2);
+      }
       e.vx = Math.cos(e.dir) * T.speed; e.vy = Math.sin(e.dir) * T.speed;
       e.tail.unshift([e.x, e.y]); if (e.tail.length > 26) e.tail.pop();
-    } else if (e.type === "well") {
-      e.pulse += dt * (2 + e.mass);
-      gridForce(e.x, e.y, -60 * e.mass, 160 + e.mass * 30);
-      // pull everything in; swallow small enemies and grow
-      for (const o of enemies) {
-        if (o === e || o.dead || o.type === "well" || o.birth > 0) continue;
-        const ox = e.x - o.x, oy = e.y - o.y, od = Math.hypot(ox, oy) || 1;
-        if (od < 300) { o.vx += ox / od * 520 * e.mass * dt; o.vy += oy / od * 520 * e.mass * dt; }
-        if (od < e.r) { o.dead = true; e.mass += 0.12; e.hp += 1; fx.burst(o.x, o.y, { n: 6, color: COL.well, speed: 120, life: .4 }); }
-      }
-      if (d < 300 && P.dead <= 0) { P.vx += dx / d * -380 * e.mass * dt; P.vy += dy / d * -380 * e.mass * dt; }
-      if (e.mass > 2.6) { // overload: burst into a swarm
-        e.dead = true; wells = wells.filter((w) => w !== e);
-        for (let i = 0; i < 12; i++) { const m = spawn("mini", e.x + rand(-20, 20), e.y + rand(-20, 20)); m.birth = 0; m.vx = rand(-400, 400); m.vy = rand(-400, 400); }
-        gridForce(e.x, e.y, 2200, 300); PA.sfx("boom"); PA.shake(10, .4);
+    } else if (e.type === "cloud") {
+      e.pulse += dt;
+      e.vx += (dx / d * T.speed * chase - e.vx) * dt; e.vy += (dy / d * T.speed * chase - e.vy) * dt;
+      e.charge -= dt;
+      if (e.charge <= 0 && chase) {
+        // lightning lands where you're heading, after a warning ring
+        e.charge = Math.max(1.5, 3.2 - t / 120);
+        strikes.push({ x: clamp(P.x + P.vx * 0.45 + rand(-50, 50), 20, AW - 20), y: clamp(P.y + P.vy * 0.45 + rand(-50, 50), 20, AH - 20), t: 1.05, flash: 0, from: e });
+        PA.sfx("blip", { pitch: .45, vol: .25 });
       }
     }
     e.x += e.vx * dt; e.y += e.vy * dt;
@@ -335,7 +377,7 @@ function update(dt) {
     if (e.y > AH - e.r) { e.y = AH - e.r; e.vy = -Math.abs(e.vy); if (e.dir != null) e.dir = -e.dir; }
     // touch player
     if (P.dead <= 0 && d < e.r + 11) hitPlayer();
-    if (e.type === "snake" && P.dead <= 0) for (let i = 4; i < e.tail.length; i += 3) if (Math.hypot(P.x - e.tail[i][0], P.y - e.tail[i][1]) < 15) { hitPlayer(); break; }
+    if (e.type === "eel" && P.dead <= 0) for (let i = 4; i < e.tail.length; i += 3) if (Math.hypot(P.x - e.tail[i][0], P.y - e.tail[i][1]) < 15) { hitPlayer(); break; }
   }
   // bullet vs enemy
   for (const b of bullets) {
@@ -343,18 +385,24 @@ function update(dt) {
     for (const e of enemies) {
       if (e.dead || e.birth > 0) continue;
       if (Math.abs(b.x - e.x) > e.r + 6 || Math.abs(b.y - e.y) > e.r + 6) {
-        if (e.type === "snake") for (let i = 3; i < e.tail.length; i += 3) if (Math.hypot(b.x - e.tail[i][0], b.y - e.tail[i][1]) < 12) { b.life = 0; fx.burst(b.x, b.y, { n: 3, color: COL.snake, speed: 100, life: .2 }); break; }
+        if (e.type === "eel") for (let i = 3; i < e.tail.length; i += 3) if (Math.hypot(b.x - e.tail[i][0], b.y - e.tail[i][1]) < 12) { b.life = 0; fx.burst(b.x, b.y, { n: 3, color: COL.eel, speed: 100, life: .2 }); break; }
         continue;
       }
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.r + 5) {
         b.life = 0;
+        if (e.type === "shell") {
+          // the shield covers the side facing you: shots from the front glance off
+          let da = Math.atan2(b.y - e.y, b.x - e.x) - e.face; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+          if (Math.abs(da) < 1.05) { fx.burst(b.x, b.y, { n: 3, color: "#ffffff", speed: 220, life: .2, shape: "spark" }); break; }
+        }
         if (--e.hp <= 0) killEnemy(e);
-        else { fx.burst(b.x, b.y, { n: 4, color: COL[e.type], speed: 160, life: .3, shape: "spark" }); gridForce(e.x, e.y, 200, 70); if (e.type === "well") e.mass = Math.max(0.6, e.mass - 0.03); }
+        else { fx.burst(b.x, b.y, { n: 4, color: COL[e.type], speed: 160, life: .3, shape: "spark" }); zap(e.x, e.y, 200, 70); }
         break;
       }
     }
   }
   updateWaves(dt);
+  updateStrikes(dt);
   bullets = bullets.filter((b) => b.life > 0);
   enemies = enemies.filter((e) => !e.dead);
   // gems raise the multiplier
@@ -380,24 +428,40 @@ function updateWaves(dt) {
   for (const w of waves) {
     const r0 = w.r;
     w.r = Math.min(w.max, w.r + WAVE_SPEED * dt);
-    // ripple the grid along the ring front
-    const R = w.r, x0 = Math.max(1, Math.floor((w.x - R) / GS)), x1 = Math.min(GX - 2, Math.ceil((w.x + R) / GS));
-    const y0 = Math.max(1, Math.floor((w.y - R) / GS)), y1 = Math.min(GY - 2, Math.ceil((w.y + R) / GS));
+    // light the cells the ring front sweeps over
+    const R = w.r, y0 = Math.max(0, Math.floor((w.y - R) / HR)), y1 = Math.min(HY - 1, Math.ceil((w.y + R) / HR) + 1);
+    const x0 = Math.max(0, Math.floor((w.x - R) / HW)), x1 = Math.min(HX - 1, Math.ceil((w.x + R) / HW) + 1);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      const p = gp[gi(x, y)], dx = p.ox - w.x, dy = p.oy - w.y, d = Math.hypot(dx, dy) || 1;
-      if (d > r0 - 6 && d <= R + 6) { p.vx += dx / d * 120; p.vy += dy / d * 120; }
+      const i = y * HX + x, d = Math.hypot(hexPos[i][0] - w.x, hexPos[i][1] - w.y);
+      if (d > r0 - HS && d <= R + HS * .5) hexC[i] = Math.min(1.4, hexC[i] + dt * 9);
     }
     for (const e of enemies) {
       if (e.dead || e.birth > 0 || w.hit.has(e)) continue;
       const d = Math.hypot(e.x - w.x, e.y - w.y);
       if (d - e.r > w.r) continue;
       w.hit.add(e);
-      if (e.type === "well") { e.hp -= 4; e.mass = Math.max(0.6, e.mass - 0.25); if (e.hp <= 0) killEnemy(e, false, w); }
+      if (e.type === "cloud") { e.hp -= 4; if (e.hp <= 0) killEnemy(e, false, w); }
       else killEnemy(e, false, w);
     }
     if (w.r >= w.max) w.life = (w.life == null ? 0.25 : w.life - dt);
   }
   waves = waves.filter((w) => w.life == null || w.life > 0);
+}
+function updateStrikes(dt) {
+  for (const k of strikes) {
+    if (k.t > 0) {
+      k.t -= dt;
+      if (k.t <= 0) {
+        k.flash = 0.3;
+        fx.burst(k.x, k.y, { n: 40, colors: ["#ffffff", "#bcd0ff", "#ffe68a"], speed: 420, life: .5, size: 2.4, shape: "spark" });
+        zap(k.x, k.y, 900, 140); PA.sfx("explode", { pitch: .8, vol: .4 }); PA.shake(5, .25);
+        if (P.dead <= 0 && Math.hypot(P.x - k.x, P.y - k.y) < 46) hitPlayer();
+        // lightning hits the storm too, but scores nothing
+        for (const e of enemies) if (!e.dead && e.type !== "cloud" && e.birth <= 0 && Math.hypot(e.x - k.x, e.y - k.y) < 46 + e.r) killEnemy(e, true);
+      }
+    } else k.flash -= dt;
+  }
+  strikes = strikes.filter((k) => k.t > 0 || k.flash > 0);
 }
 function finish() {
   PA.sfx("gameover");
@@ -406,34 +470,134 @@ function finish() {
 }
 
 /* ================= render ================= */
+// strokes the current path twice: a soft halo, then the crisp line
+function glow(w) {
+  const op = ctx.globalCompositeOperation, a = ctx.globalAlpha;
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = a * .3; ctx.lineWidth = w * 3.2; ctx.stroke();
+  ctx.globalAlpha = a; ctx.lineWidth = w; ctx.stroke();
+  ctx.globalCompositeOperation = op;
+}
+function tint(a) { const o = ctx.globalAlpha; ctx.globalAlpha = o * a; ctx.fill(); ctx.globalAlpha = o; }
 function shape(e, tt) {
   const c = COL[e.type], r = e.r;
-  ctx.strokeStyle = c; ctx.lineWidth = 2.6;
   ctx.save(); ctx.translate(e.x, e.y);
   const s = e.birth > 0 ? 1 + e.birth * 2 : 1; ctx.globalAlpha = e.birth > 0 ? 1 - e.birth : 1; ctx.scale(s, s);
-  ctx.beginPath();
-  if (e.type === "wander") { ctx.rotate(e.a * 1.4); for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.moveTo(0, 0); ctx.lineTo(r, -r * .1); ctx.lineTo(r * .4, r * .7); ctx.closePath(); } }
-  else if (e.type === "seek") { const sq = 1 + Math.sin(tt * 8 + e.seed * 9) * .18; ctx.scale(sq, 2 - sq); ctx.moveTo(0, -r); ctx.lineTo(r * .8, 0); ctx.lineTo(0, r); ctx.lineTo(-r * .8, 0); ctx.closePath(); }
-  else if (e.type === "dodge") { ctx.rotate(e.a * .5); ctx.rect(-r * .8, -r * .8, r * 1.6, r * 1.6); ctx.moveTo(-r * .8, 0); ctx.lineTo(0, -r * .8); ctx.lineTo(r * .8, 0); ctx.lineTo(0, r * .8); ctx.closePath(); }
-  else if (e.type === "split" || e.type === "mini") { ctx.rotate(-e.a); ctx.rect(-r * .75, -r * .75, r * 1.5, r * 1.5); ctx.rotate(Math.PI / 4); ctx.rect(-r * .5, -r * .5, r, r); }
-  else if (e.type === "snake") { ctx.rotate(e.dir || 0); ctx.moveTo(r, 0); ctx.lineTo(-r * .6, r * .7); ctx.lineTo(-r * .2, 0); ctx.lineTo(-r * .6, -r * .7); ctx.closePath(); }
-  else if (e.type === "well") { const p = 1 + Math.sin(e.pulse * 3) * .12; const R = r * (0.8 + e.mass * .3) * p; ctx.arc(0, 0, R, 0, TAU); ctx.moveTo(R * .55, 0); ctx.arc(0, 0, R * .55, 0, TAU); }
-  ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha *= .35; ctx.lineWidth = 8; ctx.stroke();
-  ctx.globalAlpha /= .35; ctx.lineWidth = 2.4; ctx.stroke();
-  if (e.type === "well") { ctx.fillStyle = "rgba(255,77,107,.18)"; ctx.fill(); }
+  ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineJoin = "round"; ctx.lineCap = "round";
+  if (e.type === "drift") {
+    // a jelly of static: a pulsing bell, bell-first, trailing three tendrils
+    const p = 1 + Math.sin(tt * 5 + e.seed * 9) * .12;
+    ctx.rotate(Math.atan2(e.vy, e.vx) + Math.PI / 2);
+    ctx.beginPath(); ctx.ellipse(0, 0, r * p, r * .85, 0, Math.PI, TAU);
+    for (let k = 0; k <= 4; k++) ctx.lineTo(r * p * (1 - k / 2), k % 2 ? r * .2 : 0);
+    tint(.3); glow(2.2);
+    ctx.beginPath();
+    for (let k = -1; k <= 1; k++) { ctx.moveTo(k * r * .5, r * .12); for (let j = 1; j <= 4; j++) ctx.lineTo(k * r * .5 + Math.sin(tt * 7 + j + k * 2 + e.seed * 5) * r * .2, r * .12 + j * r * .3); }
+    ctx.lineWidth = 1.6; ctx.stroke();
+  } else if (e.type === "dart") {
+    if (e.mode === "aim" && e.birth <= 0 && P.dead <= 0) {
+      // the line it's about to lunge along, brighter as it winds up
+      const k = clamp(1 - e.timer / 1.1, 0, 1);
+      ctx.save(); ctx.rotate(e.dashA); ctx.setLineDash([6, 8]); ctx.globalAlpha *= .12 + k * .5; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(r * 1.6, 0); ctx.lineTo(r + 230, 0); ctx.stroke(); ctx.restore();
+    }
+    ctx.rotate(e.mode === "aim" ? e.dashA : Math.atan2(e.vy, e.vx));
+    if (e.mode === "aim") ctx.translate(Math.sin(tt * 45) * 1.2, 0);   // quivers while it winds up
+    ctx.beginPath(); ctx.moveTo(r * 1.5, 0); ctx.lineTo(-r * .15, r * .34); ctx.lineTo(-r * 1.1, 0); ctx.lineTo(-r * .15, -r * .34); ctx.closePath();
+    tint(.35); glow(2.1);
+  } else if (e.type === "shell") {
+    ctx.beginPath(); ctx.arc(0, 0, r * .62, 0, TAU); tint(.3); glow(2);
+    ctx.beginPath(); ctx.arc(0, 0, r * .3, 0, TAU); ctx.lineWidth = 1.4; ctx.stroke();
+    // the shield always swings round to face you
+    ctx.rotate(e.face); ctx.strokeStyle = "#f2fffb";
+    ctx.beginPath(); ctx.arc(0, 0, r, -1.05, 1.05); glow(4);
+  } else if (e.type === "seeder") {
+    ctx.rotate(e.a * .8);
+    for (let k = 0; k < 3; k++) { ctx.rotate(TAU / 3); ctx.beginPath(); ctx.ellipse(r * .55, 0, r * .5, r * .26, 0, 0, TAU); tint(.3); glow(1.8); }
+    ctx.beginPath(); ctx.arc(0, 0, r * .26, 0, TAU); ctx.fill();
+  } else if (e.type === "mine") {
+    if (e.life < 2 && Math.floor(tt * 10) % 2) ctx.globalAlpha *= .35;
+    ctx.rotate(e.a);
+    ctx.beginPath();
+    for (let k = 0; k < 8; k++) { const a = k * TAU / 8, rr = k % 2 ? r * .55 : r * 1.25; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+    ctx.closePath(); tint(.4); glow(1.5);
+  } else if (e.type === "eel") {
+    ctx.rotate(e.dir || 0);
+    ctx.beginPath(); ctx.ellipse(0, 0, r * 1.15, r * .62, 0, 0, TAU); tint(.35); glow(2.2);
+    ctx.fillStyle = "#fff"; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(r * .55, sd * r * .26, 1.8, 0, TAU); ctx.fill(); }
+  } else if (e.type === "cloud") {
+    const p = 1 + Math.sin(e.pulse * 2) * .04, hot = e.charge < .6;
+    ctx.beginPath();
+    for (const [px, py, pr] of CLOUD_PUFFS) { ctx.moveTo(px * r + pr * r * p, py * r); ctx.arc(px * r, py * r, pr * r * p, 0, TAU); }
+    // glow first, then the dark body over it, so only the outer edge of the puffs shows
+    glow(2.4); ctx.fillStyle = "rgb(24,30,58)"; ctx.fill();
+    if (hot || Math.random() < .03) { ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(210,225,255,${hot ? .15 + Math.random() * .3 : .25})`; ctx.fill(); }
+  }
   ctx.restore();
   ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
-  if (e.type === "snake") {
-    ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = COL.snake; ctx.lineWidth = 2;
-    for (let i = 3; i < e.tail.length; i += 3) { const [x, y] = e.tail[i], k = 1 - i / e.tail.length; ctx.globalAlpha = .4 + k * .6; ctx.beginPath(); ctx.arc(x, y, 4 + k * 6, 0, TAU); ctx.stroke(); }
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  if (e.type === "eel") {
+    // the tail: a crackling current with fins every few links
+    ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = c; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(e.x, e.y);
+    for (let i = 2; i < e.tail.length; i += 2) ctx.lineTo(e.tail[i][0] + rand(-3, 3), e.tail[i][1] + rand(-3, 3));
+    ctx.stroke();
+    ctx.beginPath();
+    for (let i = 3; i < e.tail.length - 1; i += 3) {
+      const [x, y] = e.tail[i], [x2, y2] = e.tail[i + 1], a = Math.atan2(y - y2, x - x2) + Math.PI / 2, l = 9 * (1 - i / e.tail.length) + 3;
+      ctx.moveTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.lineTo(x - Math.cos(a) * l, y - Math.sin(a) * l);
+    }
+    ctx.lineWidth = 2.4; ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
   }
+}
+const CLOUD_PUFFS = [[0, 0, 1], [-.68, .18, .7], [.68, .14, .72], [-.3, -.42, .64], [.34, -.4, .6]];
+function star4(g, x, y, R, r) {
+  g.moveTo(x + R, y);
+  for (let k = 1; k < 8; k++) { const a = k * Math.PI / 4, q = k % 2 ? r : R; g.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q); }
+  g.closePath();
+}
+function drawStrikes(tt) {
+  for (const k of strikes) {
+    if (k.t > 0) {
+      // warning: a dashed ring that fills in as the strike gets close
+      const q = 1 - k.t / 1.05;
+      ctx.strokeStyle = `rgba(255,240,170,${.25 + q * .6})`; ctx.lineWidth = 2; ctx.setLineDash([8, 7]); ctx.lineDashOffset = -tt * 40;
+      ctx.beginPath(); ctx.arc(k.x, k.y, 46, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = `rgba(255,240,170,${q * .16})`; ctx.beginPath(); ctx.arc(k.x, k.y, 46 * q, 0, TAU); ctx.fill();
+    } else {
+      // the bolt: a jagged fork from its thundercloud (or straight out of the sky) to the ground
+      const a = Math.max(0, k.flash / .3), live = k.from && !k.from.dead;
+      const sx = live ? k.from.x : k.x + 40, sy = live ? k.from.y : k.y - 700;
+      if (!k.jit) k.jit = Array.from({ length: 12 }, () => rand(-1, 1));
+      const dx = k.x - sx, dy = k.y - sy, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+      ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = `rgba(235,240,255,${a})`; ctx.lineJoin = "miter";
+      ctx.beginPath(); ctx.moveTo(sx, sy);
+      for (let i = 1; i < 12; i++) { const f = i / 12, off = k.jit[i] * Math.min(40, L * .08); ctx.lineTo(sx + dx * f + nx * off, sy + dy * f + ny * off); }
+      ctx.lineTo(k.x, k.y); glow(3);
+      const g = ctx.createRadialGradient(k.x, k.y, 0, k.x, k.y, 80);
+      g.addColorStop(0, `rgba(255,255,255,${a * .8})`); g.addColorStop(1, "rgba(160,190,255,0)");
+      ctx.fillStyle = g; ctx.fillRect(k.x - 80, k.y - 80, 160, 160);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  }
+}
+function drawShip(tt) {
+  // a round storm-chaser drone: spinning rotor ring, a gun barrel on the aim, and two side pods
+  ctx.save(); ctx.translate(P.x, P.y);
+  ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = "rgba(170,235,255,.55)"; ctx.lineWidth = 1.6;
+  ctx.beginPath(); for (let k = 0; k < 3; k++) { const a = tt * 7 + k * TAU / 3; ctx.moveTo(Math.cos(a) * 16, Math.sin(a) * 16); ctx.arc(0, 0, 16, a, a + 1.25); } ctx.stroke();
+  ctx.rotate(P.aim != null ? P.aim : P.a);
+  ctx.strokeStyle = COL.player; ctx.fillStyle = COL.player;
+  ctx.beginPath(); ctx.rect(5, -2.2, 13, 4.4); tint(.6); glow(1.6);
+  ctx.beginPath(); for (const sd of [-1, 1]) { ctx.moveTo(-2 + 3.2, sd * 10); ctx.arc(-2, sd * 10, 3.2, 0, TAU); } tint(.5); glow(1.6);
+  ctx.beginPath(); ctx.arc(0, 0, 8.5, 0, TAU); tint(.35); glow(2.4);
+  ctx.fillStyle = "#5ef2ff"; ctx.beginPath(); ctx.arc(1.5, 0, 3, 0, TAU); ctx.fill();
+  ctx.restore(); ctx.globalCompositeOperation = "source-over";
 }
 function render(tt) {
   const w = view.w, h = view.h;
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-  ctx.fillStyle = "#000006"; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "#03040c"; ctx.fillRect(0, 0, w, h);
   // camera: fit arena height, follow player
   const zt = Math.min(1.1, Math.max(0.5, Math.min(w / 1000, h / 700)));
   cam.z += (zt - cam.z) * 0.1;
@@ -444,36 +608,36 @@ function render(tt) {
   const sh = PA.shakeOffset();
   ctx.save();
   ctx.translate(w / 2 + sh.x, h / 2 + sh.y); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
-  // grid
+  // storm floor, then the charged cells on top, grouped by brightness so each group is one path
+  ctx.drawImage(floor, 0, 0, AW, AH);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, AW, AH); ctx.clip();
   ctx.globalCompositeOperation = "lighter";
-  const gridC = bombFlash > 0 ? `rgba(255,140,220,${.25 + bombFlash * .5})` : "rgba(70,90,255,.32)";
-  ctx.strokeStyle = gridC; ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  for (let y = 0; y < GY; y++) { ctx.moveTo(gp[gi(0, y)].x, gp[gi(0, y)].y); for (let x = 1; x < GX; x++) { const p = gp[gi(x, y)]; ctx.lineTo(p.x, p.y); } }
-  for (let x = 0; x < GX; x++) { ctx.moveTo(gp[gi(x, 0)].x, gp[gi(x, 0)].y); for (let y = 1; y < GY; y++) { const p = gp[gi(x, y)]; ctx.lineTo(p.x, p.y); } }
-  ctx.stroke();
-  // highlight lines where the grid is most disturbed
-  ctx.strokeStyle = "rgba(120,200,255,.5)"; ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let y = 1; y < GY - 1; y++) for (let x = 1; x < GX - 1; x++) {
-    const p = gp[gi(x, y)], d = Math.abs(p.x - p.ox) + Math.abs(p.y - p.oy);
-    if (d > 6) { const q = gp[gi(x + 1, y)]; ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); const r2 = gp[gi(x, y + 1)]; ctx.moveTo(p.x, p.y); ctx.lineTo(r2.x, r2.y); }
+  const buckets = [[], [], [], [], []];
+  for (let i = 0; i < hexC.length; i++) { const c = hexC[i]; if (c >= .05) buckets[Math.min(4, (c * 4) | 0)].push(i); }
+  ctx.lineWidth = 1.6;
+  for (let b = 0; b < 5; b++) {
+    if (!buckets[b].length) continue;
+    const a = (b + .7) / 5;
+    ctx.fillStyle = `rgba(80,160,255,${a * .2})`; ctx.strokeStyle = `rgba(170,225,255,${a * .65})`;
+    ctx.beginPath(); for (const i of buckets[b]) hexPath(ctx, hexPos[i][0], hexPos[i][1], HS - 2.5);
+    ctx.fill(); ctx.stroke();
   }
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(120,160,255,.9)"; ctx.lineWidth = 3; ctx.strokeRect(0, 0, AW, AH);
+  if (bombFlash > 0) { ctx.fillStyle = `rgba(200,235,255,${bombFlash * .18})`; ctx.fillRect(0, 0, AW, AH); }
+  ctx.restore();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = "rgba(150,210,255,.7)"; ctx.lineWidth = 3; ctx.strokeRect(0, 0, AW, AH);
+  ctx.strokeStyle = "rgba(150,210,255,.15)"; ctx.lineWidth = 10; ctx.strokeRect(0, 0, AW, AH);
   ctx.globalCompositeOperation = "source-over";
   if (P) {
-    // gems
-    ctx.globalCompositeOperation = "lighter";
-    for (const g of gems) { const k = Math.min(1, g.life); ctx.strokeStyle = COL.gem; ctx.globalAlpha = k; ctx.lineWidth = 2; ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(tt * 4); ctx.strokeRect(-4, -4, 8, 8); ctx.restore(); }
+    // charge motes raise the multiplier
+    ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = COL.gem;
+    for (const g of gems) { ctx.globalAlpha = Math.min(1, g.life); ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(tt * 3); ctx.beginPath(); star4(ctx, 0, 0, 6.5, 2); ctx.fill(); ctx.restore(); }
     ctx.globalAlpha = 1;
     // bullets
     ctx.strokeStyle = COL.bullet; ctx.lineWidth = 3; ctx.lineCap = "round";
     ctx.beginPath();
     for (const b of bullets) { ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * .018, b.y - b.vy * .018); }
     ctx.stroke();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalCompositeOperation = "lighter";
     for (const w of waves) {
       const k = w.life == null ? 1 - (w.r / w.max) * .5 : Math.max(0, w.life / .25) * .5;
       ctx.strokeStyle = w.c; ctx.globalAlpha = .25 * k; ctx.lineWidth = 10;
@@ -482,18 +646,14 @@ function render(tt) {
       ctx.stroke();
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+    drawStrikes(tt);
     for (const e of enemies) shape(e, tt);
     // player
     if (P.dead <= 0 && alive) {
       const blink = P.inv > 0 && Math.floor(tt * 14) % 2;
       if (!blink) {
-        ctx.save(); ctx.translate(P.x, P.y); ctx.rotate(P.aim != null ? P.aim : P.a);
-        ctx.globalCompositeOperation = "lighter";
-        ctx.strokeStyle = COL.player; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, 11); ctx.lineTo(-4, 0); ctx.lineTo(-10, -11); ctx.closePath();
-        ctx.globalAlpha = .35; ctx.lineWidth = 9; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 2.5; ctx.stroke();
-        ctx.restore(); ctx.globalCompositeOperation = "source-over";
-        if (Math.hypot(P.vx, P.vy) > 60 && Math.random() < .8) fx.burst(P.x - Math.cos(P.a) * 10, P.y - Math.sin(P.a) * 10, { n: 1, colors: ["#ffb84d", "#ff6b4d"], speed: 80, life: .35, size: 2.5, angle: P.a + Math.PI, spread: .6 });
+        drawShip(tt);
+        if (Math.hypot(P.vx, P.vy) > 60 && Math.random() < .8) fx.burst(P.x - Math.cos(P.a) * 10, P.y - Math.sin(P.a) * 10, { n: 1, colors: ["#9fe8ff", "#5ef2ff"], speed: 80, life: .35, size: 2.2, angle: P.a + Math.PI, spread: .6 });
       }
     }
     fx.draw(ctx); texts.draw(ctx);
@@ -505,12 +665,12 @@ function render(tt) {
     ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 9, 0, TAU); ctx.moveTo(mouse.x - 14, mouse.y); ctx.lineTo(mouse.x - 5, mouse.y); ctx.moveTo(mouse.x + 5, mouse.y); ctx.lineTo(mouse.x + 14, mouse.y); ctx.stroke();
   }
 }
-// idle grid ripples behind the start screen
-setInterval(() => { if (PA.state !== "play") gridForce(rand(0, AW), rand(0, AH), rand(300, 900), rand(80, 200)); }, 600);
+// distant lightning flickers across the floor behind the start screen
+setInterval(() => { if (PA.state !== "play") zap(rand(0, AW), rand(0, AH), rand(250, 700), rand(80, 220)); }, 600);
 
 PA.onStart(reset);
 PA.loop(update, render);
-window.__gs = { get state() { return { score, lives, enemies: enemies && enemies.length, t, bestChain, waves: waves && waves.length, px: P && P.x, py: P && P.y, grid: gp.reduce((m, p) => Math.max(m, Math.hypot(p.x - p.ox, p.y - p.oy)), 0) }; }, cheat() { lives = 99; }, warp(s) { t = s; } };
+window.__gs = { get state() { return { score, lives, enemies: enemies && enemies.length, t, bestChain, waves: waves && waves.length, px: P && P.x, py: P && P.y, lit: hexC.reduce((m, c) => Math.max(m, c), 0) }; }, cheat() { lives = 99; }, god() { P.inv = 1e9; }, warp(s) { t = s; }, spawn(type) { const e = spawn(type); if (type === "cloud") clouds.push(e); return e.type; } };
 })();
 </script>
 </body></html>
