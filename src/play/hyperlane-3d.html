@@ -81,7 +81,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
   // Each sector is a new time of day over the city.
   const TIMES = [
     { name: "Golden Hour", el: 7, az: 112, sun: 0xffb46e, sunI: 3.4, top: 0x4a7ab4, hor: 0xf0c08e, low: 0x8c6d5c, glow: 0xffa860, glowI: 0.9,
-      cloud: 0.42, cLit: 0xffe0b8, cDark: 0x8a7c8a, hemiS: 0xc8dcff, hemiG: 0x7a5844, hemiI: 1.25, fog: 0.0040, lit: 0.35, exp: 1.0, stars: 0, rain: 0 },
+      cloud: 0.42, cLit: 0xffe0b8, cDark: 0x8a7c8a, hemiS: 0xc8dcff, hemiG: 0x7a5844, hemiI: 1.25, fog: 0.0034, lit: 0.35, exp: 0.94, stars: 0, rain: 0 },
     { name: "Sunset", el: 1.2, az: 98, sun: 0xff7c40, sunI: 2.7, top: 0x2f4583, hor: 0xff9a5e, low: 0x5f3e48, glow: 0xff6a34, glowI: 1.5,
       cloud: 0.5, cLit: 0xffa070, cDark: 0x553e5e, hemiS: 0xa8b4e8, hemiG: 0x6a4038, hemiI: 1.0, fog: 0.0042, lit: 0.6, exp: 1.05, stars: 0, rain: 0 },
     { name: "Dusk", el: -3, az: 86, sun: 0xd27a8e, sunI: 0.9, top: 0x1b2656, hor: 0xd97a62, low: 0x30283c, glow: 0xe2664c, glowI: 1.0,
@@ -130,6 +130,15 @@ import * as THREE from "/vendor/three/three.module.min.js";
   const hdr = (c, k) => new THREE.Color(c).multiplyScalar(k);
 
   /* ---------------- post: HDR bloom, then tone mapping ---------------- */
+  // NaN or Inf in a pixel (a degenerate normal, a sun glint over the HalfFloat limit) must never reach
+  // the bloom: one bad pixel gets blurred over the whole frame. Tested on the float bits, so no
+  // compiler can fold the check away; bad values become 0, the rest are clamped to a sane maximum.
+  const SAFE_GLSL = [
+    "vec3 hlSafe(vec3 c, float mx){",
+    "  bvec3 bad = greaterThanEqual(floatBitsToUint(c) & uvec3(0x7fffffffu), uvec3(0x7f800000u));",
+    "  return clamp(mix(c, vec3(0.0), bad), 0.0, mx);",
+    "}",
+    "vec3 hlNorm(vec3 v, vec3 fb){ float l = dot(v, v); return l > 1e-12 ? v * inversesqrt(l) : fb; }"].join("\n");
   function makePost() {
     const ext = renderer.extensions;
     const fullFloat = ext.has("EXT_color_buffer_float"), hdrOk = fullFloat || ext.has("EXT_color_buffer_half_float");
@@ -148,15 +157,17 @@ import * as THREE from "/vendor/three/three.module.min.js";
     const vs = "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }";
     const mk = (fs, uniforms) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
     const box4 = "vec3 c = 0.25 * (texture2D(tex, vUv + px * vec2(-0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(-0.5, 0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, 0.5)).rgb);";
+    const tap = (o) => "hlSafe(texture2D(tex, vUv + px * vec2(" + o + ")).rgb, 256.0)";
     const bright = mk([
       "uniform sampler2D tex; uniform vec2 px; uniform float thr; varying vec2 vUv;",
+      SAFE_GLSL,
       "void main(){",
-      "  " + box4,
+      "  vec3 c = 0.25 * (" + [tap("-0.5, -0.5"), tap("0.5, -0.5"), tap("-0.5, 0.5"), tap("0.5, 0.5")].join(" + ") + ");",
       "  float l = max(c.r, max(c.g, c.b));",
       "  float knee = thr * 0.5, soft = clamp(l - thr + knee, 0.0, 2.0 * knee);",
       "  soft = soft * soft / (4.0 * knee + 1e-4);",
       "  gl_FragColor = vec4(min(c * max(soft, l - thr) / max(l, 1e-4), vec3(40.0)), 1.0);",
-      "}"].join("\n"), { tex: { value: null }, px: { value: new THREE.Vector2() }, thr: { value: hdrOk ? 1.1 : 0.75 } });
+      "}"].join("\n"), { tex: { value: null }, px: { value: new THREE.Vector2() }, thr: { value: hdrOk ? 1.6 : 0.85 } });
     const down = mk("uniform sampler2D tex; uniform vec2 px; varying vec2 vUv; void main(){ " + box4 + " gl_FragColor = vec4(c, 1.0); }",
       { tex: { value: null }, px: { value: new THREE.Vector2() } });
     const blur = mk([
@@ -170,12 +181,14 @@ import * as THREE from "/vendor/three/three.module.min.js";
     // Composite: bloom, a touch of lens fringing at the edges (more on afterburner), vignette, grain.
     const comp = mk([
       "uniform sampler2D tScene, b0, b1, b2, b3, b4; uniform float strength, grain, time, ca, flash; varying vec2 vUv;",
+      SAFE_GLSL,
       "void main(){",
       "  vec2 q = vUv - 0.5;",
       "  vec2 off = q * dot(q, q) * ca;",
-      "  vec3 c = vec3(texture2D(tScene, vUv + off).r, texture2D(tScene, vUv).g, texture2D(tScene, vUv - off).b);",
+      "  vec3 c = hlSafe(vec3(texture2D(tScene, vUv + off).r, texture2D(tScene, vUv).g, texture2D(tScene, vUv - off).b), 256.0);",
       "  vec3 b = texture2D(b0, vUv).rgb * 0.45 + texture2D(b1, vUv).rgb * 0.55 + texture2D(b2, vUv).rgb * 0.65 + texture2D(b3, vUv).rgb * 0.75 + texture2D(b4, vUv).rgb * 0.85;",
-      "  c += b * strength;",
+      "  c += hlSafe(b, 64.0) * strength;",
+      "  c = hlSafe(c, 256.0);",
       "  c *= 1.0 - dot(q, q) * 0.85;",
       "  c += flash;",
       "  gl_FragColor = vec4(c, 1.0);",
@@ -185,7 +198,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
       "  gl_FragColor.rgb += (n - 0.5) * grain;",
       "}"].join("\n"), {
       tScene: { value: main.texture }, b0: { value: lv[0].texture }, b1: { value: lv[1].texture }, b2: { value: lv[2].texture },
-      b3: { value: lv[3].texture }, b4: { value: lv[4].texture }, strength: { value: 0.3 }, grain: { value: 0.018 }, time: { value: 0 },
+      b3: { value: lv[3].texture }, b4: { value: lv[4].texture }, strength: { value: 0.16 }, grain: { value: 0.018 }, time: { value: 0 },
       ca: { value: 0.004 }, flash: { value: 0 }
     });
     const pass = (m, target) => { quad.material = m; renderer.setRenderTarget(target); renderer.render(pscene, cam); };
@@ -240,13 +253,14 @@ import * as THREE from "/vendor/three/three.module.min.js";
     "  vec3 fcol = mix(uFogLow, fogColor, smoothstep(-0.3, 0.08, dot(fdir, uUpV)));",
     "  fcol += uFogSun * pow(max(dot(fdir, uSunV), 0.0), 5.0);",
     "  gl_FragColor.rgb = mix(gl_FragColor.rgb, fcol, ff);",
-    "#endif"].join("\n");
+    "#endif",
+    "  gl_FragColor.rgb = hlSafe(gl_FragColor.rgb, 256.0);"].join("\n");
   function patch(m) {
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, FU);
       sh.vertexShader = sh.vertexShader.replace("#include <fog_pars_vertex>", "#include <fog_pars_vertex>\nvarying vec3 vFogPos;")
         .replace("#include <fog_vertex>", "#include <fog_vertex>\n\tvFogPos = mvPosition.xyz;");
-      sh.fragmentShader = sh.fragmentShader.replace("#include <fog_pars_fragment>", "#include <fog_pars_fragment>\nvarying vec3 vFogPos;\nuniform vec3 uSunV, uUpV, uFogLow, uFogSun;")
+      sh.fragmentShader = sh.fragmentShader.replace("#include <fog_pars_fragment>", "#include <fog_pars_fragment>\nvarying vec3 vFogPos;\nuniform vec3 uSunV, uUpV, uFogLow, uFogSun;\n" + SAFE_GLSL)
         .replace("#include <fog_fragment>", FOG_FRAG);
     };
     m.customProgramCacheKey = () => "hl-fog";
@@ -807,15 +821,16 @@ import * as THREE from "/vendor/three/three.module.min.js";
     vertexShader: "varying vec3 vDir; void main(){ vDir = position; vec4 p = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * p; }",
     fragmentShader: [
       "uniform vec3 uTop, uHor, uLow, uSunDir, uSunCol, uGlow, uCLit, uCDark; uniform float uCloud, uStars, uTime, uFlash;",
+      SAFE_GLSL,
       "varying vec3 vDir;",
       NOISE_GLSL,
       "void main(){",
-      "  vec3 d = normalize(vDir);",
+      "  vec3 d = hlNorm(vDir, vec3(0.0, 0.0, -1.0));",
       "  float h = d.y, sd = max(dot(d, uSunDir), 0.0);",
       "  vec3 c = mix(uHor, uTop, pow(clamp(h, 0.0, 1.0), 0.5));",
-      "  c += uGlow * (pow(sd, 4.0) * 0.45 + pow(sd, 40.0) * 0.9) * (1.0 - clamp(h * 1.6, 0.0, 0.85));",
+      "  c += uGlow * (pow(sd, 4.0) * 0.3 + pow(sd, 40.0) * 0.6) * (1.0 - clamp(h * 1.6, 0.0, 0.85));",
       "  c = mix(uLow, c, smoothstep(-0.14, 0.015, h));",
-      "  c += uSunCol * smoothstep(0.99955, 0.9998, sd) * 18.0 * smoothstep(-0.02, 0.01, h);",
+      "  c += uSunCol * smoothstep(0.99955, 0.9998, sd) * 9.0 * smoothstep(-0.02, 0.01, h);",
       "  if (uCloud > 0.001 && h > 0.0) {",
       "    vec2 p = d.xz / (h + 0.12) * 1.25 + vec2(uTime * 0.006, uTime * 0.0025);",
       "    float n = fbm(p);",
@@ -826,7 +841,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
       "  }",
       "  if (uStars > 0.0 && h > 0.04) { vec2 sp = d.xz / (h + 0.35) * 260.0; float s = hh(floor(sp)); c += vec3(step(0.9972, s)) * uStars * smoothstep(0.04, 0.3, h) * (1.0 - uCloud * 0.8) * 1.4; }",
       "  c += uFlash * vec3(0.55, 0.6, 0.75);",
-      "  gl_FragColor = vec4(c, 1.0);",
+      "  gl_FragColor = vec4(hlSafe(c, 256.0), 1.0);",
       "}"].join("\n")
   });
   const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 24), skyMat);
@@ -854,17 +869,19 @@ import * as THREE from "/vendor/three/three.module.min.js";
       "}"].join("\n"),
     fragmentShader: [
       "uniform vec3 uTop, uHor, uLow, uGlow, uSunDir, uSunC, uAmb; uniform float uLit, uTime, uFlash; uniform vec3 uSunD;",
+      SAFE_GLSL,
       "varying vec3 vW, vN, vC;",
       "float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }",
       "void main(){",
-      "  vec3 n = normalize(vN);",
+      "  vec3 n = hlNorm(vN, vec3(0.0, 1.0, 0.0));",
       "  vec3 base = vC * (uAmb + uSunC * max(dot(n, uSunD), 0.0) * 0.6);",
       "  vec3 col = base;",
+      // derivatives outside the branch (undefined in non-uniform control flow on some GPUs)
+      "  vec2 f = vec2(abs(n.x) > 0.5 ? vW.z : vW.x, vW.y) / vec2(3.0, 8.0);",
+      "  float aa = clamp(fwidth(f.x) * 1.5, 0.0, 1.0);",
       "  if (abs(n.y) < 0.5) {",
-      "    vec2 f = vec2(abs(n.x) > 0.5 ? vW.z : vW.x, vW.y) / vec2(3.0, 8.0);",
       "    vec2 cell = floor(f), fr = fract(f);",
       "    float win = step(0.14, fr.x) * step(fr.x, 0.86) * step(0.22, fr.y) * step(fr.y, 0.9);",
-      "    float aa = clamp(fwidth(f.x) * 1.5, 0.0, 1.0);",
       "    win = mix(win, 0.5, aa);",
       "    float r = h21(cell + vC.xy * 91.0);",
       "    float lit = mix(step(r, uLit * 0.75), uLit * 0.75, aa);",
@@ -873,11 +890,11 @@ import * as THREE from "/vendor/three/three.module.min.js";
       "    col = mix(base, glass + base * 0.4, win * 0.7) + wc * win * lit * 1.6;",
       "  }",
       "  float d = length(vW - cameraPosition);",
-      "  vec3 dir = (vW - cameraPosition) / d;",
-      "  vec3 haze = mix(uLow, uHor, smoothstep(-0.25, 0.06, dir.y)) + uGlow * pow(max(dot(dir, uSunDir), 0.0), 5.0) * 0.6;",
+      "  vec3 dir = (vW - cameraPosition) / max(d, 1e-3);",
+      "  vec3 haze = (mix(uLow, uHor, smoothstep(-0.25, 0.06, dir.y)) + uGlow * pow(max(dot(dir, uSunDir), 0.0), 5.0) * 0.3) * 0.82;",
       "  col = mix(col, haze, clamp(1.0 - exp(-d * 0.0009), 0.0, 0.92));",
       "  col += uFlash * 0.25;",
-      "  gl_FragColor = vec4(col, 1.0);",
+      "  gl_FragColor = vec4(hlSafe(col, 256.0), 1.0);",
       "}"].join("\n")
   });
   {
@@ -1046,7 +1063,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
   const ROOM_FRAG = [
     "{",
     "  vec3 dp1 = dFdx(vWP), dp2 = dFdy(vWP);",
-    "  vec3 gN = normalize(cross(dp1, dp2));",
+    "  vec3 gN = hlNorm(cross(dp1, dp2), vec3(0.0, 0.0, 1.0));",
     "  if (dot(gN, cameraPosition - vWP) < 0.0) gN = -gN;",
     "  float glassM = (1.0 - smoothstep(0.12, 0.2, texelRoughness.g)) * step(abs(gN.y), 0.5);",
     // Derivatives must be taken outside the branch: inside non-uniform control flow they are
@@ -1055,8 +1072,8 @@ import * as THREE from "/vendor/three/three.module.min.js";
     "  vec2 du1 = dFdx(P), du2 = dFdy(P);",
     "  if (glassM > 0.0) {",
     "    vec3 q2 = cross(dp2, gN), q1 = cross(gN, dp1);",
-    "    vec3 T = normalize(q2 * du1.x + q1 * du2.x), Bt = normalize(q2 * du1.y + q1 * du2.y);",
-    "    vec3 V = normalize(vWP - cameraPosition);",
+    "    vec3 T = hlNorm(q2 * du1.x + q1 * du2.x, vec3(1.0, 0.0, 0.0)), Bt = hlNorm(q2 * du1.y + q1 * du2.y, vec3(0.0, 1.0, 0.0));",
+    "    vec3 V = hlNorm(vWP - cameraPosition, vec3(0.0, 0.0, -1.0));",
     "    vec3 rd = vec3(dot(V, T), dot(V, Bt), min(dot(V, gN), -0.02));",
     "    vec2 cell = floor(vec2(P.x / 3.0, (P.y - uFloor) / 8.0));",
     "    vec2 lp = vec2(P.x - cell.x * 3.0, P.y - uFloor - cell.y * 8.0);",
@@ -1066,7 +1083,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
     "    float tx = rd.x > 0.0 ? (3.0 - lp.x) / rd.x : -lp.x / min(rd.x, -1e-4);",
     "    float ty = rd.y > 0.0 ? (Hh - lp.y) / rd.y : -lp.y / min(rd.y, -1e-4);",
     "    float tz = D / -rd.z;",
-    "    float tm = min(tx, min(ty, tz));",
+    "    float tm = clamp(min(tx, min(ty, tz)), 0.0, 60.0);",
     "    vec3 hp = vec3(lp, 0.0) + rd * tm;",
     "    vec2 cuv = vec2(cell.x * 3.0 + 1.5, cell.y * 8.0 + uFloor + 3.6) / vec2(24.0, 32.0);",
     "    vec3 litC = (textureLod(emissiveMap, cuv, 3.0).rgb + textureLod(emissiveMap, cuv + vec2(0.0, 1.6 / 32.0), 3.0).rgb) * 0.7;",
@@ -2119,16 +2136,17 @@ import * as THREE from "/vendor/three/three.module.min.js";
     vertexShader: "varying float vA; varying vec3 vN, vV; void main(){ vA = position.y + 0.5; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
     fragmentShader: [
       "uniform float uTime, uPower, uBoost; varying float vA; varying vec3 vN, vV;",
+      SAFE_GLSL,
       "void main(){",
       "  float a = clamp(vA, 0.0, 1.0);",
-      "  float rim = pow(abs(dot(normalize(vN), normalize(vV))), " + (core ? "2.5" : "1.4") + ");",
+      "  float rim = pow(abs(dot(hlNorm(vN, vec3(0.0, 0.0, 1.0)), hlNorm(vV, vec3(0.0, 0.0, 1.0)))), " + (core ? "2.5" : "1.4") + ");",
       "  float fade = pow(1.0 - a, " + (core ? "1.6" : "1.2") + ");",
       "  float dia = pow(0.5 + 0.5 * cos(a * 6.2831 * 4.5), 8.0) * uBoost * (1.0 - a);",
       "  float flick = 0.82 + 0.18 * sin(uTime * 63.0 + a * 23.0) * sin(uTime * 41.0);",
       "  vec3 hot = mix(vec3(1.0, 0.42, 0.12), vec3(1.0, 0.82, 0.55), smoothstep(0.5, 0.0, a));",
       "  vec3 dry = mix(vec3(0.35, 0.5, 1.0), vec3(0.8, 0.85, 1.0), smoothstep(0.4, 0.0, a));",
       "  vec3 col = mix(dry, hot, uBoost) * (rim * fade * " + (core ? "5.0" : "2.2") + " + dia * rim * 6.0) * flick * uPower;",
-      "  gl_FragColor = vec4(col, 1.0);",
+      "  gl_FragColor = vec4(hlSafe(col, 64.0), 1.0);",
       "}"].join("\n")
   });
   const plume = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.25, 1, 24, 1, true), flameShader(false));
@@ -2320,10 +2338,10 @@ import * as THREE from "/vendor/three/three.module.min.js";
     sun.color.copy(o.sun);
     sun.intensity = o.sunI * (o.el > -2 ? 1 : 0.6) * (1 - inT * 0.45);
     sun.position.copy(sunDir).multiplyScalar(100);
-    scene.fog.color.copy(o.hor).lerp(_c1.setHex(0x3a332e), inT * 0.55);
+    scene.fog.color.copy(o.hor).lerp(o.low, 0.3).lerp(_c1.setHex(0x3a332e), inT * 0.55);
     scene.fog.density = lerp(o.fog, 0.0032, inT);
     FU.uFogLow.value.copy(o.low).lerp(_c1.setHex(0x2a2520), inT * 0.5);
-    FU.uFogSun.value.copy(o.glow).multiplyScalar(o.glowI * 0.55 * (1 - inT * 0.6));
+    FU.uFogSun.value.copy(o.glow).multiplyScalar(o.glowI * 0.25 * (1 - inT * 0.6));
     renderer.toneMappingExposure = lerp(o.exp, 1.05, inT);
     // lit windows: barely visible by day, bright at night
     const litI = 0.35 + o.lit * 1.9 + night * 0.4;
