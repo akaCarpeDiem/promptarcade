@@ -100,14 +100,16 @@ export const GAMES = [
     slug: "block-bloom", title: "Block Bloom", added: "2026-10-11", featured: 5,
     genre: "Puzzle", tags: ["puzzle", "casual"], difficulty: "Simple", accent: "#ff7eb6", accent2: "#ffd36b",
     unit: "points",
-    classic: "Falling blocks", twist: "No next-piece preview, and a row finished in a single colour scores ten times as much.",
-    tagline: "Falling gems, no preview. Clear a row in one colour for 10× points.",
-    about: "Gem blocks fall into the garden one at a time. Turn them, slide them and drop them to fill a row and watch it burst into petals. There is no next-piece window: each piece appears at the top the moment the last one lands, so you play what you get. Finish a whole row in a single colour and it scores ten times as much.",
+    classic: "Falling blocks", twist: "No next-piece preview; a row finished in one colour scores ten times as much and bursts every gem of that colour, so the columns cascade into chains; dew drops recolour the falling piece.",
+    tagline: "Falling gems, no preview. One-colour rows bloom, burst and cascade into chains.",
+    about: "Gem blocks fall into the garden one at a time. Turn them, slide them and drop them to fill a row and watch it burst into petals. There is no next-piece window: each piece appears at the top the moment the last one lands, so you play what you get. Finish a whole row in a single colour and it scores ten times as much and goes to Full Bloom: every other gem of that colour on the board bursts too, the columns cascade down, and any rows they complete chain for even more. Clearing rows fills your dew drops, and a dew drop turns the falling piece to the next colour when you need a row to stay pure.",
     credit: CLAUDE_NEW,
-    brief: "A falling-block puzzle on an 8×14 board with turning pieces, no next-piece preview, combos, rising speed, and a 10× bonus for single-colour rows.",
+    brief: "A falling-block puzzle on an 8×14 board with turning pieces, no next-piece preview, combos, rising speed, and a 10× bonus for single-colour rows. Then make the whole board fit on screen, and add upgrades: Full Bloom colour bursts with column cascades and chains, and dew drops that recolour the falling piece.",
     tech: [
+      "The board always fits the screen: on wide screens the score and stats move beside it",
+      "Full Bloom bursts a colour across the board, then columns cascade and chain",
+      "Dew drops, earned by clearing rows, recolour the falling piece",
       "Wall kicks let a piece turn snugly against walls and other blocks",
-      "Rows that are still one colour glow so you can chase the 10× bonus",
       "Tap to turn, drag to move and flick down to drop on touch screens"
     ]
   },
@@ -115,16 +117,16 @@ export const GAMES = [
     slug: "gridstorm", title: "Gridstorm", added: "2026-10-11", featured: 6,
     genre: "Shooter", tags: ["shooter", "twin-stick", "arcade"], difficulty: "Advanced", accent: "#5ef2ff", accent2: "#ffe68a",
     unit: "points",
-    classic: "Twin-stick arena", twist: "Every kill sends out a shockwave along the grid, and the ring blows up whatever it reaches, so packed swarms go off in chain reactions worth more with every link.",
-    tagline: "A twin-stick shooter where every kill sends out a chain-reaction shockwave.",
-    about: "Move with one hand, aim with the other, and survive an escalating storm of geometric enemies — dodgers that sidestep your shots, splitters, armored snakes and gravity wells that bend bullets and swallow everything nearby. Every kill sends a shockwave through the grid, and anything the ring reaches explodes and sends out its own. Let them bunch up, then set off the whole pack. Collect gems to climb the multiplier.",
+    classic: "Twin-stick arena", twist: "Fight inside a thunderstorm: every kill sends out a shockwave that blows up whatever it reaches, so packed swarms go off in chain reactions, while thunderheads call lightning down on where you're heading.",
+    tagline: "A twin-stick shooter inside a thunderstorm, where every kill sets off a chain-reaction shockwave.",
+    about: "Fly a little storm-chaser drone over a honeycomb of charge cells floating in a thunderstorm. Move with one hand, aim with the other, and survive the storm's creatures: jellies of static that drift on the breeze, darts that take aim and lunge, shellbacks whose shield always faces you, seeders that circle and sow mines, eels that zigzag at right angles, and thunderheads that call lightning down where you're about to be. Every kill sends out a shockwave, and anything the ring reaches explodes and sends out its own. Let them bunch up, then set off the whole pack. Collect charge motes to climb the multiplier, and save a Surge for when it all goes wrong.",
     credit: CLAUDE_NEW,
-    brief: "A neon twin-stick arena shooter with a warping spring-mass background grid, several enemy behaviours, bombs and a score multiplier.",
+    brief: "A twin-stick arena shooter set inside a thunderstorm, with its own cast of storm creatures, a honeycomb floor that lights up with every blast, chain-reaction shockwaves, surges and a score multiplier.",
     tech: [
-      "1,500-point spring-mass grid simulated every frame and pushed by explosions",
-      "Gravity wells that pull the grid, your ship, enemies and bullets",
-      "Kill shockwaves run along the spring grid and chain from enemy to enemy, with points that scale with chain depth",
-      "Additive-blend vector rendering with dual-stroke glow — no shaders needed"
+      "Over a thousand honeycomb cells hold charge: blasts, shockwaves and lightning light them up and it bleeds away",
+      "Darts telegraph their lunge, shellbacks block shots from the front, and lightning lands where you're heading after a warning ring",
+      "Kill shockwaves chain from enemy to enemy, with points that scale with chain depth",
+      "The cloud floor is painted once offscreen, and lit cells are grouped by brightness so each group is drawn as one path"
     ]
   },
   {
@@ -145,18 +147,18 @@ export const GAMES = [
   },
   {
     slug: "skystack", title: "Skystack 3D", added: "2026-10-11", featured: 8,
-    genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#7dffb0", accent2: "#6ec8ff",
+    genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#ffb347", accent2: "#6ec8ff",
     unit: "floors",
-    classic: "Tower stacker", twist: "Wind: from the fifth floor up the tower sways, and the higher it gets the more the top swings. The slab slides on a fixed track, so you drop it where the top is right now.",
-    tagline: "Stack sliding slabs on a tower that sways in the wind. One button, real 3D.",
-    about: "Drop each sliding slab onto the tower. Whatever hangs over the edge is sliced off and tumbles away, so the tower narrows with every miss. Once you're five floors up the wind picks up and the tower starts to sway, a little at first and then a lot. The slab's track stays still while the top moves under it, so you're timing two motions at once. Land a perfect drop to keep the slab's size, and chain perfect drops to grow it back.",
+    classic: "Tower stacker", twist: "You're building a real skyscraper: a crane lowers each floor, the tower climbs from brick walk-ups to a glass spire as day turns to night, and from the fifth floor up the wind makes the whole thing sway.",
+    tagline: "Build a skyscraper floor by floor off a crane, through five districts and into the night.",
+    about: "A crane swings each new floor in over the tower, first from one side and then the other. Lower it at the right moment: whatever hangs over the floor below is sheared off and falls to the street, so every miss makes the building thinner. Climb from brick row through concrete, glass and art deco to a glass spire, while the sun sets and the city lights come on below. From the fifth floor the wind makes the tower sway, the top most of all, so you're timing the crane and the sway at once. Three flush drops in a row brace the tower against the wind for four floors, and every tenth floor is a sky lobby that comes in wider and can overhang.",
     credit: CLAUDE_NEW,
-    brief: "A one-button 3D tower-stacking game in three.js with slicing, falling debris, perfect-drop combos and shifting colours.",
+    brief: "A one-button 3D skyscraper builder in three.js: a crane lowers each floor, overhangs shear off, the facade changes district every ten floors, the day turns to night with height, wind sway, braces for flush drops and wide sky lobbies.",
     tech: [
-      "three.js with an orthographic isometric camera and soft shadows",
-      "Overhangs are cut into separate meshes that fall and spin away",
-      "Wind sway bends the tower more toward the top and grows with height, while the stack is still stored in straight, unswayed positions",
-      "The palette and sky gradient drift as the tower climbs"
+      "Facades are painted on canvases at load, one per district, with a second map of the windows that light up at night",
+      "Each floor's facade repeats to match its width, so sheared floors keep their windows the right size",
+      "Wind sway bends the tower more toward the top and grows with height, while the stack is stored in straight, unswayed positions",
+      "Sky, fog, sunlight and window glow follow the building's height, over an instanced city with twinkling lights"
     ]
   },
   {
@@ -165,9 +167,9 @@ export const GAMES = [
     unit: "points",
     classic: "Road and river crosser", twist: "Get hit and time rewinds to your last safe spot, but rewinds run out, and a wall of static creeps up behind you.",
     tagline: "Hop across an endless night city. Get hit and time rewinds.",
-    about: "Hop a little courier bot across an endless night city: busy roads full of cars, vans, buses and trucks, rivers of drifting logs and diving turtles, and rail crossings where the night train comes through with almost no warning. Get flattened or fall in and the whole street rewinds to the last moment you stood somewhere safe, so you can try that hop again. Rewinds run out, though, and clocks on the grass are the only way to win them back. Don't dawdle: a wall of static follows you up the street.",
+    about: "Hop a little courier bot across an endless night city: busy roads full of cars, vans, buses and trucks, rivers of cargo barges and float pads that power down and sink, and rail crossings where the night train comes through with almost no warning. Get flattened or fall in and the whole street rewinds to the last moment you stood somewhere safe, so you can try that hop again. Rewinds run out, though, and clocks on the grass are the only way to win them back. Don't dawdle: a wall of static follows you up the street.",
     credit: CLAUDE_NEW,
-    brief: "Remake the road-and-river crossing classic as an endless night city with cars, trucks, logs, diving turtles and trains, and make getting hit rewind time instead of ending the run.",
+    brief: "Remake the road-and-river crossing classic as an endless night city with cars, trucks, cargo barges, sinking float pads and trains, and make getting hit rewind time instead of ending the run.",
     tech: [
       "Every lane is a pure function of the world clock, so running the clock backwards replays the street in reverse",
       "The player is snapshotted every frame; a rewind scrubs back to the newest snapshot on solid ground",
@@ -178,19 +180,19 @@ export const GAMES = [
   },
   {
     slug: "echo-maze", title: "Echo Maze", added: "2026-10-21",
-    genre: "Arcade", tags: ["arcade", "maze", "chase"], difficulty: "Mid", accent: "#b48cff", accent2: "#7dffb0",
+    genre: "Arcade", tags: ["arcade", "maze", "stealth"], difficulty: "Mid", accent: "#6ee1ff", accent2: "#b48cff",
     unit: "points",
-    classic: "Pellet maze chase", twist: "Your own path comes back to haunt you: echoes replay your route a few seconds behind you, and every level is a brand-new maze.",
-    tagline: "Clear the maze before your own echo catches you.",
-    about: "Eat every pellet in the maze while four hunters close in, each with its own way of chasing you. The catch is behind you: the maze remembers where you've been, and a few seconds later an echo of you comes along the very same route. Double back, stop to think or loop the same corridor and you'll walk straight into yourself. Power orbs turn the tables on hunters and echoes alike. Every level is a freshly generated maze, and the deeper you go the more echoes follow you.",
+    classic: "Maze chase", twist: "You're a bat in a pitch-black cave who sees by sonar. Every ping lights the tunnels but tells the hunters where you are.",
+    tagline: "A bat, a black cave and a sonar ping that gives you away.",
+    about: "You're a young bat lost in a pitch-black cave, and you can only see a little way around you. Ping and a wave of sound races down the tunnels and lights them for a moment, but the things in the cave hunt by sound. Spiders come to where they heard you, stone lurkers stalk you and freeze only while light is on them, and owls glide straight over the rock toward your last ping. Find every crystal to unseal the moonlit way out. Glowcaps flash and stun everything nearby, fireflies light the way, and the fewer pings you use the bigger your escape bonus.",
     credit: CLAUDE_NEW,
-    brief: "Remake the pellet-maze chase with an original twist: echoes that replay the player's own recent route, hunters with distinct chase styles, and a new symmetric maze every level.",
+    brief: "Rework the maze chase so it no longer resembles the famous pellet maze: a bat that sees by sonar in a dark cave, hunters that react to sound and light, crystals to collect and an exit to reach, with new art throughout.",
     tech: [
-      "Mazes are carved depth-first on one half, mirrored, then braided so there are no dead ends",
-      "Your route is recorded every frame; each echo binary-searches it to replay where you were seconds ago",
-      "Hunters pick turns at each junction by distance to a target: straight at you, ahead of you, shy, or flanking",
-      "Tile-centre movement with turn buffering, instant reversals and wrap-around tunnels",
-      "Walls are traced once into an offscreen canvas as glowing outlines, so each frame only draws what moves"
+      "Each ping is a breadth-first flood through the tunnels, so the light follows the cave instead of passing through rock",
+      "Creatures react to sound and light: spiders chase the last noise, lurkers freeze while lit, owls fly over walls",
+      "Caves are carved depth-first with long horizontal runs, then partly braided into loops with a few hidden nooks",
+      "Darkness is one value per tile, scaled up smoothly, with the tunnels you've seen faintly remembered",
+      "On tall screens the whole cave turns a quarter-turn so it still fills the screen"
     ]
   },
   {
@@ -211,7 +213,7 @@ export const GAMES = [
     ]
   },
   {
-    slug: "neon-outrun", title: "Neon Outrun", added: "2026-09-20",
+    slug: "neon-outrun", title: "Neon Nightdrive", added: "2026-09-20",
     genre: "Racing", tags: ["racing", "arcade", "3d"], difficulty: "Advanced", accent: "#ff5ca8", accent2: "#ffd36b", unit: "points",
     classic: "Sunset road racer", twist: "A real-3D cyberpunk megacity: draft behind haulers for extra top speed, thread hover cars for near-miss combos and dodge lane closures to beat the checkpoint clock.",
     tagline: "A real-3D cyberpunk racer through a neon megacity.",
@@ -254,28 +256,28 @@ export const GAMES = [
   {
     slug: "void-rocks", title: "Void Rocks", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#c49bff", accent2: "#5ef2ff", unit: "points",
-    classic: "Vector rock shooter", twist: "A tractor tether: grab a rock, whirl it round your ship as a wrecking ball, then fling it through the field for chain multipliers.",
-    tagline: "A vector rock shooter where the rocks are your best weapon.",
-    about: "A glowing vector rock shooter with a tractor tether. Split the big rocks with your gun, then grab a small one and it whirls round your ship as a wrecking ball, smashing whatever it touches and soaking up saucer fire. Let go and it flies the way you're facing, ploughing through the field: every rock it hits raises the chain multiplier. Thrust, drift and hyperspace out of trouble when it gets crowded.",
+    classic: "Rock-field shooter", twist: "A tractor tether: grab a rock, whirl it round your tug as a wrecking ball, then fling it through the field for chain multipliers. Scrapper drones fly in to cut up the big rocks.",
+    tagline: "A rock-field shooter where the rocks are your best weapon.",
+    about: "Pilot a little salvage tug through a drifting field of cratered rock. Split the big rocks with your gun, then grab a small one and it whirls round your tug as a wrecking ball, smashing whatever it touches and soaking up drone fire. Let go and it flies the way you're facing, ploughing through the field: every rock it hits raises the chain multiplier. Scrapper drones fly in, latch onto the biggest rocks and cut them apart, showering you with pieces, so swat them with a tethered rock for a big bonus. Thrust, drift and blink a short way ahead when you're boxed in.",
     credit: CLAUDE_CURSOR,
-    brief: "A vector-style rock shooter with inertia, screen wrap, splitting rocks, saucers, hyperspace and waves.",
-    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, saucers and waves, then glow rendering, audio and touch clusters. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
-    tech: ["Inertia and screen wrap", "Tether that winds up as it whirls; throws aim along the ship's nose", "Thrown rocks pierce the field and count a chain multiplier", "Glow vector rendering"]
+    brief: "A rock-field shooter with inertia, screen wrap, splitting rocks, a tractor tether, scrapper drones that cut up rocks, a short-range blink and waves.",
+    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, enemies and waves, then glow rendering, audio and touch clusters. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, and later gave it solid cratered rocks, a salvage tug, rock-cutting drones and a blink jump so it stands further from the original.",
+    tech: ["Inertia and screen wrap", "Tether that winds up as it whirls; throws aim along the ship's nose", "Thrown rocks pierce the field and count a chain multiplier", "Drones pick the nearest big rock, orbit it while they cut, then split it", "Rocks are painted once per shape as shaded, cratered stone"]
   },
   {
     slug: "star-siege", title: "Star Siege", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#ff7eb6", accent2: "#7dffb0", unit: "points",
-    classic: "Alien invasion", twist: "Colour lasers: a hit on the wrong colour paints the alien yours, and a hit on a match chain-pops the whole touching cluster.",
-    tagline: "Paint the invasion, then pop it in chains.",
-    about: "A marching alien formation in four colours, and a laser that carries one of them. Hit an alien of a different colour and you paint it yours. Hit one that matches and every touching alien of that colour detonates in a chain, worth more the bigger the cluster. Switch colours to find the big clusters, paint bridges to join them, and pop them before the formation lands.",
+    classic: "Alien invasion", twist: "Colour lasers against a honeycomb swarm: a hit on the wrong colour paints the alien yours, and a hit on a match chain-pops every touching alien of that colour.",
+    tagline: "Paint the swarm, then pop it in chains.",
+    about: "A honeycomb swarm of aliens in four colours glides from side to side and sinks toward you, and your laser carries one of the colours. Hit an alien of a different colour and you paint it yours. Hit one that matches and every touching alien of that colour detonates in a chain, and in a honeycomb each alien touches up to six others. Switch colours to find the big clusters, paint bridges to join them, and pop them before the swarm reaches your cannon. Hide behind the drifting crystal barriers, and catch the comet when it arcs overhead.",
     credit: CLAUDE_CURSOR,
-    brief: "A fixed-shooter invasion game: marching formation, three alien types, eroding shields, mothership and faster waves.",
-    process: "Built by an AI coding agent from a multi-step brief: the formation march and shooting first, then shields and waves, then pixel sprites, audio and touch controls. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
-    tech: ["Flood fill through touching same-colour aliens, popped in a ripple", "A fourth colour joins from wave 3", "Eroding pixel shields", "Touch drag with auto fire"]
+    brief: "A fixed shooter against a gliding honeycomb swarm: colour lasers that paint or chain-pop, drifting crystal barriers, a bonus comet and faster waves.",
+    process: "Built by an AI coding agent from a multi-step brief: the formation and shooting first, then barriers and waves, then sprites, audio and touch controls. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, then reshaped the swarm into a gliding honeycomb with drifting crystal barriers and a comet so it stands further from the original.",
+    tech: ["Flood fill through the six honeycomb neighbours of each alien, popped in a ripple", "The swarm glides and sinks smoothly, speeding up as it thins out", "Hexagonal crystal barriers that erode cell by cell and drift side to side", "Touch drag with auto fire"]
   },
   {
     slug: "prism-breaker", title: "Prism Breaker", added: "2026-09-20",
-    genre: "Arcade", tags: ["arcade", "breakout"], difficulty: "Mid", accent: "#6ec8ff", accent2: "#c49bff", unit: "points",
+    genre: "Arcade", tags: ["arcade", "paddle"], difficulty: "Mid", accent: "#6ec8ff", accent2: "#c49bff", unit: "points",
     classic: "Brick breaker", twist: "Spin: the paddle's motion at contact puts spin on the ball, so shots curve in flight round steel guards, and bent breaks score double.",
     tagline: "A neon brick-breaker where the ball curves.",
     about: "A glassy neon brick-breaker with spin. Move the paddle as the ball touches it and the ball leaves spinning, bending in flight the way you swept. Curve shots round the steel guards that wall off each layout, and any brick broken on a bend scores double. Chain combos without touching the paddle, catch multiball, lasers and a wider paddle, and the six layouts loop faster each time round.",
@@ -321,6 +323,8 @@ export const RETIRED = {
 
 /* What's-new feed (newest first). */
 export const NEWS = [
+  { date: "2026-10-23", title: "Echo Maze is now a bat in the dark", body: "Echo Maze has been rebuilt from scratch. You're a young bat lost in a pitch-black cave who sees by sonar: every ping lights the tunnels, but the spiders, stone lurkers and owls hunt by sound. Find every crystal, then fly out into the moonlight." },
+  { date: "2026-10-23", title: "Five classics get a look of their own", body: "Gridstorm now takes place inside a thunderstorm, with a new cast of storm creatures and thunderheads that call down lightning. Skystack is a real skyscraper lowered floor by floor off a crane, climbing from brick walk-ups to a glass spire as day turns to night. Void Rocks has solid cratered rocks and drones that cut them up, Star Siege faces a gliding honeycomb swarm, and Crosstime's rivers carry cargo barges and float pads. Block Bloom now fits on any screen and adds Full Bloom cascades and dew drops." },
   { date: "2026-10-22", title: "Ptero Flap goes moonlit", body: "Ptero Flap has a new look: a brand-new wide-eyed clay pterodactyl flying over a moonlit island, with a glowing moon, a lagoon, palm trees, a dome hut with a warm window and fireflies. The brontosauruses are gone; now you thread a night forest of trees, rock spires, hanging moss, vines and spider webs, some strung between bamboo stalks. The split-sky twin-flyer mode is gone too, so it is one pterodactyl and one flap button again. Moving gaps, amber and close-call combos stay." },
   { date: "2026-10-22", title: "Neon Flap is now Ptero Flap", body: "The one-tap flyer has been repainted from the ground up. You now fly a cartoon pterodactyl through a prehistoric jungle at sunset, past a smoking volcano, dodging trees, hanging branches, spiderwebs, rock spires and brontosauruses that raise their necks into your path." },
   { date: "2026-10-21", title: "Nine classics get a real twist", body: "Void Rocks now has a tractor tether: whirl a rock round your ship and fling it for chain kills. Star Siege lasers carry a colour, so you paint aliens and pop matching clusters. Prism Breaker balls take spin off the paddle and curve round steel. Fusion 2048 sets off chain reactions while lead blocks wall off the board. Neon Flap splits into twin flyers, one in each half of the sky. Wordglow is now a daily chain of three linked words that share twelve guesses. Nebula Drop swaps the jar for a round gravity well. Gridstorm kills send out shockwaves that chain through the swarm. And the Skystack tower sways in the wind as it climbs." },
@@ -341,7 +345,7 @@ export const QUESTS = [
   { game: "deepdelve", stat: "depth", min: 4, text: "Reach depth 4 in Deepdelve" },
   { game: "skystack", stat: "score", min: 20, text: "Stack 20 floors in Skystack 3D" },
   { game: "wordglow", stat: "won", min: 1, text: "Solve today's Wordglow" },
-  { game: "neon-outrun", stat: "score", min: 5000, text: "Score 5,000 in Neon Outrun" },
+  { game: "neon-outrun", stat: "score", min: 5000, text: "Score 5,000 in Neon Nightdrive" },
   { game: "fusion-2048", stat: "score", min: 3000, text: "Score 3,000 in Fusion 2048" },
   { game: "circuit-hop", stat: "score", min: 1500, text: "Score 1,500 in Circuit Hop" },
   { game: "void-rocks", stat: "score", min: 5000, text: "Score 5,000 in Void Rocks" },

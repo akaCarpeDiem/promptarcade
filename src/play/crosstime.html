@@ -76,15 +76,16 @@ function roadRow(dir, d, slow) {
   return l;
 }
 function riverRow(dir, d) {
-  const turtles = Math.random() < .25 + d * .3;
+  // rivers carry either long cargo barges or strings of float pads, some of which power down and sink
+  const pads = Math.random() < .25 + d * .3;
   const speed = (.75 + Math.random() * .8 + d * 1.2) * dir;
   const objs = [], x0 = Math.random() * P;
   let x = x0;
   for (let guard = 0; guard < 20; guard++) {
-    const len = turtles ? (Math.random() < .5 ? 2 : 3) : Math.max(1.8, rnd(2.4, 4.3) - d * 1.1);
+    const len = pads ? (Math.random() < .5 ? 2 : 3) : Math.max(1.8, rnd(2.4, 4.3) - d * 1.1);
     if (objs.length && x + len - x0 > P - 1.2) break;
-    const o = { off: x, len, kind: turtles ? "turtle" : "log" };
-    if (turtles) { o.dive = Math.random() < .3 + d * .45; o.phase = Math.random() * 7; }
+    const o = { off: x, len, kind: pads ? "pad" : "barge", tint: Math.random() };
+    if (pads) { o.dive = Math.random() < .3 + d * .45; o.phase = Math.random() * 7; }
     objs.push(o);
     x += len + rnd(1.1, 2.2 + d * 1.1);
   }
@@ -126,7 +127,7 @@ function genGroup() {
 
 /* ---------- lane maths (all functions of the world clock t) ---------- */
 function objX(l, o, t) { return mod(o.off + l.v * t, P) - M; }
-function turtleState(o, t) {
+function padState(o, t) {
   if (!o.dive) return 0;
   const k = mod(t + o.phase, 7);
   // 0 surfaced · 0..1 sinking/rising · 1 under
@@ -262,7 +263,7 @@ function update(dt) {
   if (started) wt += dt;
   grace = Math.max(0, grace - dt);
 
-  // hop tween (and riding a log while hopping along it)
+  // hop tween (and riding a barge while hopping along it)
   const h = player.hop;
   if (h) {
     h.t += dt / HOP;
@@ -321,7 +322,7 @@ function collide(dt) {
     for (const o of l.objs) {
       const x = objX(l, o, wt);
       if (px + .5 > x - .05 && px + .5 < x + o.len + .05) {
-        if (o.kind === "turtle" && turtleState(o, wt) > .55) continue;
+        if (o.kind === "pad" && padState(o, wt) > .55) continue;
         ok = true; break;
       }
     }
@@ -476,32 +477,52 @@ function drawBeams(o, x, y, dir) {
   ctx.moveTo(front, y - C * .24); ctx.lineTo(front + dir * reach, y - C * .5); ctx.lineTo(front + dir * reach, y + C * .5); ctx.lineTo(front, y + C * .24); ctx.closePath(); ctx.fill();
   glow(dir > 0 ? x : x + len, y, C * .5, "rgba(255,40,80,.5)", 1);
 }
-function drawLog(o, x, y) {
-  const len = o.len * C, h = C * .66, top = y - h / 2;
-  ctx.fillStyle = "rgba(0,0,0,.35)"; rr(x + 3, top + 5, len, h, h / 2); ctx.fill();
+const CARGO = ["#d9534f", "#3b82c4", "#e0a530", "#4aa36a", "#8e5bc4", "#c8ccd4"];
+function drawBarge(o, x, y, dir) {
+  // a low steel barge stacked with shipping containers, bow facing the way it drifts
+  const len = o.len * C, h = C * .7, top = y - h / 2, bow = Math.min(C * .45, len * .2);
+  const hull = (ox, oy) => {
+    ctx.beginPath();
+    if (dir > 0) { ctx.moveTo(x + ox, top + oy); ctx.lineTo(x + len - bow + ox, top + oy); ctx.lineTo(x + len + ox, y + oy); ctx.lineTo(x + len - bow + ox, top + h + oy); ctx.lineTo(x + ox, top + h + oy); }
+    else { ctx.moveTo(x + len + ox, top + oy); ctx.lineTo(x + bow + ox, top + oy); ctx.lineTo(x + ox, y + oy); ctx.lineTo(x + bow + ox, top + h + oy); ctx.lineTo(x + len + ox, top + h + oy); }
+    ctx.closePath();
+  };
+  ctx.fillStyle = "rgba(0,0,0,.35)"; hull(3, 5); ctx.fill();
   const g = ctx.createLinearGradient(0, top, 0, top + h);
-  g.addColorStop(0, "#a5733f"); g.addColorStop(.5, "#7a4f27"); g.addColorStop(1, "#4d3016");
-  ctx.fillStyle = g; rr(x, top, len, h, h / 2); ctx.fill();
-  ctx.strokeStyle = "rgba(40,22,8,.55)"; ctx.lineWidth = 1.5;
-  for (let k = .2; k < o.len - .2; k += .55) { ctx.beginPath(); ctx.moveTo(x + k * C, top + h * .3); ctx.lineTo(x + k * C + C * .3, top + h * .3); ctx.stroke(); }
-  ctx.fillStyle = "#c99a62"; ctx.beginPath(); ctx.ellipse(x + len - h * .32, y, h * .26, h * .44, 0, 0, TAU); ctx.fill();
-  ctx.strokeStyle = "#8a6034"; ctx.beginPath(); ctx.ellipse(x + len - h * .32, y, h * .12, h * .22, 0, 0, TAU); ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,.12)"; rr(x + h * .4, top + h * .12, len - h, h * .14, 3); ctx.fill();
-}
-function drawTurtles(o, x, y, t, dir) {
-  const s = turtleState(o, t), n = Math.round(o.len);
+  g.addColorStop(0, "#5a6577"); g.addColorStop(.5, "#3b4352"); g.addColorStop(1, "#232833");
+  ctx.fillStyle = g; hull(0, 0); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 1.2; hull(0, 0); ctx.stroke();
+  // containers in a row along the deck
+  const deck0 = dir > 0 ? x + C * .12 : x + bow + C * .05, deckLen = len - bow - C * .17, n = Math.max(1, Math.floor(deckLen / (C * .78)));
+  const cw = deckLen / n;
   for (let i = 0; i < n; i++) {
-    const cx = x + (i + .5) * C, r = C * .36;
-    if (s > 0) { ctx.strokeStyle = `rgba(94,242,255,${.35 * s})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(cx, y, r * (1 + s * .3), r * .9 * (1 + s * .3), 0, 0, TAU); ctx.stroke(); }
+    const col = CARGO[Math.floor((o.tint * 7 + i * 2.3) % CARGO.length)], cx = deck0 + i * cw + 1.5;
+    ctx.fillStyle = col; ctx.fillRect(cx, top + h * .16, cw - 3, h * .68);
+    ctx.fillStyle = "rgba(0,0,0,.22)"; for (let k = 1; k < 4; k++) ctx.fillRect(cx + (cw - 3) * k / 4 - .5, top + h * .16, 1, h * .68);
+    ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fillRect(cx, top + h * .16, cw - 3, h * .1);
+  }
+  // running light at the bow
+  const lx = dir > 0 ? x + len - bow * .55 : x + bow * .55;
+  glow(lx, y, C * .22, dir > 0 ? "rgba(90,255,150,.7)" : "rgba(255,80,90,.7)", 1);
+}
+function drawPads(o, x, y, t, dir) {
+  // round float pads with a light ring; amber ones power down and sink for a moment
+  const s = padState(o, t), n = Math.round(o.len);
+  for (let i = 0; i < n; i++) {
+    const cx = x + (i + .5) * C, r = C * .38;
+    if (s > 0) { ctx.strokeStyle = `rgba(94,242,255,${.35 * s})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, y, r * (1 + s * .35), 0, TAU); ctx.stroke(); }
     ctx.globalAlpha = 1 - s * .85;
-    ctx.fillStyle = "#3e8a5a"; for (const [dx, dy] of [[-.7, -.7], [.7, -.7], [-.7, .7], [.7, .7]]) { ctx.beginPath(); ctx.arc(cx + dx * r * .8, y + dy * r * .8, r * .28, 0, TAU); ctx.fill(); }
-    ctx.beginPath(); ctx.arc(cx + r * .95 * dir, y, r * .3, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.arc(cx + 2, y + 4, r, 0, TAU); ctx.fill();
     const g = ctx.createRadialGradient(cx - r * .3, y - r * .3, 0, cx, y, r);
-    g.addColorStop(0, o.dive ? "#ffb07a" : "#9fffc4"); g.addColorStop(1, o.dive ? "#a3461d" : "#2a7a4a");
+    g.addColorStop(0, "#d9dee8"); g.addColorStop(1, "#5d6678");
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, y, r, 0, TAU); ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.lineWidth = 1.2;
-    ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k / 6 * TAU; ctx.lineTo(cx + Math.cos(a) * r * .5, y + Math.sin(a) * r * .5); } ctx.closePath(); ctx.stroke();
+    // the light ring: steady cyan on safe pads, flickering amber on ones about to sink
+    const warn = o.dive && mod(t + o.phase, 7) > 3.4 && s === 0, on = !warn || Math.sin(t * 22) > 0;
+    ctx.strokeStyle = o.dive ? (on ? "#ffb347" : "#7a4a1a") : "#5ef2ff"; ctx.lineWidth = Math.max(1.5, C * .07);
+    ctx.beginPath(); ctx.arc(cx, y, r * .68, 0, TAU); ctx.stroke();
+    ctx.fillStyle = "#2a3040"; ctx.beginPath(); ctx.arc(cx, y, r * .3, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
+    if (s < .5 && on) glow(cx, y, r * 1.1, o.dive ? "rgba(255,170,70,.25)" : "rgba(94,242,255,.2)", 1);
   }
 }
 function drawTree(cx, y, big) {
@@ -582,7 +603,7 @@ function render(t) {
   for (let r = r1; r >= Math.max(0, r0); r--) {
     const l = lane(r), y = baseY - (r - cam) * C + C / 2;
     if (l.type === "road") for (const o of l.objs) { const x = ox + objX(l, o, wt) * C; if (x > -C * 4 && x < w + C) drawVehicle(o, x, y, Math.sign(l.v)); }
-    else if (l.type === "river") for (const o of l.objs) { const x = ox + objX(l, o, wt) * C; if (x > -C * 5 && x < w + C) (o.kind === "log" ? drawLog(o, x, y) : drawTurtles(o, x, y, wt, Math.sign(l.v))); }
+    else if (l.type === "river") for (const o of l.objs) { const x = ox + objX(l, o, wt) * C; if (x > -C * 5 && x < w + C) (o.kind === "barge" ? drawBarge(o, x, y, Math.sign(l.v)) : drawPads(o, x, y, wt, Math.sign(l.v))); }
     else if (l.type === "grass") {
       for (const c of l.trees) drawTree(ox + (c + .5) * C, y, false);
       for (const c of l.deco) drawTree(ox + (c + .5) * C, y, (c * 7 + r) % 3 === 0);
@@ -691,7 +712,7 @@ PA.loop(update, render);
 window.__ct = {
   get player() { return player; }, get wt() { return wt; }, get score() { return score; }, get maxRow() { return maxRow; },
   get charges() { return charges; }, get dead() { return dead; }, get rewinding() { return !!rw; }, get fog() { return fog; },
-  lane, objX, train, turtleState, tryHop, COLS
+  lane, objX, train, padState, tryHop, COLS
 };
 })();
 </script>

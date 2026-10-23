@@ -19,7 +19,7 @@ canvas{display:block;position:fixed;inset:0}
 <script>
 window.paConfig = {
   slug: "void-rocks", title: "Void Rocks", native: true, music: "space", unit: "points",
-  controls: [["← → / A D", "Rotate"], ["↑ / W", "Thrust"], ["Space", "Fire"], ["E / X", "Tether: grab, then fling"], ["Shift / H", "Hyperspace"]]
+  controls: [["← → / A D", "Rotate"], ["↑ / W", "Thrust"], ["Space", "Fire"], ["E / X", "Tether: grab, then fling"], ["Shift / H", "Blink: jump a short way ahead"], ["Drones", "Scrapper drones latch onto big rocks and cut them up"]]
 };
 </script>
 <script src="/games/play/pa-score.js?v=e650da0b4c"></script>
@@ -30,19 +30,20 @@ window.paConfig = {
   const TAU = Math.PI * 2;
   const { rand, randInt, choice, clamp } = PA;
   const ROCK_R = [0, 13, 25, 46];
-  const ROCK_PTS = [0, 100, 50, 20];
-  const ROCK_COL = [0, "#ff7eb6", "#8ee9ff", "#c4a6ff"];
+  const ROCK_PTS = [0, 120, 60, 30];
+  const ROCK_COL = [0, "#ff9f7e", "#8ee9ff", "#c4a6ff"];
   const SHIP_COL = "#8ee9ff", BIG_COL = "#ffd27a", SMALL_COL = "#7ee7a8", ESHOT_COL = "#ffb35a", SHOT_COL = "#e8fbff";
-  const VARIANTS = 7, MAX_SHOTS = 5, LIFE_EVERY = 10000;
+  const VARIANTS = 7, MAX_SHOTS = 5, LIFE_EVERY = 12000;
   // The twist: a tractor tether. Grab a small or medium rock, whirl it round the ship as a wrecking
   // ball, then fling it the way you're facing. Everything a thrown rock ploughs through scores a chain.
   const TETHER_RANGE = 240, TETHER_COL = "#ffd27a", DURABILITY = [0, 2, 4, 0], FLING_LIFE = 1.5;
-  const SHIP_PTS = [[20, 0], [-13, -12], [-7, 0], [-13, 12]];
-  const SAUCER_SEGS = [
-    [[-22, 0], [22, 0]], [[-22, 0], [-8, -6]], [[-8, -6], [8, -6]], [[8, -6], [22, 0]],
-    [[22, 0], [9, 7]], [[9, 7], [-9, 7]], [[-9, 7], [-22, 0]],
-    [[-8, -6], [-5, -12]], [[-5, -12], [5, -12]], [[5, -12], [8, -6]]
-  ];
+  // a stubby tug with a wide stern for the tether rig
+  const SHIP_PTS = [[19, 0], [8, -7], [-4, -12], [-12, -9], [-9, 0], [-12, 9], [-4, 12], [8, 7]];
+  // scrapper drones: a hex pod with three cutting arms, drawn without rotation
+  const DRONE_SEGS = [];
+  for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + TAU / 12, b = (i + 1) / 6 * TAU + TAU / 12; DRONE_SEGS.push([[Math.cos(a) * 12, Math.sin(a) * 12], [Math.cos(b) * 12, Math.sin(b) * 12]]); }
+  for (let i = 0; i < 3; i++) { const a = i / 3 * TAU - Math.PI / 2, c = Math.cos(a), d = Math.sin(a); DRONE_SEGS.push([[c * 12, d * 12], [c * 21, d * 21]], [[c * 21, d * 21], [c * 17 - d * 5, d * 17 + c * 5]], [[c * 21, d * 21], [c * 17 + d * 5, d * 17 - c * 5]]); }
+  DRONE_SEGS.push([[-4, 0], [4, 0]], [[0, -4], [0, 4]]);
 
   const shapes = [null, [], [], []];
   for (let size = 1; size <= 3; size++) {
@@ -59,12 +60,12 @@ window.paConfig = {
 
   let W = 0, H = 0, S = 1, DPR = 1;
   let spr = null, bg = null, stars = [];
-  let rocks = [], shots = [], eshots = [], debris = [], saucer = null, ship = null;
+  let rocks = [], shots = [], eshots = [], debris = [], drone = null, ship = null;
   let score = 0, lives = 3, wave = 1, nextLife = LIFE_EVERY;
-  let waveClearT = 0, saucerT = 12, respawnT = 0, respawnWait = 0, overT = 0, overSent = false, simT = 0;
+  let waveClearT = 0, droneT = 12, respawnT = 0, respawnWait = 0, overT = 0, overSent = false, simT = 0;
   let fireCd = 0, hyperCd = 0, thrustSfxT = 0, emitT = 0, banner = null;
   let tether = null, tetherCd = 0, flings = 0, smashes = 0, bestChain = 0, hintT = 0;
-  let shotsFired = 0, hits = 0, rocksKilled = 0, saucersKilled = 0, hypers = 0, peakWave = 1;
+  let shotsFired = 0, hits = 0, rocksKilled = 0, dronesKilled = 0, hypers = 0, peakWave = 1;
   let parX = 0, parY = 0, shx = 0, shy = 0;
 
   const view = PA.canvas(document.getElementById("c"), { onResize: layout });
@@ -118,18 +119,39 @@ window.paConfig = {
     g.fillStyle = grd; g.fillRect(0, 0, size, size);
     return { c, half: m };
   }
+  // rocks are solid, cratered stone lit from one side, with only a thin coloured rim of light
+  function rockSprite(R, color, pts) {
+    const pad = 10, size = (R + pad) * 2;
+    const [c, g] = makeCanvas(size, size);
+    g.translate(size / 2, size / 2);
+    const path = polyPath(pts, R);
+    path(g);
+    const body = g.createRadialGradient(-R * .35, -R * .4, R * .1, 0, 0, R * 1.1);
+    body.addColorStop(0, "#8d8794"); body.addColorStop(.55, "#4d4856"); body.addColorStop(1, "#211e29");
+    g.fillStyle = body; g.fill();
+    g.save(); path(g); g.clip();
+    g.globalAlpha = .22; g.fillStyle = color; g.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4); g.globalAlpha = 1;
+    for (let k = 0; k < 3 + (R > 30 * S ? 3 : 0); k++) {
+      const a = rand(TAU), d = rand(0, R * .55), cr = rand(R * .1, R * .24), x = Math.cos(a) * d, y = Math.sin(a) * d;
+      g.fillStyle = "rgba(15,12,22,.45)"; g.beginPath(); g.ellipse(x, y, cr, cr * .8, a, 0, TAU); g.fill();
+      g.strokeStyle = "rgba(200,195,215,.25)"; g.lineWidth = Math.max(1, cr * .18); g.beginPath(); g.ellipse(x - cr * .12, y - cr * .12, cr, cr * .8, a, Math.PI * .9, Math.PI * 1.9); g.stroke();
+    }
+    g.restore();
+    g.save(); g.shadowColor = color; g.shadowBlur = 8 * DPR; g.strokeStyle = color; g.globalAlpha = .7; g.lineWidth = 1.2 * Math.max(1, S); g.lineJoin = "round"; path(g); g.stroke(); g.restore();
+    return { c, half: size / 2 };
+  }
   function buildSprites() {
     const lw = 1.7 * Math.max(1, S);
     spr = { rock: [null, [], [], []] };
     for (let size = 1; size <= 3; size++) {
       for (let v = 0; v < VARIANTS; v++) {
         const R = ROCK_R[size] * S;
-        spr.rock[size].push(sprite(R, ROCK_COL[size], polyPath(shapes[size][v], R), lw, 0.16));
+        spr.rock[size].push(rockSprite(R, ROCK_COL[size], shapes[size][v]));
       }
     }
     spr.ship = sprite(20 * S, SHIP_COL, polyPath(SHIP_PTS, S), lw * 1.15, 0.22);
-    spr.big = sprite(22 * S, BIG_COL, segPath(SAUCER_SEGS, S), lw, 0);
-    spr.small = sprite(12 * S, SMALL_COL, segPath(SAUCER_SEGS, S * 12 / 22), lw, 0);
+    spr.big = sprite(22 * S, BIG_COL, segPath(DRONE_SEGS, S), lw, 0);
+    spr.small = sprite(14 * S, SMALL_COL, segPath(DRONE_SEGS, S * 14 / 22), lw, 0);
     spr.shot = dotSprite(2.2 * S, "#8ee9ff");
     spr.eshot = dotSprite(2.4 * S, ESHOT_COL);
   }
@@ -245,13 +267,13 @@ window.paConfig = {
     else if (r.size === 2) { PA.noise({ dur: 0.34, vol: 0.26, freq: 1500, to: 120 }); PA.tone({ freq: 150, to: 50, type: "sine", dur: 0.3, vol: 0.18 }); PA.shake(3.5 * S, 0.16); }
     else { PA.noise({ dur: 0.16, vol: 0.18, freq: 3200, to: 400 }); PA.shake(1.6 * S, 0.08); }
   }
-  function destroySaucer(byPlayer) {
-    const s = saucer;
-    saucer = null;
-    saucerT = Math.max(6, 16 - wave) * rand(0.8, 1.2);
+  function destroyDrone(byPlayer) {
+    const s = drone;
+    drone = null;
+    droneT = Math.max(6, 16 - wave) * rand(0.8, 1.2);
     const col = s.small ? SMALL_COL : BIG_COL;
-    if (byPlayer) { saucersKilled++; addScore(s.small ? 1000 : 200, s.x, s.y - 10, col, true); }
-    addDebris(SAUCER_SEGS, s.x, s.y, s.small ? S * 12 / 22 : S, 0, col, s.vx, s.vy, 1.6);
+    if (byPlayer) { dronesKilled++; addScore(s.small ? 800 : 250, s.x, s.y - 10, col, true); }
+    addDebris(DRONE_SEGS, s.x, s.y, s.small ? S * 14 / 22 : S, 0, col, s.vx, s.vy, 1.6);
     fx.burst(s.x, s.y, { n: 30, colors: [col, "#fff", "#ff7eb6"], speed: 300, life: 0.8, size: 2.4, shape: "spark", drag: 2 });
     PA.sfx("explode", { pitch: s.small ? 1.4 : 1.05 });
     PA.shake(9 * S, 0.32);
@@ -286,16 +308,17 @@ window.paConfig = {
     PA.tone({ freq: 1500, to: 360, type: "square", dur: 0.08, vol: 0.035, filter: 3600 });
     fx.burst(x, y, { n: 3, color: SHOT_COL, speed: 90, life: 0.14, size: 1.6, angle: ship.a, spread: 0.9, vx: ship.vx, vy: ship.vy });
   }
+  // blink: a short jump straight ahead (wrapping round the edges), no random landing and no malfunction
+  const BLINK = 0.22;
   function hyperspace() {
     if (PA.state !== "play" || !ship || !ship.alive || ship.hyper > 0 || hyperCd > 0) return;
     hypers++;
     dropTether();
-    ship.hyper = 0.55; hyperCd = 1.1;
-    ship.tx = rand(W * 0.06, W * 0.94); ship.ty = rand(H * 0.08, H * 0.92);
-    ship.malf = Math.random() < 0.14;
-    fx.burst(ship.x, ship.y, { n: 26, colors: ["#c4a6ff", "#8ee9ff", "#fff"], speed: 280, life: 0.5, size: 2, shape: "spark", drag: 3 });
-    PA.tone({ freq: 220, to: 1900, type: "sine", dur: 0.34, vol: 0.12 });
-    PA.noise({ dur: 0.3, vol: 0.12, freq: 600, to: 4000, type: "bandpass", q: 2 });
+    const dist = 170 * S;
+    ship.hyper = BLINK; hyperCd = 2;
+    ship.tx = ((ship.x + Math.cos(ship.a) * dist) % W + W) % W; ship.ty = ((ship.y + Math.sin(ship.a) * dist) % H + H) % H;
+    fx.burst(ship.x, ship.y, { n: 18, colors: ["#c4a6ff", "#8ee9ff", "#fff"], speed: 160, life: 0.35, size: 2, shape: "spark", drag: 3, angle: ship.a + Math.PI, spread: 1.2 });
+    PA.tone({ freq: 700, to: 2400, type: "sine", dur: 0.16, vol: 0.1 });
   }
   function tetherKey() {
     if (PA.state !== "play" || !ship || !ship.alive || ship.hyper > 0) return;
@@ -409,14 +432,14 @@ window.paConfig = {
         PA.shake((3 + f.chain) * S, 0.16);
       }
     }
-    if (saucer && near(r.x, r.y, saucer.x, saucer.y, R + saucer.R * 0.8)) {
+    if (drone && near(r.x, r.y, drone.x, drone.y, R + drone.R * 0.8)) {
       f.chain++;
       if (f.chain > bestChain) bestChain = f.chain;
-      const s = saucer, bonus = (s.small ? 1000 : 200) * f.chain;
-      destroySaucer(false);
-      saucersKilled++;
+      const s = drone, bonus = (s.small ? 800 : 250) * f.chain;
+      destroyDrone(false);
+      dronesKilled++;
       addScore(bonus, s.x, s.y - 10, TETHER_COL, true);
-      texts.add(s.x, s.y - 34 * S, "SAUCER ×" + f.chain, { color: "#fff3c4", size: 22, life: 1.2, vy: -30 });
+      texts.add(s.x, s.y - 34 * S, "DRONE ×" + f.chain, { color: "#fff3c4", size: 22, life: 1.2, vy: -30 });
     }
     if (f.t <= 0) {
       const k = rocks.indexOf(r);
@@ -427,15 +450,16 @@ window.paConfig = {
   function spawnShip(inv) {
     ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, a: -Math.PI / 2, alive: true, inv: inv, hyper: 0, thrust: false, recoil: 0 };
   }
-  function spawnSaucer() {
+  function spawnDrone() {
     const smallP = wave < 3 && score < 10000 ? 0 : Math.min(0.8, 0.25 + (wave - 3) * 0.12 + score / 60000);
     const small = PA.state === "play" && Math.random() < smallP;
-    const R = (small ? 12 : 22) * S, dir = Math.random() < 0.5 ? 1 : -1;
-    const sp = (small ? 150 : 95) * S * (1 + Math.min(wave, 10) * 0.04);
-    saucer = { small, R, x: dir > 0 ? -R : W + R, y: rand(H * 0.15, H * 0.85), vx: sp * dir, vy: 0, turnT: rand(0.6, 1.4), fireT: small ? 0.7 : 1.1, traveled: 0, warbT: 0, flip: false };
+    const R = (small ? 14 : 22) * S, sp = (small ? 140 : 90) * S * (1 + Math.min(wave, 10) * 0.04);
+    // drift in from a random edge
+    const e = randInt(0, 3), x = e === 0 ? -R : e === 1 ? W + R : rand(0, W), y = e === 2 ? -R : e === 3 ? H + R : rand(0, H);
+    drone = { small, R, x, y, vx: 0, vy: 0, sp, mode: "seek", target: null, cutT: 0, cuts: 0, orbit: 0, life: 18, fireT: small ? 0.9 : 1.4, grindT: 0 };
   }
-  function saucerFire() {
-    const s = saucer;
+  function droneFire() {
+    const s = drone;
     let a;
     if (s.small && ship && ship.alive) {
       const err = Math.max(0.05, 0.42 - wave * 0.045 - score / 120000);
@@ -456,18 +480,18 @@ window.paConfig = {
   });
   PA.touchControls({
     left: [{ key: "ArrowLeft", label: "⟲", aria: "Rotate left" }, { key: "ArrowRight", label: "⟳", aria: "Rotate right" }],
-    right: [{ key: "h", code: "KeyH", label: "⤧", aria: "Hyperspace" }, { key: "e", code: "KeyE", label: "⊚", aria: "Tether: grab, then fling" }, { key: "ArrowUp", label: "▲", aria: "Thrust" }, { key: " ", code: "Space", label: "●", aria: "Fire" }]
+    right: [{ key: "h", code: "KeyH", label: "⤧", aria: "Blink ahead" }, { key: "e", code: "KeyE", label: "⊚", aria: "Tether: grab, then fling" }, { key: "ArrowUp", label: "▲", aria: "Thrust" }, { key: " ", code: "Space", label: "●", aria: "Fire" }]
   });
 
   /* ---------- lifecycle ---------- */
   function reset() {
-    rocks = []; shots = []; eshots = []; debris = []; saucer = null;
+    rocks = []; shots = []; eshots = []; debris = []; drone = null;
     fx.clear(); texts.clear();
     score = 0; lives = 3; wave = 1; nextLife = LIFE_EVERY; peakWave = 1;
-    waveClearT = 0; saucerT = rand(11, 15); respawnT = 0; overT = 0; overSent = false;
+    waveClearT = 0; droneT = rand(11, 15); respawnT = 0; overT = 0; overSent = false;
     fireCd = 0; hyperCd = 0; thrustSfxT = 0; emitT = 0;
     tether = null; tetherCd = 0; flings = 0; smashes = 0; bestChain = 0; hintT = 7;
-    shotsFired = 0; hits = 0; rocksKilled = 0; saucersKilled = 0; hypers = 0;
+    shotsFired = 0; hits = 0; rocksKilled = 0; dronesKilled = 0; hypers = 0;
     spawnShip(2);
     spawnWave();
     showBanner("WAVE 1", "Grab a rock with E and fling it", 2.6);
@@ -519,7 +543,7 @@ window.paConfig = {
         if (r.held || r.flung) continue;
         if (near(b.x, b.y, r.x, r.y, ROCK_R[r.size] * S * 0.95)) { destroyRock(j, true, b.vx, b.vy); hit = true; break; }
       }
-      if (!hit && saucer && near(b.x, b.y, saucer.x, saucer.y, saucer.R * 0.9)) { destroySaucer(true); hit = true; }
+      if (!hit && drone && near(b.x, b.y, drone.x, drone.y, drone.R * 0.9)) { destroyDrone(true); hit = true; }
       if (hit) { hits++; shots.splice(i, 1); }
     }
     for (let i = eshots.length - 1; i >= 0; i--) {
@@ -530,7 +554,7 @@ window.paConfig = {
       for (let j = rocks.length - 1; j >= 0; j--) {
         const r = rocks[j];
         if (!near(b.x, b.y, r.x, r.y, ROCK_R[r.size] * S * 0.95)) continue;
-        // A rock on your tether (or in flight) soaks up saucer fire like a shield.
+        // A rock on your tether (or in flight) soaks up drone fire like a shield.
         if (!(r.held || r.flung)) destroyRock(j, false, b.vx, b.vy);
         else fx.burst(b.x, b.y, { n: 6, color: ESHOT_COL, speed: 120, life: 0.3, size: 2, shape: "spark" });
         hit = true; break;
@@ -539,7 +563,7 @@ window.paConfig = {
       if (hit) eshots.splice(i, 1);
     }
 
-    updateSaucer(dt, playing);
+    updateDrone(dt, playing);
 
     if (!playing) return;
 
@@ -550,7 +574,7 @@ window.paConfig = {
         hud.classList.remove("on");
         PA.sfx("gameover");
         const acc = shotsFired ? Math.round(hits / shotsFired * 100) : 0;
-        PA.gameOver(score, { title: "Lost to the void", stats: [["Wave", peakWave], ["Rocks", rocksKilled], ["Tether smashes", smashes], ["Best chain", bestChain ? "×" + bestChain : "—"], ["Saucers", saucersKilled], ["Accuracy", acc + "%"]] });
+        PA.gameOver(score, { title: "Lost to the void", stats: [["Wave", peakWave], ["Rocks", rocksKilled], ["Tether smashes", smashes], ["Best chain", bestChain ? "×" + bestChain : "—"], ["Drones", dronesKilled], ["Accuracy", acc + "%"]] });
       }
       return;
     }
@@ -558,7 +582,7 @@ window.paConfig = {
       respawnT -= dt;
       if (respawnT <= 0) {
         respawnWait += 0.1;
-        const clear = rocks.every(r => !near(r.x, r.y, W / 2, H / 2, ROCK_R[r.size] * S + 90 * S)) && !(saucer && near(saucer.x, saucer.y, W / 2, H / 2, 120 * S));
+        const clear = rocks.every(r => !near(r.x, r.y, W / 2, H / 2, ROCK_R[r.size] * S + 90 * S)) && !(drone && near(drone.x, drone.y, W / 2, H / 2, 120 * S));
         if (clear || respawnWait > 2.5) {
           spawnShip(2.6);
           PA.tone({ freq: 300, to: 900, type: "triangle", dur: 0.3, vol: 0.1 });
@@ -577,7 +601,7 @@ window.paConfig = {
       if (waveClearT <= 0) {
         wave++; peakWave = wave;
         spawnWave();
-        saucerT = Math.min(saucerT, rand(8, 13));
+        droneT = Math.min(droneT, rand(8, 13));
         PA.music.intensity(Math.min(1, (wave - 1) / 8));
         paintHud();
       }
@@ -591,13 +615,9 @@ window.paConfig = {
     if (ship.hyper > 0) {
       ship.hyper -= dt;
       if (ship.hyper <= 0) {
-        ship.x = ship.tx; ship.y = ship.ty; ship.vx = ship.vy = 0;
+        ship.x = ship.tx; ship.y = ship.ty; ship.vx *= .5; ship.vy *= .5; ship.inv = Math.max(ship.inv, .35);
         fx.burst(ship.x, ship.y, { n: 22, colors: ["#c4a6ff", "#8ee9ff", "#fff"], speed: 200, life: 0.4, size: 2, shape: "spark", drag: 3 });
         PA.tone({ freq: 1600, to: 300, type: "sine", dur: 0.25, vol: 0.1 });
-        if (ship.malf) {
-          texts.add(ship.x, ship.y - 34 * S, "MALFUNCTION", { color: "#ff7eb6", size: 18, life: 1.2, vy: -20 });
-          killShip();
-        }
       }
       return;
     }
@@ -630,38 +650,69 @@ window.paConfig = {
       if (r.held || r.flung) continue;
       if (near(ship.x, ship.y, r.x, r.y, ROCK_R[r.size] * S * 0.86 + 9 * S)) { destroyRock(j, true, ship.vx, ship.vy); killShip(); return; }
     }
-    if (saucer && near(ship.x, ship.y, saucer.x, saucer.y, saucer.R * 0.8 + 7 * S)) { destroySaucer(true); killShip(); }
+    if (drone && near(ship.x, ship.y, drone.x, drone.y, drone.R * 0.8 + 7 * S)) { destroyDrone(true); killShip(); }
   }
 
-  function updateSaucer(dt, playing) {
-    if (!saucer) {
+  // Scrapper drones fly to the biggest rock nearby, circle it while they cut, and split it after a few
+  // seconds, showering you with pieces. They take a couple of rocks, then leave. A tethered rock swatted
+  // into one scores big.
+  function updateDrone(dt, playing) {
+    if (!drone) {
       if (playing && waveClearT > 0) return;
-      saucerT -= dt;
-      if (saucerT <= 0 && rocks.length) spawnSaucer();
+      droneT -= dt;
+      if (droneT <= 0 && rocks.length) spawnDrone();
       return;
     }
-    const s = saucer;
-    s.x += s.vx * dt; s.y += s.vy * dt; s.traveled += Math.abs(s.vx) * dt;
-    s.y = ((s.y % H) + H) % H;
-    if (s.traveled > W + s.R * 2) { saucer = null; saucerT = Math.max(6, 16 - wave) * rand(0.8, 1.2); return; }
-    s.turnT -= dt;
-    if (s.turnT <= 0) { s.turnT = rand(0.7, 1.7); s.vy = choice([-1, 0, 0, 1]) * Math.abs(s.vx) * 0.7; }
-    s.warbT -= dt;
-    if (s.warbT <= 0) {
-      s.warbT = s.small ? 0.13 : 0.19; s.flip = !s.flip;
-      PA.tone({ freq: s.small ? (s.flip ? 1040 : 880) : (s.flip ? 340 : 290), type: "square", dur: s.small ? 0.12 : 0.18, vol: playing ? 0.022 : 0.01, filter: 1600 });
+    const s = drone;
+    s.life -= dt;
+    if (s.mode !== "leave" && (s.cuts >= 2 || s.life <= 0)) s.mode = "leave";
+    if (s.mode !== "leave" && (!s.target || !rocks.includes(s.target) || s.target.held || s.target.flung)) {
+      s.target = null; s.mode = "seek"; s.cutT = 0;
+      let bd = 1e9;
+      for (const r of rocks) { if (r.size < 2 || r.held || r.flung) continue; const d = Math.hypot(wd(r.x - s.x, W), wd(r.y - s.y, H)); if (d < bd) { bd = d; s.target = r; } }
+      if (!s.target) s.mode = "leave";
     }
+    let gx, gy;
+    if (s.mode === "leave") {
+      // head for the nearest edge and slip off it
+      const ex = s.x < W / 2 ? -s.R * 3 : W + s.R * 3, ey = s.y < H / 2 ? -s.R * 3 : H + s.R * 3;
+      if (Math.min(s.x, W - s.x) < Math.min(s.y, H - s.y)) { gx = ex; gy = s.y; } else { gx = s.x; gy = ey; }
+      if (s.x < -s.R * 2 || s.x > W + s.R * 2 || s.y < -s.R * 2 || s.y > H + s.R * 2) { drone = null; droneT = Math.max(6, 16 - wave) * rand(0.8, 1.2); return; }
+    } else {
+      const r = s.target, rr = ROCK_R[r.size] * S + s.R * 0.9;
+      const dx = wd(r.x - s.x, W), dy = wd(r.y - s.y, H), d = Math.hypot(dx, dy);
+      if (s.mode === "seek" && d < rr + 10 * S) { s.mode = "cut"; s.orbit = Math.atan2(-dy, -dx); }
+      if (s.mode === "cut") {
+        s.orbit += dt * (s.small ? 2.6 : 1.8);
+        gx = s.x + dx + Math.cos(s.orbit) * rr; gy = s.y + dy + Math.sin(s.orbit) * rr;
+        s.cutT += dt;
+        s.grindT -= dt;
+        if (s.grindT <= 0) {
+          s.grindT = 0.12;
+          fx.burst(s.x - Math.cos(s.orbit) * s.R * .6, s.y - Math.sin(s.orbit) * s.R * .6, { n: 2, colors: ["#ffd27a", "#fff"], speed: 120, life: .25, size: 1.6, shape: "spark" });
+          if (playing) PA.noise({ dur: 0.07, vol: 0.025, freq: 2600, type: "bandpass", q: 3 });
+        }
+        if (s.cutT > Math.max(2.2, 3.6 - wave * 0.1)) {
+          const j = rocks.indexOf(r);
+          if (j >= 0) destroyRock(j, false, Math.cos(s.orbit) * -60 * S, Math.sin(s.orbit) * -60 * S);
+          s.cuts++; s.target = null; s.cutT = 0;
+        }
+      } else { gx = s.x + dx; gy = s.y + dy; }
+    }
+    if (gx != null) {
+      const dx = gx - s.x, dy = gy - s.y, d = Math.hypot(dx, dy) || 1, v = s.mode === "cut" ? Math.min(s.sp * 2.5, d / dt) : s.sp;
+      s.vx += (dx / d * v - s.vx) * Math.min(1, dt * (s.mode === "cut" ? 12 : 3)); s.vy += (dy / d * v - s.vy) * Math.min(1, dt * (s.mode === "cut" ? 12 : 3));
+    }
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    if (s.mode !== "leave") { s.x = ((s.x % W) + W) % W; s.y = ((s.y % H) + H) % H; }
     if (playing && ship && ship.alive && overT <= 0) {
       s.fireT -= dt;
-      if (s.fireT <= 0) { s.fireT = s.small ? Math.max(0.55, 1.05 - wave * 0.05) : 1.25; saucerFire(); }
+      if (s.fireT <= 0) { s.fireT = s.small ? Math.max(0.8, 1.4 - wave * 0.05) : 1.8; droneFire(); }
     }
     for (let j = rocks.length - 1; j >= 0; j--) {
       const r = rocks[j];
-      if (r.flung) continue;
-      if (near(s.x, s.y, r.x, r.y, ROCK_R[r.size] * S * 0.85 + s.R * 0.7)) {
-        if (r.held) { addScore(s.small ? 1000 : 200, s.x, s.y - 10, TETHER_COL, true); saucersKilled++; destroySaucer(false); return; }
-        destroyRock(j, false, s.vx, s.vy); destroySaucer(false); return;
-      }
+      if (!r.held) continue;
+      if (near(s.x, s.y, r.x, r.y, ROCK_R[r.size] * S * 0.85 + s.R * 0.7)) { addScore(s.small ? 800 : 250, s.x, s.y - 10, TETHER_COL, true); dronesKilled++; destroyDrone(false); return; }
     }
   }
 
@@ -715,7 +766,9 @@ window.paConfig = {
 
     ctx.globalCompositeOperation = "lighter";
     if (tether && ship && ship.alive) drawTether(t);
+    ctx.globalCompositeOperation = "source-over";
     for (const r of rocks) blitWrapped(spr.rock[r.size][r.v], r.x, r.y, ROCK_R[r.size] * S + 16, r.a);
+    ctx.globalCompositeOperation = "lighter";
     for (const r of rocks) {
       if (!r.held && !r.flung) continue;
       ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
@@ -724,7 +777,7 @@ window.paConfig = {
       ctx.beginPath(); ctx.arc(r.x, r.y, ROCK_R[r.size] * S * 1.12, 0, TAU); ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    if (saucer) blit(saucer.small ? spr.small : spr.big, saucer.x, saucer.y, 0);
+    if (drone) blit(drone.small ? spr.small : spr.big, drone.x, drone.y, 0);
 
     ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
     ctx.lineCap = "round";
@@ -760,9 +813,11 @@ window.paConfig = {
       }
     } else if (ship && ship.alive && ship.hyper > 0) {
       ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
-      const k = 1 - ship.hyper / 0.55;
+      const k = 1 - ship.hyper / BLINK;
       ctx.strokeStyle = "#c4a6ff"; ctx.globalAlpha = 0.8 * k; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(ship.tx, ship.ty, (1 - k) * 40 * S + 4, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ship.tx, ship.ty, (1 - k) * 26 * S + 4, 0, TAU); ctx.stroke();
+      // a streak along the jump
+      ctx.globalAlpha = .5 * (1 - k); ctx.beginPath(); ctx.moveTo(ship.x, ship.y); if (Math.hypot(ship.tx - ship.x, ship.ty - ship.y) < 200 * S) ctx.lineTo(ship.tx, ship.ty); ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
@@ -828,7 +883,9 @@ window.paConfig = {
     ctx.restore();
   }
 
-  window.__vr = () => ({ score, lives, wave, simT, rocks: rocks.length, tether: !!tether, flings, smashes, bestChain, alive: !!(ship && ship.alive), x: ship ? ship.x : 0, y: ship ? ship.y : 0, a: ship ? ship.a : 0, shots: shotsFired });
+  window.__vrDrone = () => { droneT = 0; };
+  window.__vrInv = () => { if (ship) ship.inv = 1e9; };
+  window.__vr = () => ({ drone: drone && { mode: drone.mode, cuts: drone.cuts }, score, lives, wave, simT, rocks: rocks.length, tether: !!tether, flings, smashes, bestChain, alive: !!(ship && ship.alive), x: ship ? ship.x : 0, y: ship ? ship.y : 0, a: ship ? ship.a : 0, shots: shotsFired });
   PA.loop(update, render);
 })();
 </script>
