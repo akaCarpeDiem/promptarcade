@@ -188,10 +188,15 @@
 
   /* ---------- continue playing ---------- */
   $$("[data-continue]").forEach((sec) => {
-    const p = pass(), recent = (p.recent || []).filter((s) => GAME[s]).slice(0, 6);
+    // retired slugs follow their redirect; unknown ones are skipped
+    const alias = DATA.retired || {}, p = pass();
+    const recent = [...new Set((p.recent || []).map((s) => (GAME[s] ? s : alias[s])).filter((s) => s && GAME[s] && D.querySelector(`template[data-card="${s}"]`)))].slice(0, 6);
     if (!recent.length) return;
+    const shelf = $(".shelf", sec);
+    shelf.innerHTML = recent.map((s) => D.querySelector(`template[data-card="${s}"]`).innerHTML).join("");
+    // these cards arrive after the reveal observer ran, so show them now
+    $$(".reveal", shelf).forEach((c) => c.classList.add("in"));
     sec.hidden = false;
-    $(".shelf", sec).innerHTML = recent.map((s) => { const c = D.querySelector(`template[data-card="${s}"]`); return c ? c.innerHTML : ""; }).join("");
     paintBests();
   });
 
