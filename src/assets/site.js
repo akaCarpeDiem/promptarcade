@@ -251,6 +251,9 @@
     const start = () => {
       if (!frame.src) frame.src = frame.dataset.src;
       poster && poster.remove();
+      // bring the whole game into view under the sticky header
+      const r = player.getBoundingClientRect();
+      if (r.top < 70 || r.bottom > innerHeight) W.scrollTo({ top: scrollY + r.top - 80, behavior: "smooth" });
       setTimeout(() => { try { frame.focus(); frame.contentWindow.focus(); } catch (e) {} }, 120);
     };
     // on phones the game gets the whole screen: open the play page itself

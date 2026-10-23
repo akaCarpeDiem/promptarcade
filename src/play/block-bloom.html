@@ -10,7 +10,7 @@ html,body{margin:0;height:100%;background:#0b0718;color:#f6f0ff;overflow:hidden;
 <script>
 window.paConfig = {
   slug: "block-bloom", title: "Block Bloom", native: true, music: "lofi", unit: "points",
-  controls: [["← → / A D", "Move"], ["↑ / W / X", "Turn the piece"], ["Z", "Turn the other way"], ["↓ / S", "Drop faster"], ["Space", "Drop now"], ["Touch", "Tap to turn, drag to move, flick down to drop"]]
+  controls: [["← → / A D", "Move"], ["↑ / W / X", "Turn the piece"], ["Z", "Turn the other way"], ["↓ / S", "Drop faster"], ["Space", "Drop now"], ["C / Shift", "Dew drop: change the piece's colour"], ["Touch", "Tap to turn, drag to move, flick down to drop"]]
 };
 </script>
 <script src="/games/play/pa-score.js"></script>
@@ -19,8 +19,10 @@ window.paConfig = {
 <script>
 (() => {
 "use strict";
-// Falling gem blocks with two twists: you never see which piece comes next (each one appears at the
-// top the moment the last one lands), and a row cleared in a single colour scores ten times as much.
+// Falling gem blocks with a garden of twists: you never see which piece comes next (each one appears
+// at the top the moment the last one lands); a row cleared in a single colour scores ten times as much
+// and goes to Full Bloom, bursting every gem of that colour on the board so the columns cascade down
+// and can chain into more rows; and dew drops, earned by clearing rows, recolour the falling piece.
 const COLS = 8, ROWS = 14, TAU = Math.PI * 2;
 const fx = new PA.Particles(1500), texts = new PA.Texts();
 
@@ -42,18 +44,26 @@ const SHAPES = [
 const WEIGHT = [3, 3, 3, 3, 3, 2.5, 2.5, 2, 1.6, 1.2, .6];
 const LINE_PTS = [0, 100, 300, 500, 800];
 const SAME_COLOUR = 10;
+const DEW_START = 2, DEW_MAX = 3;
 
 let board, piece, score, shownScore, best = 0, lines, level, combo, placed, mono, over, dropT, lockT, lockMoves, bloomT, clearing;
+let dew, bursts, bestChain, dewFlash = 0;
 try { best = +localStorage.getItem("bb_best") || 0; } catch (e) {}
 
 /* ---------- layout ---------- */
-let view = null, ctx = null, L = { cell: 30, bx: 0, by: 0 };
+// On a wide screen the score and stats sit in panels beside the board, so the board can use the full
+// height; on a narrow one they go above it.
+let view = null, ctx = null, L = { cell: 30, bx: 0, by: 0, side: false };
 function layout(v) {
   const w = v.w, h = v.h, touch = PA.isTouch;
-  const top = 108, bottom = touch ? 96 : 26;
-  let cell = Math.min((w - 24) / COLS, (h - top - bottom) / ROWS);
-  cell = Math.max(16, Math.floor(cell));
-  L = { cell, bx: Math.round((w - cell * COLS) / 2), by: Math.round(top + (h - top - bottom - cell * ROWS) / 2) };
+  const bottom = touch ? 96 : 22;
+  const sideW = Math.min(220, Math.max(130, w * .2));
+  const sideCell = Math.min((w - sideW * 2 - 40) / COLS, (h - 30 - bottom) / ROWS);
+  const top = 100, topCell = Math.min((w - 24) / COLS, (h - top - bottom) / ROWS);
+  const side = sideCell >= topCell * .98 && sideCell >= 20;
+  const cell = Math.max(16, Math.floor(side ? sideCell : topCell));
+  const t = side ? 18 : top;
+  L = { cell, side, sideW, bx: Math.round((w - cell * COLS) / 2), by: Math.round(t + (h - t - bottom - cell * ROWS) / 2) };
 }
 
 /* ---------- pieces ---------- */
@@ -91,6 +101,7 @@ function gravity() { return Math.max(.07, .85 * Math.pow(.84, level - 1)); }
 function reset() {
   board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   score = 0; shownScore = 0; lines = 0; level = 1; combo = 0; placed = 0; mono = 0; over = false; bloomT = 0; clearing = [];
+  dew = DEW_START; bursts = 0; bestChain = 0;
   fx.clear(); texts.clear();
   das = { dir: 0, t: 0 };
   PA.music.intensity(0);
@@ -124,6 +135,16 @@ function turn(dir) {
   PA.sfx("blip", { pitch: .5, vol: .25 });
 }
 function touchLock() { if (lockT > 0 && lockMoves < 14) { lockT = 0; lockMoves++; } }
+// a dew drop turns the falling piece to the next colour, so a near-finished single-colour row can be kept pure
+function recolour() {
+  if (!piece || over) return;
+  if (dew <= 0) { PA.sfx("blip", { pitch: .45, vol: .3 }); dewFlash = -1; return; }
+  dew--; dewFlash = 1;
+  piece.c = (piece.c + 1) % PAL.length;
+  piece.born = performance.now() - 120;
+  PA.sfx("pickup", { pitch: 1.3 + piece.c * .08, vol: .45 });
+  fx.burst(L.bx + (piece.x + .5) * L.cell, L.by + (piece.y + .5) * L.cell, { n: 10, colors: [PAL[piece.c][0], "#e8fbff"], speed: 160, life: .5, size: 2.5 });
+}
 function hardDrop() {
   if (!piece || over) return;
   let n = 0;
@@ -142,35 +163,64 @@ function lock() {
   }
   placed++;
   PA.sfx("thud", { pitch: 1.1 + Math.random() * .2, vol: .55 });
-  const full = [];
-  for (let y = 0; y < ROWS; y++) if (board[y].every(Boolean)) full.push(y);
-  if (full.length) clearRows(full, now);
-  else combo = 0;
+  const chain = settle(now, 1);
+  if (!chain) combo = 0;
   piece = null;
   spawn();
 }
 
-function clearRows(full, now) {
+// Clear full rows, burst colours, let the columns cascade and repeat while new rows fill: each round
+// of the chain scores more than the last. Returns how many rounds cleared something.
+function settle(now, round) {
+  const full = [];
+  for (let y = 0; y < ROWS; y++) if (board[y].every(Boolean)) full.push(y);
+  if (!full.length) return round - 1;
+  if (round === 1) combo++;
+  clearRows(full, now, round);
+  if (round > 1) {
+    bestChain = Math.max(bestChain, round);
+    texts.add(L.bx + L.cell * COLS / 2, L.by + L.cell * (full[0] + .5) - 64, "CHAIN ×" + round, { color: "#7dffb0", size: 28, life: 1.4, vy: -24 });
+    PA.sfx("combo", { pitch: 1 + round * .15 });
+  }
+  return round >= 8 ? round : settle(now + 260, round + 1);
+}
+
+function clearRows(full, now, round) {
   const n = full.length;
-  combo++;
   let gain = 0, monoRows = 0, monoColour = 0;
+  const bloomColours = new Set();
   const per = (LINE_PTS[Math.min(n, 4)] + Math.max(0, n - 4) * 400) / n;
   for (const y of full) {
     const c0 = board[y][0].c, same = board[y].every((b) => b.c === c0);
     let pts = per * level;
-    if (same) { pts *= SAME_COLOUR; monoRows++; monoColour = c0; }
-    gain += pts;
+    if (same) { pts *= SAME_COLOUR; monoRows++; monoColour = c0; bloomColours.add(c0); }
+    gain += pts * round;
     for (let x = 0; x < COLS; x++) clearing.push({ x, y, c: board[y][x].c, t: now + x * 18, same });
     if (same) texts.add(L.bx + L.cell * COLS / 2, L.by + (y + .5) * L.cell, "ALL " + NAMES[c0] + "  ×" + SAME_COLOUR, { color: PAL[c0][0], size: 30, life: 1.8, vy: -30 });
   }
-  if (combo > 1) gain += 50 * (combo - 1) * level;
-  gain = Math.round(gain);
-  score += gain;
+  if (combo > 1 && round === 1) gain += 50 * (combo - 1) * level;
   lines += n; mono += monoRows;
+  if (dew < DEW_MAX) { dew = Math.min(DEW_MAX, dew + 1); dewFlash = 1; }
   // drop the rows above
   const keep = board.filter((_, y) => !full.includes(y));
   while (keep.length < ROWS) keep.unshift(Array(COLS).fill(null));
   board = keep;
+  // Full Bloom: every other gem of a single-colour row's colour bursts too, and the columns cascade
+  if (bloomColours.size) {
+    let burst = 0;
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const b = board[y][x];
+      if (b && bloomColours.has(b.c)) { clearing.push({ x, y, c: b.c, t: now + 200 + burst * 14, same: true }); board[y][x] = null; burst++; }
+    }
+    if (burst) {
+      bursts += burst;
+      gain += burst * 40 * level * round;
+      texts.add(L.bx + L.cell * COLS / 2, L.by + L.cell * 5, "FULL BLOOM  " + burst + " GEMS", { color: PAL[monoColour][0], size: 22, life: 1.6, vy: -20 });
+    }
+    cascade(now + 260);
+  }
+  gain = Math.round(gain);
+  score += gain;
   const midY = L.by + (full[0] + .5) * L.cell;
   texts.add(L.bx + L.cell * COLS / 2, midY - 30, "+" + gain.toLocaleString(), { color: "#fff", size: 26 + n * 3, life: 1.1 });
   if (n >= 2) texts.add(L.bx + L.cell * COLS / 2, midY + 6, ["", "", "DOUBLE!", "TRIPLE!", "FULL BLOOM!"][Math.min(4, n)], { color: "#ffd36b", size: 24, life: 1.2, vy: -30 });
@@ -187,6 +237,19 @@ function clearRows(full, now) {
   bloomT = 1;
 }
 
+// gems fall straight down into any gaps below them
+function cascade(t) {
+  for (let x = 0; x < COLS; x++) {
+    let to = ROWS - 1;
+    for (let y = ROWS - 1; y >= 0; y--) {
+      const b = board[y][x];
+      if (!b) continue;
+      if (y !== to) { board[to][x] = b; board[y][x] = null; b.fy = y; b.ft = t; }
+      to--;
+    }
+  }
+}
+
 function gameOver() {
   if (over) return;
   over = true; piece = null;
@@ -196,8 +259,8 @@ function gameOver() {
     if (score > best) { best = score; try { localStorage.setItem("bb_best", best); } catch (e) {} }
     PA.gameOver(score, {
       kicker: "The garden is full",
-      title: mono ? mono + " single-colour " + (mono === 1 ? "row" : "rows") + "!" : score > 3000 ? "Garden of light!" : "Board full",
-      stats: [["Lines", lines], ["Same colour", mono], ["Level", level], ["Pieces", placed]]
+      title: bestChain > 1 ? "Chain of " + bestChain + "!" : mono ? mono + " single-colour " + (mono === 1 ? "row" : "rows") + "!" : score > 3000 ? "Garden of light!" : "Board full",
+      stats: [["Lines", lines], ["Same colour", mono], ["Bloomed gems", bursts], ["Best chain", bestChain > 1 ? "×" + bestChain : "—"], ["Level", level], ["Pieces", placed]]
     });
     if (window.paXP) window.paXP.award("block-bloom", { score, lines });
   }, 700);
@@ -211,6 +274,7 @@ PA.onKey((e) => {
   if (c === "ArrowUp" || c === "KeyW" || c === "KeyX") { e.preventDefault(); if (!e.repeat) turn(1); }
   else if (c === "KeyZ" || c === "KeyQ") { if (!e.repeat) turn(-1); }
   else if (c === "Space") { e.preventDefault(); if (!e.repeat) hardDrop(); }
+  else if ((c === "KeyC" || c === "ShiftLeft" || c === "ShiftRight") && !e.repeat) recolour();
   else if ((c === "ArrowLeft" || c === "KeyA") && !e.repeat) { move(-1); das = { dir: -1, t: 0 }; }
   else if ((c === "ArrowRight" || c === "KeyD") && !e.repeat) { move(1); das = { dir: 1, t: 0 }; }
 });
@@ -220,6 +284,7 @@ PA.touchControls({
     { label: "▶", key: "ArrowRight", code: "ArrowRight", aria: "Move right" }
   ],
   right: [
+    { label: "💧", key: "c", code: "KeyC", aria: "Dew drop: change colour" },
     { label: "⟳", key: "ArrowUp", code: "ArrowUp", aria: "Turn piece" },
     { label: "▼", key: "ArrowDown", code: "ArrowDown", aria: "Drop faster" },
     { label: "⤓", key: " ", code: "Space", aria: "Drop now" }
@@ -291,6 +356,59 @@ function gem(x, y, s, c, alpha, glow) {
 }
 const petals = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), s: Math.random(), r: Math.random() * TAU, c: (Math.random() * PAL.length) | 0 }));
 
+function dewDrops(x, y, r, t) {
+  for (let i = 0; i < DEW_MAX; i++) {
+    const cx = x + i * r * 2.6, full = i < dew;
+    ctx.beginPath();
+    ctx.moveTo(cx, y - r * 1.5);
+    ctx.bezierCurveTo(cx + r * 1.1, y - r * .3, cx + r, y + r, cx, y + r);
+    ctx.bezierCurveTo(cx - r, y + r, cx - r * 1.1, y - r * .3, cx, y - r * 1.5);
+    if (full) {
+      const gr = ctx.createLinearGradient(cx, y - r, cx, y + r);
+      gr.addColorStop(0, "#e8fbff"); gr.addColorStop(1, "#6ec8ff");
+      ctx.fillStyle = gr; ctx.shadowColor = "#6ec8ff"; ctx.shadowBlur = 8 + Math.max(0, dewFlash) * 16; ctx.fill(); ctx.shadowBlur = 0;
+    } else { ctx.strokeStyle = dewFlash < -.2 ? "#ff7eb6" : "rgba(185,168,255,.45)"; ctx.lineWidth = 1.5; ctx.stroke(); }
+  }
+}
+function label(txt, x, y, size, color, align) {
+  ctx.textAlign = align || "center"; ctx.font = `700 ${size}px 'JetBrains Mono', monospace`; ctx.fillStyle = color; ctx.fillText(txt, x, y);
+}
+function hudTop(bx, by, bw, t) {
+  const sx = bx + bw / 2, sy = by - 52, C = L.cell;
+  ctx.textAlign = "center";
+  ctx.font = `800 ${Math.round(Math.min(C * 1.25, 44))}px Manrope, sans-serif`;
+  ctx.fillStyle = "#fff"; ctx.shadowColor = "#c49bff"; ctx.shadowBlur = 24;
+  ctx.fillText(Math.round(shownScore).toLocaleString(), sx, sy); ctx.shadowBlur = 0;
+  const fs = Math.max(10, Math.min(13, C * .42));
+  label("LV " + level + "  ·  LINES " + lines + "  ·  BEST " + Math.max(best, score).toLocaleString(), sx, sy + 20, fs, "#b9a8ff");
+  label("DEW", sx - 34, sy + 42, fs, "#8fd8ff", "right");
+  dewDrops(sx - 18, sy + 37, fs * .45, t);
+}
+function hudSide(bx, by, bw, bh, t) {
+  const W = L.sideW, lx = bx - 28 - W / 2, rx = bx + bw + 28 + W / 2;
+  const big = Math.round(Math.min(46, W * .2)), fs = Math.round(Math.max(11, Math.min(14, W * .075)));
+  const panel = (cx, y, h) => { ctx.fillStyle = "rgba(20,12,48,.55)"; rr(cx - W / 2, y, W, h, 16); ctx.fill(); ctx.strokeStyle = "rgba(196,155,255,.18)"; ctx.lineWidth = 1; ctx.stroke(); };
+  // left: score and best
+  panel(lx, by, big * 2.9);
+  label("SCORE", lx, by + fs + 14, fs, "#b9a8ff");
+  ctx.textAlign = "center"; ctx.font = `800 ${big}px Manrope, sans-serif`; ctx.fillStyle = "#fff"; ctx.shadowColor = "#c49bff"; ctx.shadowBlur = 22;
+  ctx.fillText(Math.round(shownScore).toLocaleString(), lx, by + fs + 22 + big); ctx.shadowBlur = 0;
+  label("BEST " + Math.max(best, score).toLocaleString(), lx, by + fs + 26 + big + fs * 1.6, fs, "#8f84c8");
+  // left, lower: how scoring works
+  const ty = by + big * 2.9 + 18, tips = [["ONE COLOUR ROW", "×10 + FULL BLOOM"], ["BLOOM", "bursts that colour"], ["CASCADE", "chains score more"]];
+  panel(lx, ty, tips.length * fs * 3.1 + 14);
+  tips.forEach(([a, b], i) => { label(a, lx, ty + 12 + fs * 1.2 + i * fs * 3.1, fs * .85, "#ffd36b"); label(b, lx, ty + 12 + fs * 2.5 + i * fs * 3.1, fs * .85, "#cfc6ff"); });
+  // right: level, lines, dew (kept clear of the pause and sound buttons in the top corner)
+  const ry = by + 58;
+  panel(rx, ry, fs * 13.5);
+  const row = (name, val, y) => { label(name, rx, y, fs, "#b9a8ff"); ctx.textAlign = "center"; ctx.font = `800 ${Math.round(fs * 2)}px Manrope, sans-serif`; ctx.fillStyle = "#fff"; ctx.fillText(val, rx, y + fs * 2.3); };
+  row("LEVEL", level, ry + fs + 14);
+  row("LINES", lines, ry + fs * 5.6 + 14);
+  label("DEW DROPS", rx, ry + fs * 10.2 + 14, fs, "#8fd8ff");
+  dewDrops(rx - fs * 1.2, ry + fs * 12 + 14, fs * .55, t);
+  label("C / SHIFT recolours", rx, ry + fs * 13.5 + fs * 1.4, fs * .8, "#7f76b0");
+}
+
 function render(t) {
   const w = view.w, h = view.h, C = L.cell, now = performance.now();
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
@@ -309,15 +427,10 @@ function render(t) {
   ctx.save(); ctx.translate(sh.x, sh.y);
   const bx = L.bx, by = L.by, bw = C * COLS, bh = C * ROWS;
 
-  // score + status line
+  // score, stats and dew drops: beside the board on wide screens, above it on narrow ones
   shownScore += (score - shownScore) * .2;
-  ctx.textAlign = "center";
-  const sx = bx + bw / 2, sy = by - 46;
-  ctx.font = `800 ${Math.round(Math.min(C * 1.25, 46))}px Manrope, sans-serif`;
-  ctx.fillStyle = "#fff"; ctx.shadowColor = "#c49bff"; ctx.shadowBlur = 24;
-  ctx.fillText(Math.round(shownScore).toLocaleString(), sx, sy); ctx.shadowBlur = 0;
-  ctx.font = `700 ${Math.max(10, Math.min(13, C * .42))}px 'JetBrains Mono', monospace`; ctx.fillStyle = "#b9a8ff";
-  ctx.fillText("LV " + level + "  ·  LINES " + lines + "  ·  BEST " + Math.max(best, score).toLocaleString(), sx, sy + 22);
+  dewFlash *= .93;
+  if (L.side) hudSide(bx, by, bw, bh, t); else hudTop(bx, by, bw, t);
 
   // board
   ctx.fillStyle = "rgba(10,6,30,.7)"; rr(bx - 8, by - 8, bw + 16, bh + 16, 16); ctx.fill();
@@ -339,7 +452,13 @@ function render(t) {
     if (!b) continue;
     const age = (now - b.t) / 1000, pop = age < .18 ? 1 + Math.sin(age / .18 * Math.PI) * .1 : 1;
     const s = C * pop, o = (C - s) / 2;
-    gem(bx + x * C + o, by + y * C + o, s, b.c, 1, 0);
+    // gems sliding down after a Full Bloom
+    let yy = y;
+    if (b.fy != null) {
+      const k = (now - b.ft) / 240;
+      if (k >= 1) b.fy = null; else yy = b.fy + (y - b.fy) * (k <= 0 ? 0 : k * k);
+    }
+    gem(bx + x * C + o, by + yy * C + o, s, b.c, 1, 0);
   }
   ctx.save();
   ctx.beginPath(); ctx.rect(bx - 2, by - 2, bw + 4, bh + 4); ctx.clip();
@@ -380,7 +499,10 @@ window.__bb = {
   get over() { return over; }, get mono() { return mono; }, move, turn, hardDrop,
   // test helper: lay down a row of gems (colour index or null per column)
   setRow(y, cols) { board[y] = cols.map((c) => (c == null ? null : { c, t: 0 })); },
-  setPiece(cells, c, x, y) { piece = { cells, c, x, y, born: 0 }; }
+  setPiece(cells, c, x, y) { piece = { cells, c, x, y, born: 0 }; },
+  get dew() { return dew; }, get bestChain() { return bestChain; }, recolour,
+  // test helper: resolve full rows, blooms and cascades now; returns the chain length
+  settle() { return settle(performance.now(), 1); }
 };
 })();
 </script>

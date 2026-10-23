@@ -100,14 +100,16 @@ export const GAMES = [
     slug: "block-bloom", title: "Block Bloom", added: "2026-10-11", featured: 5,
     genre: "Puzzle", tags: ["puzzle", "casual"], difficulty: "Simple", accent: "#ff7eb6", accent2: "#ffd36b",
     unit: "points",
-    classic: "Falling blocks", twist: "No next-piece preview, and a row finished in a single colour scores ten times as much.",
-    tagline: "Falling gems, no preview. Clear a row in one colour for 10× points.",
-    about: "Gem blocks fall into the garden one at a time. Turn them, slide them and drop them to fill a row and watch it burst into petals. There is no next-piece window: each piece appears at the top the moment the last one lands, so you play what you get. Finish a whole row in a single colour and it scores ten times as much.",
+    classic: "Falling blocks", twist: "No next-piece preview; a row finished in one colour scores ten times as much and bursts every gem of that colour, so the columns cascade into chains; dew drops recolour the falling piece.",
+    tagline: "Falling gems, no preview. One-colour rows bloom, burst and cascade into chains.",
+    about: "Gem blocks fall into the garden one at a time. Turn them, slide them and drop them to fill a row and watch it burst into petals. There is no next-piece window: each piece appears at the top the moment the last one lands, so you play what you get. Finish a whole row in a single colour and it scores ten times as much and goes to Full Bloom: every other gem of that colour on the board bursts too, the columns cascade down, and any rows they complete chain for even more. Clearing rows fills your dew drops, and a dew drop turns the falling piece to the next colour when you need a row to stay pure.",
     credit: CLAUDE_NEW,
-    brief: "A falling-block puzzle on an 8×14 board with turning pieces, no next-piece preview, combos, rising speed, and a 10× bonus for single-colour rows.",
+    brief: "A falling-block puzzle on an 8×14 board with turning pieces, no next-piece preview, combos, rising speed, and a 10× bonus for single-colour rows. Then make the whole board fit on screen, and add upgrades: Full Bloom colour bursts with column cascades and chains, and dew drops that recolour the falling piece.",
     tech: [
+      "The board always fits the screen: on wide screens the score and stats move beside it",
+      "Full Bloom bursts a colour across the board, then columns cascade and chain",
+      "Dew drops, earned by clearing rows, recolour the falling piece",
       "Wall kicks let a piece turn snugly against walls and other blocks",
-      "Rows that are still one colour glow so you can chase the 10× bonus",
       "Tap to turn, drag to move and flick down to drop on touch screens"
     ]
   },
