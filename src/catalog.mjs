@@ -167,9 +167,9 @@ export const GAMES = [
     unit: "points",
     classic: "Road and river crosser", twist: "Get hit and time rewinds to your last safe spot, but rewinds run out, and a wall of static creeps up behind you.",
     tagline: "Hop across an endless night city. Get hit and time rewinds.",
-    about: "Hop a little courier bot across an endless night city: busy roads full of cars, vans, buses and trucks, rivers of drifting logs and diving turtles, and rail crossings where the night train comes through with almost no warning. Get flattened or fall in and the whole street rewinds to the last moment you stood somewhere safe, so you can try that hop again. Rewinds run out, though, and clocks on the grass are the only way to win them back. Don't dawdle: a wall of static follows you up the street.",
+    about: "Hop a little courier bot across an endless night city: busy roads full of cars, vans, buses and trucks, rivers of cargo barges and float pads that power down and sink, and rail crossings where the night train comes through with almost no warning. Get flattened or fall in and the whole street rewinds to the last moment you stood somewhere safe, so you can try that hop again. Rewinds run out, though, and clocks on the grass are the only way to win them back. Don't dawdle: a wall of static follows you up the street.",
     credit: CLAUDE_NEW,
-    brief: "Remake the road-and-river crossing classic as an endless night city with cars, trucks, logs, diving turtles and trains, and make getting hit rewind time instead of ending the run.",
+    brief: "Remake the road-and-river crossing classic as an endless night city with cars, trucks, cargo barges, sinking float pads and trains, and make getting hit rewind time instead of ending the run.",
     tech: [
       "Every lane is a pure function of the world clock, so running the clock backwards replays the street in reverse",
       "The player is snapshotted every frame; a rewind scrubs back to the newest snapshot on solid ground",
