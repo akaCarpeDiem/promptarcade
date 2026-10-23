@@ -49,7 +49,8 @@ const BADGES = Function(`"use strict";return (${badgeBlock[1]});`)();
 const data = {
   games: GAMES.map((g) => ({ slug: g.slug, title: g.title, genre: g.genre, tags: g.tags, accent: g.accent, tagline: g.tagline, maker: g.credit.maker, model: g.credit.model, unit: g.unit, shot: g.shot })),
   quests: QUESTS.filter((q) => GAMES.some((g) => g.slug === q.game)),
-  badges: BADGES
+  badges: BADGES,
+  retired: Object.fromEntries(Object.entries(RETIRED).filter(([, to]) => to && GAMES.some((g) => g.slug === to)))
 };
 fs.mkdirSync(path.join(OUT, "games/play"), { recursive: true });
 fs.writeFileSync(path.join(OUT, "games/play/pa-data.js"), "/* generated from src/catalog.mjs — do not edit */\nwindow.PA_DATA=" + JSON.stringify(data) + ";\n");
