@@ -147,18 +147,18 @@ export const GAMES = [
   },
   {
     slug: "skystack", title: "Skystack 3D", added: "2026-10-11", featured: 8,
-    genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#7dffb0", accent2: "#6ec8ff",
+    genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#ffb347", accent2: "#6ec8ff",
     unit: "floors",
-    classic: "Tower stacker", twist: "Wind: from the fifth floor up the tower sways, and the higher it gets the more the top swings. The slab slides on a fixed track, so you drop it where the top is right now.",
-    tagline: "Stack sliding slabs on a tower that sways in the wind. One button, real 3D.",
-    about: "Drop each sliding slab onto the tower. Whatever hangs over the edge is sliced off and tumbles away, so the tower narrows with every miss. Once you're five floors up the wind picks up and the tower starts to sway, a little at first and then a lot. The slab's track stays still while the top moves under it, so you're timing two motions at once. Land a perfect drop to keep the slab's size, and chain perfect drops to grow it back.",
+    classic: "Tower stacker", twist: "You're building a real skyscraper: a crane lowers each floor, the tower climbs from brick walk-ups to a glass spire as day turns to night, and from the fifth floor up the wind makes the whole thing sway.",
+    tagline: "Build a skyscraper floor by floor off a crane, through five districts and into the night.",
+    about: "A crane swings each new floor in over the tower, first from one side and then the other. Lower it at the right moment: whatever hangs over the floor below is sheared off and falls to the street, so every miss makes the building thinner. Climb from brick row through concrete, glass and art deco to a glass spire, while the sun sets and the city lights come on below. From the fifth floor the wind makes the tower sway, the top most of all, so you're timing the crane and the sway at once. Three flush drops in a row brace the tower against the wind for four floors, and every tenth floor is a sky lobby that comes in wider and can overhang.",
     credit: CLAUDE_NEW,
-    brief: "A one-button 3D tower-stacking game in three.js with slicing, falling debris, perfect-drop combos and shifting colours.",
+    brief: "A one-button 3D skyscraper builder in three.js: a crane lowers each floor, overhangs shear off, the facade changes district every ten floors, the day turns to night with height, wind sway, braces for flush drops and wide sky lobbies.",
     tech: [
-      "three.js with an orthographic isometric camera and soft shadows",
-      "Overhangs are cut into separate meshes that fall and spin away",
-      "Wind sway bends the tower more toward the top and grows with height, while the stack is still stored in straight, unswayed positions",
-      "The palette and sky gradient drift as the tower climbs"
+      "Facades are painted on canvases at load, one per district, with a second map of the windows that light up at night",
+      "Each floor's facade repeats to match its width, so sheared floors keep their windows the right size",
+      "Wind sway bends the tower more toward the top and grows with height, while the stack is stored in straight, unswayed positions",
+      "Sky, fog, sunlight and window glow follow the building's height, over an instanced city with twinkling lights"
     ]
   },
   {
