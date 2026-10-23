@@ -213,7 +213,7 @@ export const GAMES = [
     ]
   },
   {
-    slug: "neon-outrun", title: "Neon Outrun", added: "2026-09-20",
+    slug: "neon-outrun", title: "Neon Nightdrive", added: "2026-09-20",
     genre: "Racing", tags: ["racing", "arcade", "3d"], difficulty: "Advanced", accent: "#ff5ca8", accent2: "#ffd36b", unit: "points",
     classic: "Sunset road racer", twist: "A real-3D cyberpunk megacity: draft behind haulers for extra top speed, thread hover cars for near-miss combos and dodge lane closures to beat the checkpoint clock.",
     tagline: "A real-3D cyberpunk racer through a neon megacity.",
@@ -277,7 +277,7 @@ export const GAMES = [
   },
   {
     slug: "prism-breaker", title: "Prism Breaker", added: "2026-09-20",
-    genre: "Arcade", tags: ["arcade", "breakout"], difficulty: "Mid", accent: "#6ec8ff", accent2: "#c49bff", unit: "points",
+    genre: "Arcade", tags: ["arcade", "paddle"], difficulty: "Mid", accent: "#6ec8ff", accent2: "#c49bff", unit: "points",
     classic: "Brick breaker", twist: "Spin: the paddle's motion at contact puts spin on the ball, so shots curve in flight round steel guards, and bent breaks score double.",
     tagline: "A neon brick-breaker where the ball curves.",
     about: "A glassy neon brick-breaker with spin. Move the paddle as the ball touches it and the ball leaves spinning, bending in flight the way you swept. Curve shots round the steel guards that wall off each layout, and any brick broken on a bend scores double. Chain combos without touching the paddle, catch multiball, lasers and a wider paddle, and the six layouts loop faster each time round.",
@@ -323,6 +323,8 @@ export const RETIRED = {
 
 /* What's-new feed (newest first). */
 export const NEWS = [
+  { date: "2026-10-23", title: "Echo Maze is now a bat in the dark", body: "Echo Maze has been rebuilt from scratch. You're a young bat lost in a pitch-black cave who sees by sonar: every ping lights the tunnels, but the spiders, stone lurkers and owls hunt by sound. Find every crystal, then fly out into the moonlight." },
+  { date: "2026-10-23", title: "Five classics get a look of their own", body: "Gridstorm now takes place inside a thunderstorm, with a new cast of storm creatures and thunderheads that call down lightning. Skystack is a real skyscraper lowered floor by floor off a crane, climbing from brick walk-ups to a glass spire as day turns to night. Void Rocks has solid cratered rocks and drones that cut them up, Star Siege faces a gliding honeycomb swarm, and Crosstime's rivers carry cargo barges and float pads. Block Bloom now fits on any screen and adds Full Bloom cascades and dew drops." },
   { date: "2026-10-22", title: "Ptero Flap goes moonlit", body: "Ptero Flap has a new look: a brand-new wide-eyed clay pterodactyl flying over a moonlit island, with a glowing moon, a lagoon, palm trees, a dome hut with a warm window and fireflies. The brontosauruses are gone; now you thread a night forest of trees, rock spires, hanging moss, vines and spider webs, some strung between bamboo stalks. The split-sky twin-flyer mode is gone too, so it is one pterodactyl and one flap button again. Moving gaps, amber and close-call combos stay." },
   { date: "2026-10-22", title: "Neon Flap is now Ptero Flap", body: "The one-tap flyer has been repainted from the ground up. You now fly a cartoon pterodactyl through a prehistoric jungle at sunset, past a smoking volcano, dodging trees, hanging branches, spiderwebs, rock spires and brontosauruses that raise their necks into your path." },
   { date: "2026-10-21", title: "Nine classics get a real twist", body: "Void Rocks now has a tractor tether: whirl a rock round your ship and fling it for chain kills. Star Siege lasers carry a colour, so you paint aliens and pop matching clusters. Prism Breaker balls take spin off the paddle and curve round steel. Fusion 2048 sets off chain reactions while lead blocks wall off the board. Neon Flap splits into twin flyers, one in each half of the sky. Wordglow is now a daily chain of three linked words that share twelve guesses. Nebula Drop swaps the jar for a round gravity well. Gridstorm kills send out shockwaves that chain through the swarm. And the Skystack tower sways in the wind as it climbs." },
@@ -343,7 +345,7 @@ export const QUESTS = [
   { game: "deepdelve", stat: "depth", min: 4, text: "Reach depth 4 in Deepdelve" },
   { game: "skystack", stat: "score", min: 20, text: "Stack 20 floors in Skystack 3D" },
   { game: "wordglow", stat: "won", min: 1, text: "Solve today's Wordglow" },
-  { game: "neon-outrun", stat: "score", min: 5000, text: "Score 5,000 in Neon Outrun" },
+  { game: "neon-outrun", stat: "score", min: 5000, text: "Score 5,000 in Neon Nightdrive" },
   { game: "fusion-2048", stat: "score", min: 3000, text: "Score 3,000 in Fusion 2048" },
   { game: "circuit-hop", stat: "score", min: 1500, text: "Score 1,500 in Circuit Hop" },
   { game: "void-rocks", stat: "score", min: 5000, text: "Score 5,000 in Void Rocks" },

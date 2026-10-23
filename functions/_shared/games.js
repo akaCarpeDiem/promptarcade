@@ -34,7 +34,7 @@ export const GAMES = {
     "cap": 10000000
   },
   "neon-outrun": {
-    "title": "Neon Outrun",
+    "title": "Neon Nightdrive",
     "cap": 5000000
   },
   "hyperlane-3d": {
@@ -50,7 +50,7 @@ export const GAMES = {
     "cap": 5000000
   },
   "neon-tetris": {
-    "title": "Neon Tetris",
+    "title": "Block Bloom (old scores)",
     "cap": 20000000
   },
   "prism-breaker": {
