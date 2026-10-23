@@ -256,13 +256,13 @@ export const GAMES = [
   {
     slug: "void-rocks", title: "Void Rocks", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#c49bff", accent2: "#5ef2ff", unit: "points",
-    classic: "Vector rock shooter", twist: "A tractor tether: grab a rock, whirl it round your ship as a wrecking ball, then fling it through the field for chain multipliers.",
-    tagline: "A vector rock shooter where the rocks are your best weapon.",
-    about: "A glowing vector rock shooter with a tractor tether. Split the big rocks with your gun, then grab a small one and it whirls round your ship as a wrecking ball, smashing whatever it touches and soaking up saucer fire. Let go and it flies the way you're facing, ploughing through the field: every rock it hits raises the chain multiplier. Thrust, drift and hyperspace out of trouble when it gets crowded.",
+    classic: "Rock-field shooter", twist: "A tractor tether: grab a rock, whirl it round your tug as a wrecking ball, then fling it through the field for chain multipliers. Scrapper drones fly in to cut up the big rocks.",
+    tagline: "A rock-field shooter where the rocks are your best weapon.",
+    about: "Pilot a little salvage tug through a drifting field of cratered rock. Split the big rocks with your gun, then grab a small one and it whirls round your tug as a wrecking ball, smashing whatever it touches and soaking up drone fire. Let go and it flies the way you're facing, ploughing through the field: every rock it hits raises the chain multiplier. Scrapper drones fly in, latch onto the biggest rocks and cut them apart, showering you with pieces, so swat them with a tethered rock for a big bonus. Thrust, drift and blink a short way ahead when you're boxed in.",
     credit: CLAUDE_CURSOR,
-    brief: "A vector-style rock shooter with inertia, screen wrap, splitting rocks, saucers, hyperspace and waves.",
-    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, saucers and waves, then glow rendering, audio and touch clusters. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
-    tech: ["Inertia and screen wrap", "Tether that winds up as it whirls; throws aim along the ship's nose", "Thrown rocks pierce the field and count a chain multiplier", "Glow vector rendering"]
+    brief: "A rock-field shooter with inertia, screen wrap, splitting rocks, a tractor tether, scrapper drones that cut up rocks, a short-range blink and waves.",
+    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, enemies and waves, then glow rendering, audio and touch clusters. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, and later gave it solid cratered rocks, a salvage tug, rock-cutting drones and a blink jump so it stands further from the original.",
+    tech: ["Inertia and screen wrap", "Tether that winds up as it whirls; throws aim along the ship's nose", "Thrown rocks pierce the field and count a chain multiplier", "Drones pick the nearest big rock, orbit it while they cut, then split it", "Rocks are painted once per shape as shaded, cratered stone"]
   },
   {
     slug: "star-siege", title: "Star Siege", added: "2026-09-20",
