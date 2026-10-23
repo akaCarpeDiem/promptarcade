@@ -231,13 +231,14 @@ export const GAMES = [
   },
   {
     slug: "hyperlane-3d", title: "Hyperlane 3D", added: "2026-09-20",
-    genre: "3D", tags: ["3d", "flying"], difficulty: "Advanced", accent: "#5ef2ff", accent2: "#c77dff", unit: "points",
+    genre: "3D", tags: ["3d", "flying"], difficulty: "Advanced", accent: "#ffb347", accent2: "#6cc8ff", unit: "points",
     original: true,
-    tagline: "A real-time 3D flight down an endless neon hyperlane.",
-    about: "A real-time 3D flight down an endless neon hyperlane. Bank between walls, gates and laser bars, string energy orbs into a multiplier, and burn boost when you dare.",
-    credit: CLAUDE_CURSOR,
-    brief: "A three.js endless flyer: a banking ship, pooled 3D obstacles, a boost meter, an orb multiplier and color-shifting sectors.",
-    tech: ["three.js lane built to the ship's limits, so every obstacle sits where you can fly", "Six colour-shifting sectors that narrow the gates and raise the speed", "Gates, sweeping laser bars, pillar clusters and orb lines on a distance-based rhythm", "Boost meter and orb multiplier"]
+    tagline: "Thread a jet through New York: open windows, office floors and crane booms.",
+    about: "A real-time 3D flight through a New York of glass towers and brownstone canyons. Thread the jet through open windows, race down office floors and marble lobbies, out through a missing pane, under sweeping steel beams and between crane masts, from golden hour into a midnight thunderstorm. String gold beacons into a multiplier and light the afterburner when you dare.",
+    credit: { maker: "Claude", model: null, via: "Claude (agentic session)", method: "agentic" },
+    brief: "A three.js endless flyer: a banking ship, pooled 3D obstacles, a boost meter, an orb multiplier and colour-shifting sectors. Then keep the game exactly the same but rebuild every visual as a hyper-realistic New York flythrough: skyscrapers, windows, rooms, offices and doors from building to building, and cranes, with a realistic jet and afterburner.",
+    process: "First built with a coding agent as a neon lane flyer, then rebuilt by an AI coding agent in one session. The obstacle and scoring code was kept as it was and only the world around it was replaced: procedural facades, offices, lobbies and building sites built in chunks, every gate turned into a door, window or missing pane at the exact same spot, then the jet, afterburner, lighting, haze and six times of day. An automated pilot flew the old and new versions in a headless browser to check that the flying is unchanged.",
+    tech: ["Every opening sits exactly where the old gates did, so the flying is unchanged", "Procedural city: facades, offices, lobbies and building sites built in chunks as you fly", "Six times of day from golden hour to a midnight thunderstorm, with HDR bloom and haze", "A detailed jet with a shock-diamond afterburner, nav lights and wingtip vortices"]
   },
   {
     slug: "circuit-hop", title: "Circuit Hop", added: "2026-09-20",
