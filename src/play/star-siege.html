@@ -14,7 +14,7 @@ canvas{display:block;position:fixed;inset:0}
 <div class="pa-hud" id="ss-hud">
   <div class="pa-stat" id="s-score"><small>Score</small><b>0</b></div>
   <div class="pa-stat" id="s-wave"><small>Wave</small><b>1</b></div>
-  <div class="pa-stat" id="s-ships"><small>Invaders</small><b>0</b></div>
+  <div class="pa-stat" id="s-ships"><small>Swarm</small><b>0</b></div>
   <div class="pa-stat" id="s-lives"><small>Lives</small><b>♦♦♦</b></div>
   <div class="pa-stat" id="s-cluster"><small>Best cluster</small><b>—</b></div>
 </div>
@@ -41,10 +41,11 @@ window.paConfig = {
     bulletP: "#7ee7a8",
     bulletE: "#ff7eb6"
   };
-  const ALIEN_ROWS = 5;
-  const ALIEN_COLS = 11;
-  const ALIEN_SCORE = [30, 25, 25, 15, 15];
-  const SHIELD_COUNT = 4;
+  // the swarm is a honeycomb: odd rows sit half a cell over, so each alien touches up to six others
+  const ALIEN_ROWS = 6;
+  const ALIEN_COLS = 9;
+  const ALIEN_SCORE = [35, 25, 25, 20, 15];
+  const SHIELD_COUNT = 3;
   // The twist: your laser carries a colour. A hit on a different colour paints that alien yours;
   // a hit on a matching one detonates every touching alien of that colour in a chain.
   const PAINT = ["#ff7eb6", "#8ee9ff", "#ffd27a", "#7ee7a8"];
@@ -115,42 +116,47 @@ window.paConfig = {
     }
   }
 
+  // crystal barriers: hexagons of breakable cells that drift slowly from side to side
   function makeShields() {
     shields = [];
-    const cell = clamp(playW * 0.018, 5.5 * S, 9 * S);
-    const cols = 14, rows = 8;
-    const sw = cols * cell, sh = rows * cell;
-    const gap = (playW - SHIELD_COUNT * sw) / (SHIELD_COUNT + 1);
-    const y = floorY - sh - 36 * S;
+    const cell = clamp(playW * 0.0105, 3.5 * S, 8.5 * S), R = 6;   // small enough that drifting barriers never touch
+    const y = floorY - R * 2 * cell - 30 * S;
     for (let i = 0; i < SHIELD_COUNT; i++) {
-      const ox = playL + gap + i * (sw + gap);
-      const blocks = [];
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const cx = c - cols / 2, cy = r - rows / 2;
-          const dome = cy < -1 && Math.abs(cx) > 4 - (-cy) * 0.8;
-          const notch = cy > 2 && Math.abs(cx) < 2.5;
-          if (dome || notch) continue;
-          blocks.push({ x: ox + c * cell, y: y + r * cell, w: cell - 1.2, h: cell - 1.2, hp: 1 });
-        }
+      const cx = playL + playW * (i + 1) / (SHIELD_COUNT + 1), blocks = [];
+      for (let r = -R; r <= R; r++) for (let c = -R - 2; c <= R + 2; c++) {
+        // a flat-topped hexagon: full width in the middle row, narrowing toward the top and bottom
+        const rx = (c + (r & 1 ? .5 : 0)) * cell;
+        if (Math.abs(r) * .5 * cell + Math.abs(rx) > (R + .5) * cell * .9 + 1) continue;
+        blocks.push({ rx: rx - cell / 2, x: cx + rx - cell / 2, y: y + (r + R) * cell * .87, w: cell - 1.2, h: cell * .87 - 1, hp: 1 });
       }
-      shields.push({ blocks, ox, y, cell });
+      shields.push({ blocks, cx, baseX: cx, ph: i * 2.1, y, cell });
+    }
+  }
+  function driftShields(dt) {
+    const amp = playW / (SHIELD_COUNT + 1) * .22;
+    for (const sh of shields) {
+      sh.cx = sh.baseX + Math.sin(simT * .45 + sh.ph) * amp;
+      for (const bl of sh.blocks) bl.x = sh.cx + bl.rx;
     }
   }
 
   function alienKind(row) {
     return Math.min(4, Math.floor(row * 5 / ALIEN_ROWS));
   }
+  function hexNeighbours(r, c) {
+    const o = r & 1 ? 0 : -1;   // odd rows sit half a cell to the right
+    return [[r, c - 1], [r, c + 1], [r - 1, c + o], [r - 1, c + o + 1], [r + 1, c + o], [r + 1, c + o + 1]];
+  }
 
   function spawnWave() {
     aliens = [];
-    const aw = playW * 0.055;
-    const ah = aw * 0.72;
-    const gapX = aw * 0.35;
-    const gapY = ah * 0.55;
-    const gridW = ALIEN_COLS * aw + (ALIEN_COLS - 1) * gapX;
+    const aw = Math.min(playW * 0.052, H * 0.07);
+    const ah = aw * 0.74;
+    const gapX = aw * 0.3;
+    const gapY = ah * 0.22;
+    const gridW = ALIEN_COLS * aw + (ALIEN_COLS - 1) * gapX + (aw + gapX) / 2;
     formX = playL + (playW - gridW) / 2;
-    formY = H * 0.12;
+    formY = W < 600 ? Math.max(H * 0.1, 112) : H * 0.1;   // clear of the two-row HUD on narrow screens
     marchDir = 1;
     marchTimer = 0.4;
     marchDelay = clamp(0.78 - wave * 0.04, 0.28, 0.78);
@@ -163,12 +169,12 @@ window.paConfig = {
         const roll = Math.random();
         let k = randInt(0, colours - 1);
         if (c > 0 && roll < 0.2) k = grid[r][c - 1];
-        else if (r > 0 && roll < 0.3) k = grid[r - 1][c];
+        else if (r > 0 && roll < 0.3) k = grid[r - 1][Math.min(c, ALIEN_COLS - 1)];
         grid[r].push(k);
         aliens.push({
           paint: k, flashT: 0, popT: -1,
           col: c, row: r,
-          lx: c * (aw + gapX),
+          lx: c * (aw + gapX) + (r & 1 ? (aw + gapX) / 2 : 0),
           ly: r * (ah + gapY),
           w: aw, h: ah,
           kind: alienKind(r),
@@ -182,7 +188,7 @@ window.paConfig = {
     makeShields();
     if (gun >= colours) gun = 0;
     mothership = null;
-    mothershipCd = rand(6, 14);
+    mothershipCd = rand(8, 16);
     enemyFireCd = rand(0.8, 1.6);
     paintHud();
   }
@@ -291,7 +297,8 @@ window.paConfig = {
     return aliens.filter((a) => a.alive && a.popT < 0);
   }
 
-  function marchStep() {
+  // the swarm glides side to side and sinks steadily, faster as it thins out
+  function glide(dt) {
     const live = livingAliens();
     if (!live.length) return;
     let minX = Infinity, maxX = -Infinity, maxY = 0;
@@ -301,23 +308,17 @@ window.paConfig = {
       maxX = Math.max(maxX, wx + a.w);
       maxY = Math.max(maxY, formY + a.ly + a.h);
     }
-    const margin = 12 * S;
-    const stepX = 10 * S * marchDir;
-    let drop = false;
-    if (minX + stepX < playL + margin || maxX + stepX > playR - margin) {
-      marchDir *= -1;
-      drop = true;
+    const rush = 1 + (1 - live.length / aliens.length) * 1.4;
+    const vx = (42 + wave * 6) * S * rush, margin = 12 * S;
+    formX += marchDir * vx * dt;
+    if (minX < playL + margin) { marchDir = 1; formX += playL + margin - minX; }
+    else if (maxX > playR - margin) { marchDir = -1; formX -= maxX - (playR - margin); }
+    formY += (3 + wave * 0.7) * S * rush * dt;
+    if (maxY >= player.y - 8 * S) {
+      // the swarm reached the cannon: lose a life and it backs off a little
+      formY -= 70 * S;
+      playerHit(true);
     }
-    if (drop) {
-      formY += 14 * S;
-      PA.tone({ freq: 90, type: "sawtooth", dur: 0.08, vol: 0.04 });
-      if (maxY + 14 * S >= player.y - 8 * S) {
-        playerHit(true);
-        return;
-      }
-    } else formX += stepX;
-    for (const a of live) a.anim = 1 - a.anim;
-    PA.sfx("blip", { pitch: 0.85 + (1 - live.length / aliens.length) * 0.35, vol: 0.35 });
   }
 
   function pickShooter() {
@@ -345,17 +346,18 @@ window.paConfig = {
 
   function spawnMothership() {
     if (mothership) return;
+    // a comet arcs across the top of the sky: hit it for a bonus
     const fromLeft = Math.random() < 0.5;
     mothership = {
       x: fromLeft ? playL - 40 * S : playR + 40 * S,
-      y: H * 0.07,
-      w: playW * 0.14,
-      h: 22 * S,
-      vx: (fromLeft ? 1 : -1) * (140 + wave * 6) * S,
-      bonus: randInt(100, 550)
+      y: H * 0.05, y0: H * 0.05, k: 0,
+      w: 30 * S,
+      h: 30 * S,
+      vx: (fromLeft ? 1 : -1) * (170 + wave * 8) * S,
+      bonus: 150 + wave * 50
     };
-    PA.sfx("levelup", { pitch: 0.75, vol: 0.45 });
-    texts.add(W / 2, H * 0.14, "MOTHERSHIP", { color: COL.mothership, size: 16, life: 1.1, vy: -18 });
+    PA.tone({ freq: 1400, to: 500, type: "sine", dur: 0.6, vol: 0.06 });
+    texts.add(W / 2, H * 0.14, "COMET", { color: COL.mothership, size: 16, life: 1.1, vy: -18 });
   }
 
   function rectHit(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -407,8 +409,8 @@ window.paConfig = {
     while (queue.length) {
       const [cur, d] = queue.shift();
       group.push([cur, d]);
-      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const n = byPos[(cur.row + dr) + "," + (cur.col + dc)];
+      for (const [nr, nc] of hexNeighbours(cur.row, cur.col)) {
+        const n = byPos[nr + "," + nc];
         if (n && !seen.has(n) && n.paint === a.paint) { seen.add(n); queue.push([n, d + 1]); }
       }
     }
@@ -431,7 +433,7 @@ window.paConfig = {
     paintHud();
     PA.sfx("levelup");
     PA.flash("rgba(142,233,255,.2)", 280);
-    showBanner("WAVE " + wave + " CLEARED", "Shields reforge · formation advances", 1.6);
+    showBanner("WAVE " + wave + " CLEARED", "Crystals reform · a new swarm gathers", 1.6);
     pBullets = []; eBullets = [];
   }
 
@@ -439,7 +441,7 @@ window.paConfig = {
     wave++;
     waveClearT = 0;
     spawnWave();
-    showBanner("WAVE " + wave, "March speed rising", 1.5);
+    showBanner("WAVE " + wave, "The swarm grows restless", 1.5);
     resetPlayer();
     invulnT = 1.2;
   }
@@ -485,7 +487,7 @@ window.paConfig = {
         ["Invaders", kills],
         ["Best cluster", bestCluster > 1 ? bestCluster : "—"],
         ["Painted", paints],
-        ["Motherships", mothershipHits],
+        ["Comets", mothershipHits],
         ["Lives left", Math.max(0, lives)]
       ]
     });
@@ -521,11 +523,8 @@ window.paConfig = {
 
     firePlayer();
 
-    marchTimer -= dt;
-    if (marchTimer <= 0) {
-      marchStep();
-      marchTimer = marchDelay;
-    }
+    glide(dt);
+    driftShields(dt);
 
     for (const a of aliens) {
       if (!a.alive) continue;
@@ -552,7 +551,10 @@ window.paConfig = {
       mothershipCd = rand(14, 26);
     }
     if (mothership) {
-      mothership.x += mothership.vx * dt;
+      const m = mothership;
+      m.x += m.vx * dt;
+      m.k = clamp((m.vx > 0 ? m.x - playL : playR - m.x) / playW, 0, 1);
+      m.y = m.y0 + Math.sin(m.k * Math.PI) * H * 0.07;
       if (mothership.x < playL - 80 * S || mothership.x > playR + 80 * S) mothership = null;
     }
 
@@ -735,25 +737,19 @@ window.paConfig = {
 
   function drawMothership(t) {
     if (!mothership) return;
-    const m = mothership;
+    const m = mothership, dir = Math.sign(m.vx);
     ctx.save();
-    ctx.translate(m.x, m.y);
-    ctx.shadowColor = COL.mothership;
-    ctx.shadowBlur = 22 * S;
-    const pulse = 0.85 + 0.15 * Math.sin(t * 5);
-    ctx.fillStyle = COL.mothership;
-    roundRect(-m.w / 2, -m.h / 2, m.w, m.h, m.h / 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.globalAlpha = 0.5 * pulse;
-    ctx.fillRect(-m.w * 0.35, -m.h * 0.15, m.w * 0.7, m.h * 0.3);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = "#ff7eb6";
-    for (let i = -2; i <= 2; i++) {
-      ctx.beginPath();
-      ctx.arc(i * m.w * 0.16, m.h * 0.35, 3 * S, 0, TAU);
-      ctx.fill();
+    ctx.globalCompositeOperation = "lighter";
+    // the tail streams out behind the head
+    for (let i = 10; i >= 1; i--) {
+      const k = i / 10, tx = m.x - dir * i * 9 * S, ty = m.y - Math.cos(m.k * Math.PI) * i * 2.2 * S;
+      ctx.globalAlpha = (1 - k) * .5; ctx.fillStyle = i % 2 ? COL.mothership : "#8ee9ff";
+      ctx.beginPath(); ctx.arc(tx, ty, (1 - k * .7) * 9 * S, 0, TAU); ctx.fill();
     }
+    ctx.globalAlpha = 1;
+    const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, 16 * S);
+    g.addColorStop(0, "#fff"); g.addColorStop(.4, COL.mothership); g.addColorStop(1, "rgba(255,210,122,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(m.x, m.y, 16 * S * (0.9 + 0.1 * Math.sin(t * 9)), 0, TAU); ctx.fill();
     ctx.restore();
   }
 

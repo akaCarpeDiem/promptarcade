@@ -267,13 +267,13 @@ export const GAMES = [
   {
     slug: "star-siege", title: "Star Siege", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#ff7eb6", accent2: "#7dffb0", unit: "points",
-    classic: "Alien invasion", twist: "Colour lasers: a hit on the wrong colour paints the alien yours, and a hit on a match chain-pops the whole touching cluster.",
-    tagline: "Paint the invasion, then pop it in chains.",
-    about: "A marching alien formation in four colours, and a laser that carries one of them. Hit an alien of a different colour and you paint it yours. Hit one that matches and every touching alien of that colour detonates in a chain, worth more the bigger the cluster. Switch colours to find the big clusters, paint bridges to join them, and pop them before the formation lands.",
+    classic: "Alien invasion", twist: "Colour lasers against a honeycomb swarm: a hit on the wrong colour paints the alien yours, and a hit on a match chain-pops every touching alien of that colour.",
+    tagline: "Paint the swarm, then pop it in chains.",
+    about: "A honeycomb swarm of aliens in four colours glides from side to side and sinks toward you, and your laser carries one of the colours. Hit an alien of a different colour and you paint it yours. Hit one that matches and every touching alien of that colour detonates in a chain, and in a honeycomb each alien touches up to six others. Switch colours to find the big clusters, paint bridges to join them, and pop them before the swarm reaches your cannon. Hide behind the drifting crystal barriers, and catch the comet when it arcs overhead.",
     credit: CLAUDE_CURSOR,
-    brief: "A fixed-shooter invasion game: marching formation, three alien types, eroding shields, mothership and faster waves.",
-    process: "Built by an AI coding agent from a multi-step brief: the formation march and shooting first, then shields and waves, then pixel sprites, audio and touch controls. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
-    tech: ["Flood fill through touching same-colour aliens, popped in a ripple", "A fourth colour joins from wave 3", "Eroding pixel shields", "Touch drag with auto fire"]
+    brief: "A fixed shooter against a gliding honeycomb swarm: colour lasers that paint or chain-pop, drifting crystal barriers, a bonus comet and faster waves.",
+    process: "Built by an AI coding agent from a multi-step brief: the formation and shooting first, then barriers and waves, then sprites, audio and touch controls. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, then reshaped the swarm into a gliding honeycomb with drifting crystal barriers and a comet so it stands further from the original.",
+    tech: ["Flood fill through the six honeycomb neighbours of each alien, popped in a ripple", "The swarm glides and sinks smoothly, speeding up as it thins out", "Hexagonal crystal barriers that erode cell by cell and drift side to side", "Touch drag with auto fire"]
   },
   {
     slug: "prism-breaker", title: "Prism Breaker", added: "2026-09-20",
