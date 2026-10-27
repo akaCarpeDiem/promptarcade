@@ -6,8 +6,9 @@ const html = readFileSync(new URL("../src/play/circuit-hop.html", import.meta.ur
 const LEVELS = new Function("return " + html.match(/const LEVELS = (\[[\s\S]*?\n  \]);/)[1])();
 
 /* A conservative tile model of the player: jumps reach 2 tiles up and 5 across (3 when climbing 2),
- * and a shaft 1–3 tiles wide between two walls can be wall-jumped to its top. The real jump is
- * higher and longer, so anything this model reaches, a player can reach. */
+ * a shaft 1–3 tiles wide between two walls can be wall-jumped to its top, and a boost pad (B)
+ * throws you 6 tiles straight up with 3 tiles of drift. The real jump and boost are higher and
+ * longer (and there's an air dash on top), so anything this model reaches, a player can reach. */
 function unreachable(rows) {
   const H = rows.length, W = rows[0].length;
   const at = (x, y) => (x < 0 || x >= W || y < 0 ? "#" : y >= H ? "." : rows[y][x]);
@@ -28,6 +29,25 @@ function unreachable(rows) {
   rows.forEach((r, y) => { const x = r.indexOf("@"); if (x >= 0) settle(x, y, []); });
   while (q.length) {
     const [x, y] = q.shift();
+    if (at(x, y) === "B") {
+      const path = [];
+      for (let k = 1; k <= 6 && open(x, y - k); k++) {
+        path.push([x, y - k]);
+        settle(x, y - k, path.slice());
+        for (const d of [-1, 1]) {
+          const p2 = path.slice();
+          for (let dx = 1; dx <= 3; dx++) {
+            const X = x + d * dx;
+            if (!open(X, y - k) || deadly(X, y - k)) break;
+            p2.push([X, y - k]);
+            let ly = y - k;
+            const p3 = p2.slice();
+            while (!solid(X, ly + 1) && !deadly(X, ly)) { ly++; p3.push([X, ly]); }
+            if (!deadly(X, ly)) settle(X, ly, p3);
+          }
+        }
+      }
+    }
     for (const d of [-1, 1]) {
       if (open(x + d, y)) settle(x + d, y, []);
       for (let h = 1; h <= 2; h++) {
@@ -74,16 +94,16 @@ function unreachable(rows) {
 }
 
 test("circuit hop sectors are well formed", () => {
-  assert.ok(LEVELS.length >= 6, "at least six sectors");
+  assert.ok(LEVELS.length >= 8, "at least eight sectors");
   for (const L of LEVELS) {
     const W = L.rows[0].length, all = L.rows.join("");
     L.rows.forEach((r, i) => assert.equal(r.length, W, `${L.name} row ${i} width`));
-    assert.match(all, /^[#.@CEMKHV^]+$/, L.name + " uses only known tiles");
+    assert.match(all, /^[#.@CEMKHV^BD]+$/, L.name + " uses only known tiles");
     assert.equal(all.split("@").length - 1, 1, L.name + " has one spawn");
     assert.equal(all.split("E").length - 1, 1, L.name + " has one exit");
     assert.ok(/^#+$/.test(L.rows[0]), L.name + " top border is closed");
     L.rows.forEach((r, i) => assert.ok(r[0] === "#" && r[W - 1] === "#", `${L.name} side border closed on row ${i}`));
-    L.rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch === "M") assert.equal(L.rows[y + 1][x], "#", `${L.name} bot at ${x},${y} stands on a floor`); }));
+    L.rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch === "M" || ch === "B") assert.equal(L.rows[y + 1][x], "#", `${L.name} ${ch} at ${x},${y} stands on a floor`); }));
   }
 });
 
