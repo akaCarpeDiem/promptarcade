@@ -1390,7 +1390,7 @@ function drawOverlay(t) {
   // boss health bar
   const boss = threats.find((x) => x.kind === "boss");
   if (boss) {
-    const bw = Math.min(360, W * 0.6), bx = (W - bw) / 2, by = W < 600 ? 74 : 22;
+    const bw = Math.min(360, W * 0.6), bx = (W - bw) / 2, by = W < 600 ? 116 : 22;
     ctx.fillStyle = "rgba(10,6,20,.7)"; ctx.fillRect(bx - 2, by - 2, bw + 4, 12);
     const g = ctx.createLinearGradient(bx, 0, bx + bw, 0); g.addColorStop(0, "#ff3355"); g.addColorStop(1, "#ffb347");
     ctx.fillStyle = g; ctx.fillRect(bx, by, bw * Math.max(0, boss.hp / boss.maxHp), 8);
