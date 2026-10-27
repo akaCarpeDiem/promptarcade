@@ -3,87 +3,90 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
 <title>Circuit Hop — PromptArcade</title>
 <style>
-html,body{margin:0;height:100%;background:#05070f;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
-canvas{display:block;position:fixed;inset:0}
+html,body{margin:0;height:100%;background:#03050c;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#game{position:fixed;inset:0;z-index:1}
+#game canvas{display:block;width:100%;height:100%}
+#fx{position:fixed;inset:0;z-index:2;pointer-events:none}
 #ch-hud{opacity:0;transition:opacity .45s ease}
 #ch-hud.on{opacity:1}
 #ch-hud .pa-stat b{color:#7ee7a8}
 #s-chips b{color:#ffd27a}
+#s-time b{color:#c4f4ff;font-variant-numeric:tabular-nums}
+#s-time b.over{color:#ff9e9e}
+@media (max-width:560px){#ch-hud{right:136px}#s-level{display:none}}
 </style></head><body>
-<canvas id="c" aria-label="Circuit Hop playfield"></canvas>
+<div id="game" aria-label="Circuit Hop: a platformer through circuit-board sectors"></div>
+<canvas id="fx" aria-hidden="true"></canvas>
 <div class="pa-hud" id="ch-hud">
   <div class="pa-stat" id="s-score"><small>Score</small><b>0</b></div>
   <div class="pa-stat" id="s-chips"><small>Chips</small><b>0 / 0</b></div>
   <div class="pa-stat" id="s-level"><small>Sector</small><b>1</b></div>
+  <div class="pa-stat" id="s-time"><small>Time</small><b>0.0</b></div>
 </div>
 <script>
 window.paConfig = {
   slug: "circuit-hop",
   title: "Circuit Hop",
   native: true,
-  music: "bounce",
+  music: "synthwave",
   unit: "points",
   controls: [
     ["← → / A D", "Run"],
-    ["Space / ↑ / W", "Jump"],
-    ["Hold jump", "Jump higher"],
+    ["Space / ↑ / W", "Jump (hold for higher)"],
+    ["Shift / X", "Air dash, smashes bots"],
     ["Jump off a wall", "Wall jump"],
     ["Land on a bot", "Stomp it"]
   ]
 };
 </script>
-<script src="/games/play/pa-score.js?v=e650da0b4c"></script>
-<script src="/games/play/pa-gate.js?v=e650da0b4c"></script>
-<script src="/games/play/pa-kit.js?v=e650da0b4c"></script>
-<script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script type="module">
+import * as THREE from "/vendor/three/three.module.min.js";
+
 (() => {
-  const TAU = Math.PI * 2;
-  const { clamp, rand } = PA;
-  const TILE = 32;
-  const COL = {
-    bg: "#05070f",
-    wall: "#141b3a",
-    wallEdge: "#8ee9ff",
-    trace: "rgba(126,231,168,.16)",
-    chip: "#ffd27a",
-    chipCore: "#fff3c4",
-    player: "#8ee9ff",
-    playerCore: "#e8fbff",
-    enemy: "#ff7eb6",
-    laser: "#ff4d6d",
-    laserCore: "#ffb3c1",
-    spike: "#ff5e8a",
-    flag: "#7ee7a8",
-    portal: "#c4a6ff",
-    portalCore: "#8ee9ff"
-  };
+"use strict";
+// A tight platformer through circuit-board sectors, rendered as a 3D diorama. The physics is the
+// original tile game in pixels (TILE = 32), and the scene draws it one tile to one world unit with
+// y flipped, so every collision rule and the reachability test still hold. Added on top: an air dash
+// that smashes bots, boost pads, hover drones, chip combos, stomp chains and a rank for each sector.
+const PA = window.PA;
+const TAU = Math.PI * 2;
+const { clamp, lerp } = PA;
+const rnd = (a, b) => a + Math.random() * (b - a);
 
-  // World units are pixels at zoom 1; the camera zooms so a sector reads the same on any screen.
-  const GRAV = 2300;
-  const FALL_GRAV = 2900;          // a little heavier on the way down: snappier arcs
-  const MOVE = 330;
-  const ACCEL = 3200;
-  const AIR_ACCEL = 2300;
-  const JUMP_V = 640;
-  const JUMP_CUT = 0.45;           // releasing jump early trims the arc
-  const WALL_JUMP_X = 360;
-  const WALL_JUMP_Y = 600;
-  const WALL_SLIDE = 150;
-  const WALL_LOCK = 0.14;          // brief loss of air control after a wall jump
-  const MAX_FALL = 900;
-  const COYOTE = 0.1;
-  const JUMP_BUF = 0.13;
-  const STOMP_V = 520;
-  const PW = 20;
-  const PH = 28;
-  const BOT_SPEED = 62;
-  const LASER_CYCLE = 2.4;
-  const LASER_ON = 0.58;
+const TILE = 32;
+const GRAV = 2300;
+const FALL_GRAV = 2900;          // a little heavier on the way down: snappier arcs
+const MOVE = 330;
+const ACCEL = 3200;
+const AIR_ACCEL = 2300;
+const JUMP_V = 640;
+const JUMP_CUT = 0.45;           // releasing jump early trims the arc
+const WALL_JUMP_X = 360;
+const WALL_JUMP_Y = 600;
+const WALL_SLIDE = 150;
+const WALL_LOCK = 0.14;          // brief loss of air control after a wall jump
+const MAX_FALL = 900;
+const COYOTE = 0.1;
+const JUMP_BUF = 0.13;
+const STOMP_V = 520;
+const PW = 20;
+const PH = 28;
+const BOT_SPEED = 62;
+const DRONE_SPEED = 74;
+const LASER_CYCLE = 2.4;
+const LASER_ON = 0.58;
+const DASH_V = 720;
+const DASH_T = 0.17;
+const BOOST_V = 1020;            // a boost pad throws you about seven tiles up
+const COMBO_T = 1.6;             // chips this close together build a combo
 
-  /* Handcrafted sectors — # solid · @ spawn · C chip · E exit · M patrol bot · K checkpoint · ^ spikes
-   * H / V laser emitters (beam runs until it meets a wall). Every chip and exit is reachable: see
-   * tests/circuit-hop.test.mjs. */
-  const LEVELS = [
+/* Handcrafted sectors — # solid · @ spawn · C chip · E exit · M patrol bot · D hover drone · K checkpoint
+ * ^ spikes · B boost pad · H / V laser emitters (beam runs until it meets a wall). Every chip and exit is
+ * reachable: see tests/circuit-hop.test.mjs. */
+const LEVELS = [
     {
       name: "Relay Lane",
       rows: [
@@ -231,613 +234,1514 @@ window.paConfig = {
         "#####################....####################################....###############################",
         "#####################....####################################....###############################"
       ]
+    },
+    {
+      name: "Heat Sink",
+      rows: [
+        "########################################",
+        "#......................................#",
+        "#.................C...........D........#",
+        "#...E.....C.............C..C...........#",
+        "#.##############....#################..#",
+        "#...................................#..#",
+        "#...................................#..#",
+        "#...................................#..#",
+        "#...................................#.C#",
+        "#...................................#..#",
+        "#...............C.......D...........#..#",
+        "#.............######................#C.#",
+        "#.........C.........................#..#",
+        "#.......######......................#..#",
+        "#..C...................................#",
+        "#.#####................................#",
+        "#................................#######",
+        "#........C.C..........C...K..C.........#",
+        "#......######...........########.......#",
+        "#.....................C................#",
+        "#.............D........................#",
+        "#................C.....................#",
+        "#......................................#",
+        "#.@..B.C.C..M...^^^...B.....M..........#",
+        "########################################",
+        "########################################"
+      ]
+    },
+    {
+      name: "Mainframe",
+      rows: [
+        "####################################################################################################",
+        "#..................................................................................................#",
+        "#..................................................................................................#",
+        "#.............###.........................................#........................................#",
+        "#.............###.........................................#....###.................................#",
+        "#.............###......................................#..#....###.................................#",
+        "#.............###......................................#..#....###.................................#",
+        "#..............V.......................................#.C#....###.................................#",
+        "#....................................D.................#..#.....V.......D..........................#",
+        "#......................................................#..#........................................#",
+        "#................................C..C..C..C............#C.#................................C..C.E..#",
+        "#..............................##############..........#..#................C.................#######",
+        "#..............................................C.......#..#...........C...###..............C.......#",
+        "#.............................................####.....#..#...K......###.......####................#",
+        "#....................CC............C...................#..#########................................#",
+        "#..............C.....##...........###...###...............#........................................#",
+        "#..@..C.C..M........^^^^..K..B..^^^^^^^^^^^^^^^^..M..C..C.#........^^^^^^^^^^^^^^....M..C..B.......#",
+        "####################################################################################################",
+        "####################################################################################################",
+        "####################################################################################################"
+      ]
     }
   ];
-  let W = 0, H = 0, S = 1, DPR = 1, Z = 1;
-  let levelIdx = 0, levelW = 0, levelH = 0, grid = [], solidList = [], spikes = [];
-  let spawn = { x: 0, y: 0 }, checkpoint = null;
-  let chips = [], enemies = [], lasers = [], flags = [], exit = null;
-  let player = null, camX = 0, camY = 0;
-  let score = 0, chipsGot = 0, simT = 0, levelT = 0, deaths = 0, stomps = 0;
-  let coyote = 0, jumpBuf = 0, wallDir = 0, wallLock = 0, invuln = 0, banner = null, overSent = false, jumpHeld = false;
-  let totalChipsAll = 0;
+const PAR = [24, 30, 30, 34, 40, 56, 40, 62];
+// edge glow + data-pulse colour for each sector
+const PAL = [
+  [0x8ee9ff, 0x7dffb0], [0x7dffb0, 0x8ee9ff], [0xc4a6ff, 0xff7eb6], [0xffa25e, 0xffd27a],
+  [0x5ef2ff, 0xc4a6ff], [0xff7eb6, 0x8ee9ff], [0xffb35a, 0xff5e3a], [0xa8ff5e, 0x5ef2ff]
+];
 
-  const view = PA.canvas(document.getElementById("c"), { onResize: layout });
-  const ctx = view.ctx;
-  const fx = new PA.Particles(700);
-  const texts = new PA.Texts();
-  const hud = document.getElementById("ch-hud");
+/* ---------------- renderer + post ---------------- */
+const mount = document.getElementById("game");
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+const dprCap = () => Math.min(PA.isTouch ? 1.5 : 2, devicePixelRatio || 1);
+renderer.setPixelRatio(dprCap());
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+mount.appendChild(renderer.domElement);
 
-  function layout(v) {
-    W = v.w; H = v.h; DPR = v.dpr;
-    S = clamp(Math.sqrt(W * H) / 820, 0.72, 1.35);
-    // about 14 tiles of height on screen, never so zoomed that a phone sees less than 11 tiles across
-    Z = clamp(Math.min(H / (14 * TILE), W / (11 * TILE)), 0.7, 2.4);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020309);
+const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.3, 400);
+const hdr = (c, k) => new THREE.Color(c).multiplyScalar(k);
+
+// HDR scene into a half-float target, bright pass, five-level blur chain, then tone map + vignette + grain.
+function makePost() {
+  const ext = renderer.extensions;
+  const fullFloat = ext.has("EXT_color_buffer_float"), hdrOk = fullFloat || ext.has("EXT_color_buffer_half_float");
+  const type = hdrOk ? THREE.HalfFloatType : THREE.UnsignedByteType;
+  const main = new THREE.WebGLRenderTarget(1, 1, { type, samples: hdrOk && !fullFloat ? 0 : PA.isTouch ? 2 : 4 });
+  const LV = 5, lv = [], tmp = [];
+  for (let i = 0; i < LV; i++) {
+    lv.push(new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false }));
+    tmp.push(new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false }));
   }
-  const VW = () => W / Z, VH = () => H / Z;
-
-  function paintHud() {
-    PA.stat("s-score", score.toLocaleString());
-    PA.stat("s-chips", chipsGot + " / " + totalChipsAll);
-    PA.stat("s-level", (levelIdx + 1) + " · " + (LEVELS[levelIdx] ? LEVELS[levelIdx].name : "—"));
-  }
-
-  const isSolid = (tx, ty) => tx < 0 || tx >= grid[0].length || ty < 0 ? true : ty >= grid.length ? false : grid[ty][tx] === 1;
-
-  function parseLevel(idx) {
-    const rows = LEVELS[idx].rows;
-    levelH = rows.length * TILE;
-    levelW = rows[0].length * TILE;
-    grid = rows.map((r) => [...r].map((ch) => (ch === "#" ? 1 : 0)));
-    solidList = []; spikes = []; chips = []; enemies = []; lasers = []; flags = [];
-    exit = null; checkpoint = null;
-    for (let y = 0; y < rows.length; y++) {
-      for (let x = 0; x < rows[y].length; x++) {
-        const ch = rows[y][x], wx = x * TILE, wy = y * TILE;
-        if (ch === "#") solidList.push({ x: wx, y: wy, tx: x, ty: y });
-        else if (ch === "@") spawn = { x: wx + (TILE - PW) / 2, y: wy + TILE - PH };
-        else if (ch === "C") chips.push({ x: wx + TILE / 2, y: wy + TILE / 2, r: 10, got: false, ph: rand(TAU) });
-        else if (ch === "E") exit = { x: wx + 2, y: wy - 6, w: TILE - 4, h: TILE + 4, ph: rand(TAU) };
-        else if (ch === "K") flags.push({ x: wx + TILE / 2, y: wy + TILE, on: false, t: 0 });
-        else if (ch === "^") spikes.push({ x: wx, y: wy + TILE * 0.45, w: TILE, h: TILE * 0.55 });
-        else if (ch === "M") enemies.push({ x: wx + TILE / 2, y: wy + TILE - 12, r: 12, dir: enemies.length % 2 ? -1 : 1, ph: rand(TAU), dead: false, squash: 0 });
-        else if (ch === "H" || ch === "V") lasers.push({ x: wx + TILE / 2, y: wy + TILE / 2, axis: ch === "H" ? "h" : "v", phase: lasers.length * 0.8 });
-      }
-    }
-    lasers.forEach(buildLaserBeam);
-  }
-
-  function countAllChips() {
-    let n = 0;
-    LEVELS.forEach((L) => L.rows.forEach((row) => { for (const ch of row) if (ch === "C") n++; }));
-    return n;
-  }
-
-  function buildLaserBeam(L) {
-    const tx = Math.floor(L.x / TILE), ty = Math.floor(L.y / TILE);
-    if (L.axis === "h") {
-      let l = tx, r = tx;
-      while (!isSolid(l - 1, ty)) l--;
-      while (!isSolid(r + 1, ty)) r++;
-      L.x1 = l * TILE; L.x2 = (r + 1) * TILE; L.y1 = L.y2 = L.y;
-    } else {
-      let t = ty, b = ty;
-      while (!isSolid(tx, t - 1)) t--;
-      while (b + 1 < grid.length && !isSolid(tx, b + 1)) b++;
-      L.x1 = L.x2 = L.x; L.y1 = t * TILE; L.y2 = (b + 1) * TILE;
-    }
-  }
-
-  function resetPlayer() {
-    const at = checkpoint || spawn;
-    player = { x: at.x, y: at.y, vx: 0, vy: 0, w: PW, h: PH, onGround: false, dead: false, face: 1, squash: 0 };
-    coyote = 0; jumpBuf = 0; wallDir = 0; wallLock = 0; invuln = 0.8;
-  }
-
-  function centerCamera(snap) {
-    const vw = VW(), vh = VH();
-    const tx = levelW <= vw ? (levelW - vw) / 2 : clamp(player.x + player.w / 2 - vw / 2 + player.face * vw * 0.08, 0, levelW - vw);
-    const ty = levelH <= vh ? (levelH - vh) / 2 : clamp(player.y + player.h / 2 - vh * 0.55, 0, levelH - vh);
-    if (snap) { camX = tx; camY = ty; return; }
-    return { tx, ty };
-  }
-
-  function loadLevel(idx, keepScore) {
-    levelIdx = idx;
-    parseLevel(idx);
-    resetPlayer();
-    centerCamera(true);
-    levelT = 0;
-    if (!keepScore) { score = 0; chipsGot = 0; deaths = 0; stomps = 0; }
-    banner = { text: "Sector " + (idx + 1), sub: LEVELS[idx].name, t: 0, max: 2.2 };
-    paintHud();
-  }
-
-  function reset() {
-    simT = 0; overSent = false;
-    totalChipsAll = countAllChips();
-    fx.clear(); texts.clear();
-    loadLevel(0, false);
-    hud.classList.add("on");
-    PA.music.intensity(0.15);
-  }
-
-  PA.onStart(reset);
-
-  PA.touchControls({
-    left: [{ label: "◀", key: "ArrowLeft", code: "ArrowLeft", aria: "Move left" }, { label: "▶", key: "ArrowRight", code: "ArrowRight", aria: "Move right" }],
-    right: [{ label: "JUMP", key: " ", code: "Space", wide: true, aria: "Jump" }]
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+  quad.frustumCulled = false;
+  const pscene = new THREE.Scene();
+  pscene.add(quad);
+  const vs = "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }";
+  const mk = (fs, uniforms) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
+  const box4 = "vec3 c = 0.25 * (texture2D(tex, vUv + px * vec2(-0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(-0.5, 0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, 0.5)).rgb);";
+  const bright = mk([
+    "uniform sampler2D tex; uniform vec2 px; uniform float thr; varying vec2 vUv;",
+    "void main(){", box4,
+    "  float l = max(c.r, max(c.g, c.b));",
+    "  float knee = thr * 0.5, soft = clamp(l - thr + knee, 0.0, 2.0 * knee);",
+    "  soft = soft * soft / (4.0 * knee + 1e-4);",
+    "  gl_FragColor = vec4(min(c * max(soft, l - thr) / max(l, 1e-4), vec3(30.0)), 1.0);",
+    "}"].join("\n"), { tex: { value: null }, px: { value: new THREE.Vector2() }, thr: { value: hdrOk ? 0.85 : 0.6 } });
+  const down = mk("uniform sampler2D tex; uniform vec2 px; varying vec2 vUv; void main(){ " + box4 + " gl_FragColor = vec4(c, 1.0); }",
+    { tex: { value: null }, px: { value: new THREE.Vector2() } });
+  const blur = mk([
+    "uniform sampler2D tex; uniform vec2 dir; varying vec2 vUv;",
+    "void main(){",
+    "  vec3 c = texture2D(tex, vUv).rgb * 0.2270270270;",
+    "  c += (texture2D(tex, vUv + dir * 1.3846153846).rgb + texture2D(tex, vUv - dir * 1.3846153846).rgb) * 0.3162162162;",
+    "  c += (texture2D(tex, vUv + dir * 3.2307692308).rgb + texture2D(tex, vUv - dir * 3.2307692308).rgb) * 0.0702702703;",
+    "  gl_FragColor = vec4(c, 1.0);",
+    "}"].join("\n"), { tex: { value: null }, dir: { value: new THREE.Vector2() } });
+  const comp = mk([
+    "uniform sampler2D tScene, b0, b1, b2, b3, b4; uniform float strength, grain, time, hurt, warp; varying vec2 vUv;",
+    "void main(){",
+    "  vec2 uv = vUv;",
+    "  vec2 q = uv - 0.5;",
+    "  uv -= q * warp * 0.035 * (0.5 + 0.5 * sin(time * 30.0 + q.y * 40.0));",
+    "  vec3 c = texture2D(tScene, uv).rgb;",
+    "  float ca = 0.0015 + warp * 0.01;",
+    "  c.r = mix(c.r, texture2D(tScene, uv + q * ca).r, 0.8);",
+    "  c.b = mix(c.b, texture2D(tScene, uv - q * ca).b, 0.8);",
+    "  vec3 b = texture2D(b0, uv).rgb * 0.5 + texture2D(b1, uv).rgb * 0.6 + texture2D(b2, uv).rgb * 0.75 + texture2D(b3, uv).rgb * 0.85 + texture2D(b4, uv).rgb * 0.95;",
+    "  c += b * strength;",
+    "  float vig = dot(q, q);",
+    "  c *= 1.0 - vig * 0.85;",
+    "  c += vec3(0.9, 0.08, 0.15) * hurt * smoothstep(0.08, 0.4, vig);",
+    "  c += vec3(0.5, 0.4, 1.0) * warp * 0.1;",
+    "  float scan = 0.97 + 0.03 * sin(gl_FragCoord.y * 1.6);",
+    "  c *= scan;",
+    "  gl_FragColor = vec4(c, 1.0);",
+    "  #include <tonemapping_fragment>",
+    "  #include <colorspace_fragment>",
+    "  float n = fract(sin(dot(gl_FragCoord.xy + fract(time) * 97.0, vec2(12.9898, 78.233))) * 43758.5453);",
+    "  gl_FragColor.rgb += (n - 0.5) * grain;",
+    "}"].join("\n"), {
+    tScene: { value: main.texture }, b0: { value: lv[0].texture }, b1: { value: lv[1].texture }, b2: { value: lv[2].texture },
+    b3: { value: lv[3].texture }, b4: { value: lv[4].texture }, strength: { value: 0.6 }, grain: { value: 0.025 }, time: { value: 0 }, hurt: { value: 0 }, warp: { value: 0 }
   });
-
-  const JUMP_KEYS = ["Space", " ", "ArrowUp", "KeyW", "w", "W"];
-  PA.onKey((e) => {
-    if (e.repeat) return;
-    if (JUMP_KEYS.indexOf(e.code) >= 0 || JUMP_KEYS.indexOf(e.key) >= 0) {
-      e.preventDefault();
-      jumpBuf = JUMP_BUF;
-    }
-  });
-
-  function tryJump() {
-    if (jumpBuf <= 0) return;
-    if (player.onGround || coyote > 0) {
-      player.vy = -JUMP_V;
-      player.onGround = false;
-      player.squash = -0.25;
-      coyote = 0; jumpBuf = 0;
-      PA.sfx("whoosh", { pitch: 1.05, vol: 0.55 });
-      PA.tone({ freq: 420, to: 620, type: "triangle", dur: 0.06, vol: 0.05 });
-      fx.burst(player.x + player.w / 2, player.y + player.h, { n: 6, color: COL.player, speed: 70, life: 0.25, size: 2, vy: -20 });
-    } else if (wallDir) {
-      player.vy = -WALL_JUMP_Y;
-      player.vx = WALL_JUMP_X * -wallDir;
-      player.face = -wallDir;
-      wallLock = WALL_LOCK;
-      jumpBuf = 0; coyote = 0;
-      PA.sfx("whoosh", { pitch: 1.18, vol: 0.6 });
-      PA.tone({ freq: 520, to: 780, type: "square", dur: 0.05, vol: 0.045 });
-      fx.burst(wallDir > 0 ? player.x + player.w : player.x, player.y + player.h * 0.5, { n: 8, color: COL.wallEdge, speed: 90, life: 0.3, size: 2.2 });
-      wallDir = 0;
-    }
-  }
-
-  function overlapsSolid(x, y, w, h) {
-    const x0 = Math.floor(x / TILE), x1 = Math.floor((x + w - 0.001) / TILE);
-    const y0 = Math.floor(y / TILE), y1 = Math.floor((y + h - 0.001) / TILE);
-    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (isSolid(tx, ty)) return { tx, ty };
-    return null;
-  }
-
-  function moveAxis(p, dx, dy) {
-    // horizontal, in steps no larger than half a tile so fast moves can't skip a wall
-    const nx = Math.ceil(Math.abs(dx) / (TILE / 2)) || 1;
-    for (let i = 0; i < nx; i++) {
-      p.x += dx / nx;
-      const hit = overlapsSolid(p.x, p.y, p.w, p.h);
-      if (hit) { p.x = dx > 0 ? hit.tx * TILE - p.w : (hit.tx + 1) * TILE; p.vx = 0; break; }
-    }
-    p.onGround = false;
-    const ny = Math.ceil(Math.abs(dy) / (TILE / 2)) || 1;
-    for (let i = 0; i < ny; i++) {
-      p.y += dy / ny;
-      const hit = overlapsSolid(p.x, p.y, p.w, p.h);
-      if (hit) {
-        if (dy > 0) { p.y = hit.ty * TILE - p.h; p.onGround = true; if (p.vy > 500) p.squash = 0.22; }
-        else p.y = (hit.ty + 1) * TILE;
-        p.vy = 0;
-        break;
+  const pass = (m, target) => { quad.material = m; renderer.setRenderTarget(target); renderer.render(pscene, cam); };
+  return {
+    comp,
+    setSize(w, h) {
+      main.setSize(w, h);
+      for (let i = 0; i < LV; i++) {
+        const lw = Math.max(1, w >> (i + 1)), lh = Math.max(1, h >> (i + 1));
+        lv[i].setSize(lw, lh); tmp[i].setSize(lw, lh);
       }
+    },
+    render(sc, cm, t) {
+      renderer.setRenderTarget(main);
+      renderer.render(sc, cm);
+      bright.uniforms.tex.value = main.texture;
+      bright.uniforms.px.value.set(1 / main.width, 1 / main.height);
+      pass(bright, lv[0]);
+      for (let i = 0; i < LV; i++) {
+        if (i) {
+          down.uniforms.tex.value = lv[i - 1].texture;
+          down.uniforms.px.value.set(1 / lv[i - 1].width, 1 / lv[i - 1].height);
+          pass(down, lv[i]);
+        }
+        blur.uniforms.tex.value = lv[i].texture; blur.uniforms.dir.value.set(1 / lv[i].width, 0);
+        pass(blur, tmp[i]);
+        blur.uniforms.tex.value = tmp[i].texture; blur.uniforms.dir.value.set(0, 1 / lv[i].height);
+        pass(blur, lv[i]);
+      }
+      comp.uniforms.time.value = t;
+      pass(comp, null);
     }
-    if (!p.onGround && dy >= 0 && overlapsSolid(p.x, p.y + 1, p.w, 1)) p.onGround = true;
+  };
+}
+const post = makePost();
+
+/* ---------------- overlay canvas ---------------- */
+let W = innerWidth, H = innerHeight;
+const overlay = PA.canvas(document.getElementById("fx"), { onResize: (o) => { W = o.w; H = o.h; } });
+const ctx = overlay.ctx;
+const hud = document.getElementById("ch-hud");
+const tmpV = new THREE.Vector3();
+function toScreen(x, y, z) {
+  tmpV.set(x, y, z || 0).project(camera);
+  return { x: (tmpV.x + 1) / 2 * W, y: (1 - tmpV.y) / 2 * H };
+}
+// physics pixels → world units
+const wx = (px) => px / TILE, wy = (py) => -py / TILE;
+
+/* ---------------- shared textures + geometry helpers ---------------- */
+function canvasTex(w, h, paint, data) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  paint(cv.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(cv);
+  if (!data) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const glowTex = canvasTex(128, 128, (g, w) => {
+  const gr = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+  gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(.18, "rgba(255,255,255,.55)"); gr.addColorStop(.5, "rgba(255,255,255,.12)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, w, w);
+});
+function glowSprite(color, scale) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  s.scale.setScalar(scale);
+  return s;
+}
+// A circuit-board data texture: R = copper traces, G = pads and vias, B = slow variation for the data flow.
+const pcbTex = canvasTex(512, 512, (g, w) => {
+  g.fillStyle = "#000"; g.fillRect(0, 0, w, w);
+  g.globalCompositeOperation = "lighter";
+  const S = 16;
+  for (let i = 0; i < 26; i++) {
+    g.fillStyle = `rgba(0,0,${(40 + Math.random() * 200) | 0},1)`;
+    g.beginPath(); g.arc(Math.random() * w, Math.random() * w, 40 + Math.random() * 90, 0, TAU); g.fill();
+  }
+  g.lineCap = "round"; g.lineJoin = "round";
+  for (let i = 0; i < 110; i++) {
+    let x = (2 + ((Math.random() * (w / S - 4)) | 0)) * S, y = (2 + ((Math.random() * (w / S - 4)) | 0)) * S;
+    g.strokeStyle = "rgb(255,0,0)"; g.lineWidth = Math.random() < 0.25 ? 5 : 2.5;
+    g.beginPath(); g.moveTo(x, y);
+    let dir = (Math.random() * 4) | 0;
+    const segs = 2 + ((Math.random() * 4) | 0);
+    for (let s = 0; s < segs; s++) {
+      const len = (1 + ((Math.random() * 5) | 0)) * S;
+      const diag = Math.random() < 0.35;
+      const dx = [1, 0, -1, 0][dir], dy = [0, 1, 0, -1][dir];
+      const ex = diag ? dy : 0, ey = diag ? -dx : 0;
+      x = clamp(x + (dx + ex) * len, S, w - S); y = clamp(y + (dy + ey) * len, S, w - S);
+      g.lineTo(x, y);
+      if (Math.random() < 0.5) dir = (dir + (Math.random() < 0.5 ? 1 : 3)) % 4;
+    }
+    g.stroke();
+    g.fillStyle = "rgb(0,255,0)";
+    g.beginPath(); g.arc(x, y, 4, 0, TAU); g.fill();
+  }
+  // IC footprints
+  for (let i = 0; i < 7; i++) {
+    const x = 32 + Math.random() * (w - 120), y = 32 + Math.random() * (w - 120), n = 4 + ((Math.random() * 5) | 0);
+    g.fillStyle = "rgb(0,170,0)";
+    for (let k = 0; k < n; k++) { g.fillRect(x + k * 10, y, 5, 9); g.fillRect(x + k * 10, y + 40, 5, 9); }
+    g.strokeStyle = "rgb(0,90,0)"; g.lineWidth = 1.5; g.strokeRect(x - 4, y + 13, n * 10 + 3, 23);
+  }
+}, true);
+pcbTex.wrapS = pcbTex.wrapT = THREE.RepeatWrapping;
+pcbTex.anisotropy = 4;
+
+function mergeGeos(parts) {
+  const pos = [], nor = [];
+  for (const [g0, m] of parts) {
+    const g = g0.index ? g0.toNonIndexed() : g0.clone();
+    if (m) g.applyMatrix4(m);
+    pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array);
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  return out;
+}
+const M4 = (x, y, z, rx, ry, rz, s) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx || 0, ry || 0, rz || 0)), new THREE.Vector3(1, 1, 1).multiplyScalar(s || 1));
+
+/* ---------------- lights (a fixed set: intensities change, the count never does) ---------------- */
+const hemi = new THREE.HemisphereLight(0x7a90ff, 0x120a1a, 0.9);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(0xffffff, 1.7);
+key.position.set(-4, 8, 7);
+scene.add(key);
+const playerLight = new THREE.PointLight(0x8ee9ff, 5, 7, 1.6);
+scene.add(playerLight);
+const exitLight = new THREE.PointLight(0xc4a6ff, 9, 9, 1.6);
+scene.add(exitLight);
+// a simple environment so the metal parts pick up some colour instead of going black
+{
+  const pm = new THREE.PMREMGenerator(renderer);
+  const envCanvas = canvasTex(256, 128, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, "#2a3a7a"); gr.addColorStop(0.45, "#0d1430"); gr.addColorStop(0.55, "#06070f"); gr.addColorStop(1, "#140a1e");
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.fillStyle = "#8ee9ff"; g.fillRect(40, 30, 50, 6); g.fillStyle = "#c4a6ff"; g.fillRect(160, 24, 40, 5);
+  });
+  envCanvas.mapping = THREE.EquirectangularReflectionMapping;
+  scene.environment = pm.fromEquirectangular(envCanvas).texture;
+  scene.environmentIntensity = 0.6;
+}
+
+/* ---------------- materials ---------------- */
+const MAT = {
+  shell: new THREE.MeshStandardMaterial({ color: 0xe6edff, metalness: 0.35, roughness: 0.3 }),
+  joint: new THREE.MeshStandardMaterial({ color: 0x2a3150, metalness: 0.6, roughness: 0.4 }),
+  visor: new THREE.MeshStandardMaterial({ color: 0x04060c, metalness: 0.9, roughness: 0.08 }),
+  eye: new THREE.MeshBasicMaterial({ color: hdr(0x8ee9ff, 4) }),
+  antenna: new THREE.MeshBasicMaterial({ color: hdr(0x8ee9ff, 4) }),
+  stripe: new THREE.MeshBasicMaterial({ color: hdr(0x5ef2ff, 2.2) }),
+  botShell: new THREE.MeshStandardMaterial({ color: 0xff6aa8, metalness: 0.45, roughness: 0.28 }),
+  botBase: new THREE.MeshStandardMaterial({ color: 0x1a1426, metalness: 0.6, roughness: 0.45 }),
+  botEye: new THREE.MeshBasicMaterial({ color: hdr(0xff3d8b, 4) }),
+  droneBody: new THREE.MeshStandardMaterial({ color: 0x2a2236, metalness: 0.8, roughness: 0.25 }),
+  droneRing: new THREE.MeshBasicMaterial({ color: hdr(0xff8a3d, 3) }),
+  chipBody: new THREE.MeshStandardMaterial({ color: 0x121521, metalness: 0.4, roughness: 0.5 }),
+  chipPins: new THREE.MeshStandardMaterial({ color: 0xd9b25a, metalness: 1, roughness: 0.25 }),
+  chipCore: new THREE.MeshBasicMaterial({ color: hdr(0xffd27a, 3.2) }),
+  spike: new THREE.MeshStandardMaterial({ color: 0x3a0a18, metalness: 0.7, roughness: 0.3, emissive: 0xff2a55, emissiveIntensity: 1.3 }),
+  emitter: new THREE.MeshStandardMaterial({ color: 0x241826, metalness: 0.7, roughness: 0.35 }),
+  lens: new THREE.MeshBasicMaterial({ color: hdr(0xff4d6d, 3) }),
+  pylon: new THREE.MeshStandardMaterial({ color: 0x2c3350, metalness: 0.7, roughness: 0.35 }),
+  padBase: new THREE.MeshStandardMaterial({ color: 0x1c2236, metalness: 0.7, roughness: 0.35 }),
+  cap: new THREE.MeshStandardMaterial({ color: 0x2c4c8c, metalness: 0.45, roughness: 0.3 }),
+  capTop: new THREE.MeshStandardMaterial({ color: 0x9aa6c4, metalness: 0.9, roughness: 0.3 }),
+  ic: new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.15, roughness: 0.55, map: canvasTex(128, 128, (g, w) => {
+    g.fillStyle = "#2c3142"; g.fillRect(0, 0, w, w);
+    g.fillStyle = "#3a4156"; g.fillRect(6, 6, w - 12, w - 12);
+    g.fillStyle = "rgba(220,228,255,.55)"; g.font = "700 15px monospace"; g.textAlign = "center";
+    g.fillText("PA-77", w / 2, w / 2 - 4); g.font = "11px monospace"; g.fillText("0x2F1C", w / 2, w / 2 + 14);
+    g.beginPath(); g.arc(20, 20, 6, 0, TAU); g.fillStyle = "#23283a"; g.fill();
+  }) }),
+  frame: new THREE.MeshStandardMaterial({ color: 0x2a2440, metalness: 0.85, roughness: 0.25 })
+};
+
+/* ---------------- tile shader ---------------- */
+const tileMat = new THREE.ShaderMaterial({
+  side: THREE.DoubleSide,
+  uniforms: { pcb: { value: pcbTex }, time: { value: 0 }, pl: { value: new THREE.Vector3() }, edge: { value: new THREE.Color() }, acc: { value: new THREE.Color() }, flash: { value: 0 } },
+  vertexShader: `
+    attribute vec4 air; attribute vec2 luv; attribute float kind;
+    varying vec4 vAir; varying vec2 vL; varying float vK; varying vec3 vW; varying vec3 vN;
+    void main(){ vAir = air; vL = luv; vK = kind; vN = normal; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+  fragmentShader: `
+    uniform sampler2D pcb; uniform float time, flash; uniform vec3 pl, edge, acc;
+    varying vec4 vAir; varying vec2 vL; varying float vK; varying vec3 vW; varying vec3 vN;
+    void main(){
+      vec3 n = normalize(vN);
+      float dif = max(dot(n, normalize(vec3(-0.35, 0.8, 0.6))), 0.0) * 0.55 + 0.45;
+      vec3 d = pl - vW; float pd = dot(d, d);
+      float plight = 1.0 / (1.0 + pd * 0.12);
+      vec3 base, emit = vec3(0.0);
+      if (vK < 0.5) {
+        vec4 t = texture2D(pcb, vW.xy * 0.25);
+        base = vec3(0.026, 0.05, 0.068) + vec3(0.045, 0.1, 0.09) * t.r + vec3(0.3, 0.24, 0.1) * t.g * 0.45;
+        float flow = fract(vW.x * 0.11 + vW.y * 0.06 - time * 0.22 + t.b * 0.5);
+        emit += acc * t.r * pow(flow, 22.0) * 1.8;
+        emit += vec3(0.8, 0.65, 0.3) * t.g * 0.05;
+        float e = 0.0, soft = 0.0;
+        e = max(e, vAir.x * smoothstep(0.06, 0.0, 1.0 - vL.y)); soft += vAir.x * smoothstep(0.45, 0.0, 1.0 - vL.y);
+        e = max(e, vAir.y * smoothstep(0.06, 0.0, 1.0 - vL.x)); soft += vAir.y * smoothstep(0.45, 0.0, 1.0 - vL.x);
+        e = max(e, vAir.z * smoothstep(0.06, 0.0, vL.y)); soft += vAir.z * smoothstep(0.45, 0.0, vL.y);
+        e = max(e, vAir.w * smoothstep(0.06, 0.0, vL.x)); soft += vAir.w * smoothstep(0.45, 0.0, vL.x);
+        emit += edge * (e * 1.7 + soft * 0.09);
+        emit += vec3(0.4, 0.85, 1.0) * plight * 0.18 * (0.4 + t.r);
+      } else if (vK < 1.5) {
+        // the walkable top: a ribbed metal deck with a lit lip along the front edge
+        float rib = smoothstep(0.35, 0.5, abs(fract(vW.x * 5.0) - 0.5));
+        base = vec3(0.07, 0.085, 0.12) + rib * 0.035;
+        emit += edge * smoothstep(0.05, 0.0, vL.y) * 2.0;
+        emit += edge * 0.12 * (1.0 - vL.y);
+        emit += vec3(0.4, 0.85, 1.0) * plight * 0.35;
+      } else {
+        float band = smoothstep(0.04, 0.0, abs(vL.y - 0.08));
+        base = vec3(0.035, 0.045, 0.075);
+        emit += edge * band * 0.8 + edge * 0.05;
+        emit += vec3(0.4, 0.85, 1.0) * plight * 0.25;
+      }
+      vec3 col = base * dif + emit + edge * flash * 0.4;
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+const ZF = 0.5, ZB = 1.7;   // tiles run from z = -ZB (the board) to z = +ZF (the front face)
+function buildTileGeo(rows) {
+  const pos = [], nor = [], luv = [], air = [], kind = [];
+  const Hh = rows.length, Ww = rows[0].length;
+  const solid = (x, y) => x < 0 || x >= Ww || y < 0 || y >= Hh ? true : rows[y][x] === "#";
+  function quad(c, n, k, a, uvs) {
+    for (const i of [0, 1, 2, 0, 2, 3]) {
+      pos.push(c[i][0], c[i][1], c[i][2]); nor.push(n[0], n[1], n[2]);
+      luv.push(uvs[i][0], uvs[i][1]); air.push(a[0], a[1], a[2], a[3]); kind.push(k);
+    }
+  }
+  const U = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  for (let y = 0; y < Hh; y++) for (let x = 0; x < Ww; x++) {
+    if (!solid(x, y)) continue;
+    const X0 = x, X1 = x + 1, Y1 = -y, Y0 = -y - 1;
+    const a = [!solid(x, y - 1) ? 1 : 0, !solid(x + 1, y) ? 1 : 0, !solid(x, y + 1) ? 1 : 0, !solid(x - 1, y) ? 1 : 0];
+    // skip the deep interior well away from any air: nobody sees past the first few tiles of a wall
+    quad([[X0, Y0, ZF], [X1, Y0, ZF], [X1, Y1, ZF], [X0, Y1, ZF]], [0, 0, 1], 0, a, U);
+    if (a[0]) quad([[X0, Y1, ZF], [X1, Y1, ZF], [X1, Y1, -ZB], [X0, Y1, -ZB]], [0, 1, 0], 1, a, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+    if (a[2]) quad([[X0, Y0, ZF], [X1, Y0, ZF], [X1, Y0, -ZB], [X0, Y0, -ZB]], [0, -1, 0], 2, a, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+    if (a[1]) quad([[X1, Y0, ZF], [X1, Y1, ZF], [X1, Y1, -ZB], [X1, Y0, -ZB]], [1, 0, 0], 2, a, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+    if (a[3]) quad([[X0, Y0, ZF], [X0, Y1, ZF], [X0, Y1, -ZB], [X0, Y0, -ZB]], [-1, 0, 0], 2, a, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("luv", new THREE.Float32BufferAttribute(luv, 2));
+  g.setAttribute("air", new THREE.Float32BufferAttribute(air, 4));
+  g.setAttribute("kind", new THREE.Float32BufferAttribute(kind, 1));
+  return g;
+}
+
+/* ---------------- the board behind the level ---------------- */
+const boardMat = new THREE.ShaderMaterial({
+  uniforms: { pcb: { value: pcbTex }, time: { value: 0 }, pl: { value: new THREE.Vector3() }, edge: { value: new THREE.Color() }, acc: { value: new THREE.Color() }, bounds: { value: new THREE.Vector4() } },
+  vertexShader: "varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
+  fragmentShader: `
+    uniform sampler2D pcb; uniform float time; uniform vec3 pl, edge, acc; uniform vec4 bounds; varying vec3 vW;
+    void main(){
+      vec2 p = vW.xy;
+      vec4 t = texture2D(pcb, p * 0.2);
+      vec3 col = vec3(0.008, 0.013, 0.024);
+      col += vec3(0.012, 0.028, 0.034) * t.r + vec3(0.05, 0.04, 0.02) * t.g * 0.25;
+      float flow = fract(p.x * 0.06 - p.y * 0.09 - time * 0.15 + t.b * 0.7);
+      col += acc * t.r * pow(flow, 30.0) * 0.55;
+      vec2 gq = abs(fract(p) - 0.5);
+      col += edge * 0.015 * smoothstep(0.47, 0.5, max(gq.x, gq.y));
+      vec2 d = pl.xy - p; col += vec3(0.25, 0.6, 0.8) * 0.22 / (1.0 + dot(d, d) * 0.12);
+      float o = max(max(bounds.x - p.x, p.x - bounds.z), max(bounds.y - p.y, p.y - bounds.w));
+      col *= 1.0 - smoothstep(-1.0, 7.0, o);
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+const board = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), boardMat);
+board.position.z = -ZB;
+scene.add(board);
+
+/* ---------------- floating data motes ---------------- */
+const moteMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { time: { value: 0 }, scale: { value: 600 }, col: { value: new THREE.Color() } },
+  vertexShader: `uniform float time, scale; attribute float seed; varying float vA;
+    void main(){ vec3 p = position; p.y += mod(time * (0.15 + seed * 0.25) + seed * 40.0, 8.0) - 4.0; p.x += sin(time * 0.6 + seed * 20.0) * 0.3;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0); vA = 0.4 + 0.6 * sin(time * 2.0 + seed * 30.0); gl_PointSize = max(1.0, (0.04 + seed * 0.05) * scale / -mv.z); gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: "uniform vec3 col; varying float vA; void main(){ float d = length(gl_PointCoord - 0.5); gl_FragColor = vec4(col * vA * smoothstep(0.5, 0.0, d), 1.0); }"
+});
+let motes = null;
+
+/* ---------------- particles (3D points) ---------------- */
+const PMAX = 3000;
+const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3), pSize = new Float32Array(PMAX);
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute("color", new THREE.BufferAttribute(pCol, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute("size", new THREE.BufferAttribute(pSize, 1).setUsage(THREE.DynamicDrawUsage));
+const pointsMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { scale: { value: 600 } },
+  vertexShader: "uniform float scale; attribute float size; attribute vec3 color; varying vec3 vC; void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = max(1.0, size * scale / -mv.z); gl_Position = projectionMatrix * mv; }",
+  fragmentShader: "varying vec3 vC; void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.05, d); gl_FragColor = vec4(vC * a * a, 1.0); }"
+});
+const pts = new THREE.Points(pGeo, pointsMat);
+pts.frustumCulled = false;
+scene.add(pts);
+const parts = [];
+const C3 = (hex, k) => { const c = new THREE.Color(hex); return [c.r * k, c.g * k, c.b * k]; };
+// x, y in world units
+function burst(x, y, o) {
+  o = o || {};
+  const n = o.n || 20, cols = o.colors || [0xffffff];
+  for (let i = 0; i < n && parts.length < PMAX; i++) {
+    const a = Math.random() * TAU, el = rnd(-1, 1) * 0.6, sp = (o.speed || 5) * rnd(0.25, 1);
+    const life = (o.life || 0.6) * rnd(0.5, 1.1);
+    parts.push({
+      x, y, z: o.z || 0.1,
+      vx: Math.cos(a) * Math.cos(el) * sp + (o.vx || 0), vy: Math.sin(a) * Math.cos(el) * sp + (o.vy || 0), vz: Math.sin(el) * sp,
+      life, max: life, size: (o.size || 0.12) * rnd(0.6, 1.3), c: C3(cols[(Math.random() * cols.length) | 0], o.bright || 2.5), drag: o.drag == null ? 2.5 : o.drag, g: o.g || 0
+    });
+  }
+}
+function updateParts(dt) {
+  let j = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    p.life -= dt;
+    if (p.life <= 0) continue;
+    const d = Math.exp(-p.drag * dt);
+    p.vx *= d; p.vy = p.vy * d - p.g * dt; p.vz *= d;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    parts[j++] = p;
+  }
+  parts.length = j;
+  for (let i = 0; i < j; i++) {
+    const p = parts[i], k = p.life / p.max;
+    pPos[i * 3] = p.x; pPos[i * 3 + 1] = p.y; pPos[i * 3 + 2] = p.z;
+    pCol[i * 3] = p.c[0] * k; pCol[i * 3 + 1] = p.c[1] * k; pCol[i * 3 + 2] = p.c[2] * k;
+    pSize[i] = p.size * (0.4 + k * 0.6);
+  }
+  pGeo.setDrawRange(0, j);
+  pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true; pGeo.attributes.size.needsUpdate = true;
+}
+
+/* ---------------- ribbon trails ---------------- */
+const TV = 6000;
+const tPos = new Float32Array(TV * 3), tCol = new Float32Array(TV * 3);
+const tGeo = new THREE.BufferGeometry();
+tGeo.setAttribute("position", new THREE.BufferAttribute(tPos, 3).setUsage(THREE.DynamicDrawUsage));
+tGeo.setAttribute("color", new THREE.BufferAttribute(tCol, 3).setUsage(THREE.DynamicDrawUsage));
+const trailMesh = new THREE.Mesh(tGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+trailMesh.frustumCulled = false;
+scene.add(trailMesh);
+let tv = 0;
+const camDir = new THREE.Vector3();
+function ribbon(tr, col, width) {
+  const n = tr.length / 3;
+  if (n < 2) return;
+  for (let i = 1; i < n && tv + 6 <= TV; i++) {
+    const ax = tr[i * 3 - 3], ay = tr[i * 3 - 2], az = tr[i * 3 - 1], bx = tr[i * 3], by = tr[i * 3 + 1], bz = tr[i * 3 + 2];
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    camDir.set(camera.position.x - bx, camera.position.y - by, camera.position.z - bz).normalize();
+    const px = dy * camDir.z - dz * camDir.y, py = dz * camDir.x - dx * camDir.z, pz = dx * camDir.y - dy * camDir.x;
+    const pl = Math.hypot(px, py, pz) || 1;
+    const k0 = (i - 1) / (n - 1), k1 = i / (n - 1);
+    const w0 = width * k0 / pl, w1 = width * k1 / pl;
+    const v = [ax - px * w0, ay - py * w0, az - pz * w0, ax + px * w0, ay + py * w0, az + pz * w0, bx - px * w1, by - py * w1, bz - pz * w1, bx + px * w1, by + py * w1, bz + pz * w1];
+    for (const q of [0, 1, 2, 1, 3, 2]) {
+      tPos[tv * 3] = v[q * 3]; tPos[tv * 3 + 1] = v[q * 3 + 1]; tPos[tv * 3 + 2] = v[q * 3 + 2];
+      const k = q < 2 ? k0 : k1, kk = k * k;
+      tCol[tv * 3] = col[0] * kk; tCol[tv * 3 + 1] = col[1] * kk; tCol[tv * 3 + 2] = col[2] * kk;
+      tv++;
+    }
+  }
+}
+
+/* ---------------- the hero: a little maintenance robot ---------------- */
+const hero = new THREE.Group();          // sits at the player's feet, turns to face the run
+const HERO_SCALE = 1.12;
+const heroBody = new THREE.Group();      // squash and stretch
+hero.add(heroBody);
+scene.add(hero);
+const HERO = {};
+{
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.24, 6, 16), MAT.shell);
+  torso.position.y = 0.52;
+  heroBody.add(torso);
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.1), MAT.visor);
+  visor.position.set(0, 0.62, 0.17);
+  heroBody.add(visor);
+  for (const s of [-1, 1]) {
+    const e = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.02), MAT.eye);
+    e.position.set(s * 0.075, 0.625, 0.225);
+    heroBody.add(e);
+  }
+  const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.212, 0.012, 6, 32), MAT.stripe);
+  stripe.rotation.x = Math.PI / 2; stripe.position.y = 0.44;
+  heroBody.add(stripe);
+  const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), MAT.joint);
+  stalk.position.set(0.04, 0.92, 0);
+  heroBody.add(stalk);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), MAT.antenna);
+  bulb.position.set(0.04, 1.01, 0);
+  heroBody.add(bulb);
+  HERO.bulb = bulb;
+  HERO.legs = []; HERO.arms = [];
+  for (const s of [-1, 1]) {
+    const hip = new THREE.Group(); hip.position.set(s * 0.1, 0.26, 0);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.2, 8), MAT.joint); leg.position.y = -0.1; hip.add(leg);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.06, 0.16), MAT.shell); foot.position.set(0, -0.2, 0.03); hip.add(foot);
+    heroBody.add(hip); HERO.legs.push(hip);
+    const sh = new THREE.Group(); sh.position.set(s * 0.24, 0.56, 0);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.14, 4, 8), MAT.shell); arm.position.y = -0.09; sh.add(arm);
+    heroBody.add(sh); HERO.arms.push(sh);
+  }
+  HERO.glow = glowSprite(hdr(0x8ee9ff, 0.5), 1.6);
+  HERO.glow.position.y = 0.5;
+  heroBody.add(HERO.glow);
+}
+
+/* ---------------- level object factories ---------------- */
+const GEO = {
+  chipBody: new THREE.BoxGeometry(0.44, 0.44, 0.08),
+  chipCore: new THREE.BoxGeometry(0.2, 0.2, 0.1),
+  chipPins: (() => {
+    const pin = new THREE.BoxGeometry(0.05, 0.08, 0.03), list = [];
+    for (let i = 0; i < 3; i++) {
+      const o = -0.12 + i * 0.12;
+      list.push([pin, M4(o, 0.25, 0)], [pin, M4(o, -0.25, 0)], [pin, M4(0.25, o, 0, 0, 0, Math.PI / 2)], [pin, M4(-0.25, o, 0, 0, 0, Math.PI / 2)]);
+    }
+    return mergeGeos(list);
+  })(),
+  botDome: new THREE.SphereGeometry(0.34, 24, 12, 0, TAU, 0, Math.PI / 2),
+  botBase: new THREE.CylinderGeometry(0.36, 0.4, 0.14, 24),
+  wheel: new THREE.TorusGeometry(0.08, 0.035, 6, 14),
+  botEye: new THREE.BoxGeometry(0.3, 0.06, 0.08),
+  droneBody: new THREE.OctahedronGeometry(0.26, 0),
+  droneRing: new THREE.TorusGeometry(0.4, 0.025, 6, 32),
+  spike: new THREE.ConeGeometry(0.12, 0.52, 4),
+  emitter: new THREE.BoxGeometry(0.34, 0.34, 0.5),
+  lens: new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12),
+  beam: new THREE.PlaneGeometry(1, 1),
+  pylon: new THREE.CylinderGeometry(0.05, 0.08, 1.1, 8),
+  halo: new THREE.TorusGeometry(0.22, 0.03, 8, 28),
+  portal: new THREE.TorusGeometry(0.6, 0.08, 12, 48),
+  portalDisc: new THREE.CircleGeometry(0.58, 48),
+  pad: new THREE.BoxGeometry(0.86, 0.14, 0.9),
+  cap: new THREE.CylinderGeometry(0.16, 0.16, 0.5, 16),
+  capTop: new THREE.CylinderGeometry(0.15, 0.15, 0.03, 16),
+  ic: new THREE.BoxGeometry(0.9, 0.9, 0.14)
+};
+const laserMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  uniforms: { time: { value: 0 }, on: { value: 0 }, warn: { value: 0 } },
+  vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `uniform float time, on, warn; varying vec2 vUv;
+    void main(){
+      float d = abs(vUv.y - 0.5) * 2.0;
+      float core = smoothstep(0.22, 0.0, d), halo = pow(max(0.0, 1.0 - d), 3.0);
+      float ripple = 0.75 + 0.25 * sin(vUv.x * 60.0 - time * 40.0);
+      vec3 c = vec3(4.0, 0.5, 0.9) * halo * ripple * on + vec3(5.0, 3.5, 4.0) * core * on;
+      c += vec3(1.4, 0.15, 0.3) * smoothstep(0.12, 0.0, d) * warn * (0.5 + 0.5 * sin(time * 40.0));
+      c += vec3(0.25, 0.02, 0.06) * smoothstep(0.08, 0.0, d) * (1.0 - on);
+      gl_FragColor = vec4(c, 1.0);
+    }`
+});
+const portalMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { time: { value: 0 } },
+  vertexShader: "varying vec2 vP; void main(){ vP = position.xy / 0.58; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `uniform float time; varying vec2 vP;
+    void main(){ float r = length(vP), a = atan(vP.y, vP.x);
+      float sw = 0.5 + 0.5 * sin(a * 3.0 + 6.0 / (r + 0.2) - time * 5.0);
+      vec3 c = mix(vec3(0.6, 1.6, 2.4), vec3(1.6, 0.8, 2.6), sw) * (0.35 + 0.65 * sw) * smoothstep(1.0, 0.75, r);
+      c += vec3(2.0, 2.4, 3.0) * smoothstep(0.35, 0.0, r);
+      gl_FragColor = vec4(c, 1.0); }`
+});
+const padBeamMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  uniforms: { time: { value: 0 }, col: { value: hdr(0x7dffb0, 1) } },
+  vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `uniform float time; uniform vec3 col; varying vec2 vUv;
+    void main(){
+      float x = abs(vUv.x - 0.5) * 2.0;
+      float chev = fract(vUv.y * 3.0 + x * 0.5 - time * 1.6);
+      float a = smoothstep(0.0, 0.12, chev) * smoothstep(0.35, 0.18, chev) * smoothstep(1.0, 0.6, x);
+      float fade = pow(1.0 - vUv.y, 1.5);
+      gl_FragColor = vec4(col * (a * 1.6 + smoothstep(1.0, 0.0, x) * 0.12) * fade, 1.0);
+    }`
+});
+const ringMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  uniforms: { col: { value: new THREE.Color() }, k: { value: 1 } },
+  vertexShader: "varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: "uniform vec3 col; uniform float k; varying vec2 vP; void main(){ float r = length(vP); float a = smoothstep(0.8, 0.97, r) * smoothstep(1.0, 0.97, r); gl_FragColor = vec4(col * a * k, 1.0); }"
+});
+
+/* ---------------- state ---------------- */
+let levelIdx = 0, levelW = 0, levelH = 0, grid = [], spikes = [];
+let spawn = { x: 0, y: 0 }, checkpoint = null;
+let chips = [], enemies = [], drones = [], lasers = [], flags = [], pads = [], exit = null;
+let player = null;
+let score = 0, chipsGot = 0, simT = 0, levelT = 0, deaths = 0, stomps = 0, smashes = 0, clock = 0;
+let coyote = 0, jumpBuf = 0, wallDir = 0, wallLock = 0, invuln = 0, banner = null, overSent = false, jumpHeld = false;
+let dashBuf = 0, dashT = 0, canDash = true, boosting = false, airStomps = 0, combo = 0, lastChipT = -9;
+let respawnT = 0, warpT = 0, warpRank = null, materialT = 0, hurt = 0, levelFlash = 0;
+let totalChipsAll = 0, ranks = [];
+let camX = 0, camY = 0, camD = 20, lean = 0;
+let levelGroup = null;
+const dashTrail = [];
+const wtexts = [];
+let hudKey = "";
+
+function wtext(x, y, text, o) { wtexts.push(Object.assign({ x, y, text, t: 0, life: 0.9, color: "#fff", size: 15, vy: 1.4 }, o || {})); }
+
+function countAllChips() {
+  let n = 0;
+  LEVELS.forEach((L) => L.rows.forEach((row) => { for (const ch of row) if (ch === "C") n++; }));
+  return n;
+}
+const isSolid = (tx, ty) => tx < 0 || tx >= grid[0].length || ty < 0 ? true : ty >= grid.length ? false : grid[ty][tx] === 1;
+
+function disposeLevel() {
+  if (!levelGroup) return;
+  scene.remove(levelGroup);
+  levelGroup.traverse((o) => {
+    if (o.userData.own) { o.geometry.dispose(); }
+    if (o.userData.ownMat) o.material.dispose();
+  });
+  levelGroup = null;
+}
+
+function buildLaserBeam(L) {
+  const tx = Math.floor(L.x / TILE), ty = Math.floor(L.y / TILE);
+  if (L.axis === "h") {
+    let l = tx, r = tx;
+    while (!isSolid(l - 1, ty)) l--;
+    while (!isSolid(r + 1, ty)) r++;
+    L.x1 = l * TILE; L.x2 = (r + 1) * TILE; L.y1 = L.y2 = L.y;
+  } else {
+    let t = ty, b = ty;
+    while (!isSolid(tx, t - 1)) t--;
+    while (b + 1 < grid.length && !isSolid(tx, b + 1)) b++;
+    L.x1 = L.x2 = L.x; L.y1 = t * TILE; L.y2 = (b + 1) * TILE;
+  }
+}
+
+function parseLevel(idx) {
+  const rows = LEVELS[idx].rows;
+  levelH = rows.length * TILE;
+  levelW = rows[0].length * TILE;
+  grid = rows.map((r) => [...r].map((ch) => (ch === "#" ? 1 : 0)));
+  spikes = []; chips = []; enemies = []; drones = []; lasers = []; flags = []; pads = [];
+  exit = null; checkpoint = null;
+  for (let y = 0; y < rows.length; y++) {
+    for (let x = 0; x < rows[y].length; x++) {
+      const ch = rows[y][x], px = x * TILE, py = y * TILE;
+      if (ch === "@") spawn = { x: px + (TILE - PW) / 2, y: py + TILE - PH };
+      else if (ch === "C") chips.push({ x: px + TILE / 2, y: py + TILE / 2, r: 10, got: false, ph: rnd(0, TAU) });
+      else if (ch === "E") exit = { x: px + 2, y: py - 6, w: TILE - 4, h: TILE + 4, ph: rnd(0, TAU) };
+      else if (ch === "K") flags.push({ x: px + TILE / 2, y: py + TILE, on: false, t: 0 });
+      else if (ch === "^") spikes.push({ x: px, y: py + TILE * 0.45, w: TILE, h: TILE * 0.55 });
+      else if (ch === "M") enemies.push({ x: px + TILE / 2, y: py + TILE - 12, r: 12, dir: enemies.length % 2 ? -1 : 1, ph: rnd(0, TAU), dead: false, squash: 0 });
+      else if (ch === "D") drones.push({ x: px + TILE / 2, y: py + TILE / 2, hx: px + TILE / 2, hy: py + TILE / 2, r: 12, dir: drones.length % 2 ? -1 : 1, ph: rnd(0, TAU), dead: false, squash: 0 });
+      else if (ch === "B") pads.push({ x: px, y: py, t: 9 });
+      else if (ch === "H" || ch === "V") lasers.push({ x: px + TILE / 2, y: py + TILE / 2, axis: ch === "H" ? "h" : "v", phase: lasers.length * 0.8 });
+    }
+  }
+  lasers.forEach(buildLaserBeam);
+}
+
+function buildScene(idx) {
+  disposeLevel();
+  levelGroup = new THREE.Group();
+  scene.add(levelGroup);
+  const rows = LEVELS[idx].rows;
+  const pal = PAL[idx % PAL.length];
+  const edge = hdr(pal[0], 1.55), acc = hdr(pal[1], 1.4);
+  tileMat.uniforms.edge.value.copy(edge); tileMat.uniforms.acc.value.copy(acc);
+  boardMat.uniforms.edge.value.copy(edge); boardMat.uniforms.acc.value.copy(acc);
+  moteMat.uniforms.col.value.copy(hdr(pal[0], 0.9));
+  const LW = levelW / TILE, LH = levelH / TILE;
+  boardMat.uniforms.bounds.value.set(0, -LH, LW, 0);
+  board.scale.set(LW + 80, LH + 60, 1);
+  board.position.set(LW / 2, -LH / 2, -ZB);
+
+  const tiles = new THREE.Mesh(buildTileGeo(rows), tileMat);
+  tiles.userData.own = true;
+  levelGroup.add(tiles);
+
+  // motes over the open air
+  {
+    const N = Math.min(900, Math.round(LW * LH * 0.5)), pos = new Float32Array(N * 3), seed = new Float32Array(N);
+    for (let i = 0; i < N; i++) { pos.set([rnd(0, LW), -rnd(0, LH), rnd(-1.4, 1.2)], i * 3); seed[i] = Math.random(); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
+    motes = new THREE.Points(g, moteMat);
+    motes.frustumCulled = false; motes.userData.own = true;
+    levelGroup.add(motes);
   }
 
-  function senseWalls(p) {
-    wallDir = 0;
-    if (p.onGround) return;
-    if (overlapsSolid(p.x - 2, p.y + 6, 2, p.h - 12)) wallDir = -1;
-    else if (overlapsSolid(p.x + p.w, p.y + 6, 2, p.h - 12)) wallDir = 1;
+  // components mounted on the board in open space: capacitors and ICs, behind the play plane
+  {
+    const capSpots = [], icSpots = [];
+    const open = (x, y) => y >= 0 && y < rows.length && x >= 0 && x < rows[0].length && rows[y][x] !== "#";
+    for (let y = 1; y < rows.length - 1; y++) for (let x = 1; x < rows[0].length - 1; x++) {
+      const h = Math.sin(x * 12.9898 + y * 78.233 + idx * 3.1) * 43758.5453 % 1;
+      const r = Math.abs(h);
+      if (!open(x, y) || !open(x + 1, y) || !open(x, y + 1)) continue;
+      if (r < 0.035) capSpots.push([x + 0.5, -y - 0.5, r]);
+      else if (r < 0.055) icSpots.push([x + 1, -y - 0.6, r]);
+    }
+    const capM = new THREE.InstancedMesh(GEO.cap, MAT.cap, Math.max(1, capSpots.length));
+    const topM = new THREE.InstancedMesh(GEO.capTop, MAT.capTop, Math.max(1, capSpots.length));
+    capSpots.forEach(([x, y, r], i) => {
+      const z = -ZB + 0.25;
+      capM.setMatrixAt(i, M4(x, y, z, Math.PI / 2, 0, 0, 0.8 + r * 8));
+      topM.setMatrixAt(i, M4(x, y, z + 0.26 * (0.8 + r * 8), Math.PI / 2, 0, 0, 0.8 + r * 8));
+    });
+    capM.count = topM.count = capSpots.length;
+    const icM = new THREE.InstancedMesh(GEO.ic, MAT.ic, Math.max(1, icSpots.length));
+    const pinM = new THREE.InstancedMesh(GEO.chipPins, MAT.chipPins, Math.max(1, icSpots.length));
+    icSpots.forEach(([x, y], i) => { icM.setMatrixAt(i, M4(x, y, -ZB + 0.07, 0, 0, 0, 1)); pinM.setMatrixAt(i, M4(x, y, -ZB + 0.05, 0, 0, 0, 2.2)); });
+    icM.count = pinM.count = icSpots.length;
+    levelGroup.add(capM, topM, icM, pinM);
   }
 
-  function killPlayer(why) {
-    if (invuln > 0 || player.dead) return;
-    player.dead = true;
-    deaths++;
-    PA.shake(12, 0.45);
-    PA.hitstop(90);
-    PA.flash("rgba(255,77,109,.35)", 280);
-    PA.sfx("explode", { pitch: 0.85, vol: 0.65 });
-    fx.burst(player.x + player.w / 2, player.y + player.h / 2, { n: 36, colors: [COL.player, COL.enemy, COL.laser, "#fff"], speed: 220, life: 0.65, size: 3, shape: "spark" });
-    texts.add(player.x + player.w / 2, player.y, why || "FRIED", { color: COL.laser, size: 18, life: 0.75, vy: -40 });
-    setTimeout(() => {
-      if (PA.state !== "play" || overSent) return;
-      resetPlayer();
-    }, 520);
+  // spikes: a double row of cones per tile
+  if (spikes.length) {
+    const sm = new THREE.InstancedMesh(GEO.spike, MAT.spike, spikes.length * 6);
+    let i = 0;
+    for (const s of spikes) {
+      const bx = wx(s.x), by = wy(s.y + s.h);
+      for (const z of [0.25, -0.35]) for (const f of [0.17, 0.5, 0.83]) sm.setMatrixAt(i++, M4(bx + f, by + 0.26, z, 0, Math.PI / 4, 0, 1));
+    }
+    levelGroup.add(sm);
+    for (const s of spikes) {
+      const gl = glowSprite(hdr(0xff2a55, 0.35), 1.4);
+      gl.position.set(wx(s.x) + 0.5, wy(s.y + s.h) + 0.25, 0.3);
+      levelGroup.add(gl);
+    }
   }
 
-  function collectChip(c) {
-    c.got = true;
-    chipsGot++;
-    score += 400;
-    PA.sfx("coin", { pitch: 1 + (chipsGot % 8) * 0.04 });
-    PA.tone({ freq: 880, to: 1320, type: "sine", dur: 0.08, vol: 0.05 });
-    fx.burst(c.x, c.y, { n: 14, color: COL.chip, speed: 120, life: 0.45, size: 2.5 });
-    texts.add(c.x, c.y - 8, "+400", { color: COL.chip, size: 14, life: 0.65, vy: -50 });
-    paintHud();
-    PA.music.intensity(clamp(0.15 + chipsGot / Math.max(1, totalChipsAll) * 0.6, 0.15, 0.85));
+  for (const c of chips) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(GEO.chipBody, MAT.chipBody), new THREE.Mesh(GEO.chipPins, MAT.chipPins));
+    const core = new THREE.Mesh(GEO.chipCore, MAT.chipCore); g.add(core);
+    const gl = glowSprite(hdr(0xffc65a, 0.7), 1.3); g.add(gl);
+    g.position.set(wx(c.x), wy(c.y), 0);
+    c.mesh = g;
+    levelGroup.add(g);
   }
 
-  function stomp(e) {
-    e.dead = true;
-    stomps++;
-    score += 250;
-    player.vy = -(PA.down.apply(null, JUMP_KEYS) ? STOMP_V * 1.2 : STOMP_V);
+  for (const e of enemies) {
+    const g = new THREE.Group(), body = new THREE.Group();
+    const base = new THREE.Mesh(GEO.botBase, MAT.botBase); base.position.y = 0.13;
+    const dome = new THREE.Mesh(GEO.botDome, MAT.botShell); dome.position.y = 0.2;
+    const eye = new THREE.Mesh(GEO.botEye, MAT.botEye); eye.position.set(0, 0.36, 0.27); eye.rotation.x = -0.35;
+    body.add(base, dome, eye);
+    for (const s of [-1, 1]) for (const z of [-0.2, 0.2]) { const w = new THREE.Mesh(GEO.wheel, MAT.botBase); w.position.set(s * 0.22, 0.08, z); w.rotation.y = Math.PI / 2; body.add(w); }
+    const ant = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), MAT.botEye); ant.position.set(0, 0.62, 0); body.add(ant);
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 5), MAT.joint); stalk.position.set(0, 0.56, 0); body.add(stalk);
+    g.add(body);
+    const gl = glowSprite(hdr(0xff3d8b, 0.35), 1.3); gl.position.y = 0.35; g.add(gl);
+    e.mesh = g; e.body = body;
+    levelGroup.add(g);
+  }
+
+  for (const d of drones) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(GEO.droneBody, MAT.droneBody); body.scale.set(1, 0.75, 1);
+    const ring = new THREE.Mesh(GEO.droneRing, MAT.droneRing); ring.rotation.x = Math.PI / 2;
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), MAT.droneRing); eye.position.z = 0.2;
+    const gl = glowSprite(hdr(0xff8a3d, 0.5), 1.5);
+    g.add(body, ring, eye, gl);
+    d.mesh = g; d.ring = ring;
+    levelGroup.add(g);
+  }
+
+  for (const L of lasers) {
+    const g = new THREE.Group();
+    const len = L.axis === "h" ? (L.x2 - L.x1) / TILE : (L.y2 - L.y1) / TILE;
+    const mat = laserMat.clone(); mat.uniforms.time = laserMat.uniforms.time;
+    const beam = new THREE.Mesh(GEO.beam, mat);
+    beam.userData.ownMat = true;
+    beam.scale.set(len, 0.34, 1);
+    if (L.axis === "v") beam.rotation.z = Math.PI / 2;
+    beam.position.set((wx(L.x1) + wx(L.x2)) / 2, (wy(L.y1) + wy(L.y2)) / 2, 0.05);
+    g.add(beam);
+    const ends = L.axis === "h" ? [[wx(L.x1), wy(L.y), 0, -1], [wx(L.x2), wy(L.y), 0, 1]] : [[wx(L.x), wy(L.y1), 1, 0], [wx(L.x), wy(L.y2), -1, 0]];
+    for (const [x, y, ux, uy] of ends) {
+      // housings sit against the wall the beam meets
+      const em = new THREE.Mesh(GEO.emitter, MAT.emitter);
+      const lens = new THREE.Mesh(GEO.lens, MAT.lens);
+      if (L.axis === "h") { em.position.set(x - uy * 0.12, y, 0); lens.rotation.z = Math.PI / 2; lens.position.set(x - uy * 0.3, y, 0.05); }
+      else { em.position.set(x, y - ux * 0.12, 0); lens.position.set(x, y - ux * 0.3, 0.05); }
+      g.add(em, lens);
+    }
+    L.mat = mat;
+    levelGroup.add(g);
+  }
+
+  for (const f of flags) {
+    const g = new THREE.Group();
+    const py = new THREE.Mesh(GEO.pylon, MAT.pylon); py.position.y = 0.55;
+    const haloM = new THREE.MeshBasicMaterial({ color: hdr(0x7ee7a8, 0.6) });
+    const halo = new THREE.Mesh(GEO.halo, haloM); halo.position.y = 1.15; halo.userData.ownMat = true;
+    const gl = glowSprite(hdr(0x7ee7a8, 0.3), 1.6); gl.position.y = 1.15;
+    g.add(py, halo, gl);
+    g.position.set(wx(f.x) - 0.15, wy(f.y), -0.2);
+    f.mesh = g; f.halo = halo; f.glow = gl;
+    levelGroup.add(g);
+  }
+
+  for (const p of pads) {
+    const g = new THREE.Group();
+    const base = new THREE.Mesh(GEO.pad, MAT.padBase); base.position.y = 0.07;
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 0.02), new THREE.MeshBasicMaterial({ color: hdr(0x7dffb0, 3) }));
+    strip.position.set(0, 0.09, 0.455); strip.userData.own = true; strip.userData.ownMat = true;
+    const beam = new THREE.Mesh(GEO.beam, padBeamMat); beam.scale.set(0.8, 2.2, 1); beam.position.set(0, 1.2, 0.02);
+    const gl = glowSprite(hdr(0x7dffb0, 0.45), 1.6); gl.position.y = 0.2;
+    g.add(base, strip, beam, gl);
+    g.position.set(wx(p.x) + 0.5, wy(p.y + TILE), 0);
+    p.mesh = g; p.base = base;
+    levelGroup.add(g);
+  }
+
+  if (exit) {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(GEO.portal, MAT.frame);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.02, 6, 48), new THREE.MeshBasicMaterial({ color: hdr(0xc4a6ff, 3) }));
+    lip.position.z = 0.08; lip.userData.own = true; lip.userData.ownMat = true;
+    const disc = new THREE.Mesh(GEO.portalDisc, portalMat);
+    const gl = glowSprite(hdr(0xb08cff, 0.8), 3.2);
+    g.add(ring, lip, disc, gl);
+    g.position.set(wx(exit.x + exit.w / 2), wy(exit.y + exit.h / 2), 0);
+    g.scale.set(0.85, 1.15, 1);
+    exit.mesh = g; exit.disc = disc;
+    exitLight.position.set(g.position.x, g.position.y, 1.2);
+    levelGroup.add(g);
+  }
+}
+
+/* ---------------- flow ---------------- */
+function paintHud(force) {
+  const k = score + "|" + chipsGot + "|" + levelIdx + "|" + Math.floor(levelT * 10);
+  if (!force && k === hudKey) return;
+  hudKey = k;
+  PA.stat("s-score", score.toLocaleString());
+  PA.stat("s-chips", chipsGot + " / " + totalChipsAll);
+  PA.stat("s-level", (levelIdx + 1) + " · " + (LEVELS[levelIdx] ? LEVELS[levelIdx].name : "—"));
+  const tEl = document.querySelector("#s-time b");
+  if (tEl) { tEl.textContent = levelT.toFixed(1) + " / " + PAR[levelIdx]; tEl.classList.toggle("over", levelT > PAR[levelIdx]); }
+}
+
+function resetPlayer() {
+  const at = checkpoint || spawn;
+  player = { x: at.x, y: at.y, vx: 0, vy: 0, w: PW, h: PH, onGround: false, dead: false, face: 1, squash: 0, run: 0 };
+  coyote = 0; jumpBuf = 0; wallDir = 0; wallLock = 0; invuln = 0.8; dashT = 0; canDash = true; boosting = false; airStomps = 0;
+  dashTrail.length = 0;
+  materialT = 0.5;
+  burst(wx(player.x + PW / 2), wy(player.y + PH / 2), { n: 26, colors: [0x8ee9ff, 0xffffff], speed: 3, life: 0.5, size: 0.1 });
+}
+
+function viewSize() {
+  // about 13 tiles of height, never fewer than 11 across on a tall phone
+  const aspect = W / Math.max(1, H);
+  const V = clamp(Math.max(13, 11 / aspect), 12, 24);
+  return { V, hw: V / 2 * aspect, hh: V / 2 };
+}
+function camTarget() {
+  const { hw, hh } = viewSize();
+  const LW = levelW / TILE, LH = levelH / TILE;
+  const px = wx(player.x + PW / 2) + player.face * 1.4 + player.vx / MOVE * 0.6, py = wy(player.y + PH / 2) + 0.8;
+  const tx = LW <= hw * 2 ? LW / 2 : clamp(px, hw - 0.4, LW - hw + 0.4);
+  const ty = LH <= hh * 2 ? -LH / 2 : clamp(py, -LH + hh - 0.4, -hh + 0.4);
+  return { tx, ty };
+}
+
+function loadLevel(idx, keepScore) {
+  levelIdx = idx;
+  parseLevel(idx);
+  buildScene(idx);
+  resetPlayer();
+  const c = camTarget(); camX = c.tx; camY = c.ty;
+  levelT = 0; warpT = 0; warpRank = null; combo = 0;
+  if (!keepScore) { score = 0; chipsGot = 0; deaths = 0; stomps = 0; smashes = 0; ranks = []; }
+  banner = { text: "Sector " + (idx + 1), sub: LEVELS[idx].name, par: PAR[idx], t: 0, max: 2.6 };
+  levelFlash = 1;
+  paintHud(true);
+}
+
+function reset() {
+  simT = 0; overSent = false;
+  totalChipsAll = countAllChips();
+  parts.length = 0; wtexts.length = 0;
+  loadLevel(0, false);
+  hud.classList.add("on");
+  PA.music.intensity(0.2);
+}
+PA.onStart(reset);
+
+PA.touchControls({
+  left: [{ label: "◀", key: "ArrowLeft", code: "ArrowLeft", aria: "Move left" }, { label: "▶", key: "ArrowRight", code: "ArrowRight", aria: "Move right" }],
+  right: [{ label: "DASH", key: "Shift", code: "ShiftLeft", aria: "Dash" }, { label: "JUMP", key: " ", code: "Space", wide: true, aria: "Jump" }]
+});
+
+const JUMP_KEYS = ["Space", " ", "ArrowUp", "KeyW", "w", "W"];
+const DASH_KEYS = ["ShiftLeft", "ShiftRight", "Shift", "KeyX", "x", "X", "KeyK", "k", "K"];
+PA.onKey((e) => {
+  if (e.repeat) return;
+  if (JUMP_KEYS.indexOf(e.code) >= 0 || JUMP_KEYS.indexOf(e.key) >= 0) { e.preventDefault(); jumpBuf = JUMP_BUF; }
+  if (DASH_KEYS.indexOf(e.code) >= 0 || DASH_KEYS.indexOf(e.key) >= 0) { e.preventDefault(); dashBuf = 0.12; }
+});
+
+function tryJump() {
+  if (jumpBuf <= 0) return;
+  if (player.onGround || coyote > 0) {
+    player.vy = -JUMP_V;
     player.onGround = false;
-    coyote = 0;
-    PA.sfx("hit", { pitch: 1.4, vol: 0.6 });
-    PA.shake(4, 0.15);
-    fx.burst(e.x, e.y, { n: 18, colors: [COL.enemy, "#fff"], speed: 160, life: 0.45, size: 2.5, shape: "spark" });
-    texts.add(e.x, e.y - 14, "+250", { color: COL.enemy, size: 14, life: 0.6, vy: -50 });
-    paintHud();
+    player.squash = -0.25;
+    coyote = 0; jumpBuf = 0;
+    PA.sfx("jump", { pitch: 1.05, vol: 0.5 });
+    burst(wx(player.x + PW / 2), wy(player.y + PH), { n: 8, colors: [0x8ee9ff, 0xffffff], speed: 2, life: 0.3, size: 0.08, vy: 0.6 });
+  } else if (wallDir) {
+    player.vy = -WALL_JUMP_Y;
+    player.vx = WALL_JUMP_X * -wallDir;
+    player.face = -wallDir;
+    wallLock = WALL_LOCK;
+    jumpBuf = 0; coyote = 0;
+    PA.sfx("whoosh", { pitch: 1.18, vol: 0.6 });
+    PA.tone({ freq: 520, to: 780, type: "square", dur: 0.05, vol: 0.045 });
+    burst(wx(wallDir > 0 ? player.x + player.w : player.x), wy(player.y + player.h * 0.5), { n: 12, colors: [PAL[levelIdx][0], 0xffffff], speed: 3, life: 0.35, size: 0.08 });
+    wallDir = 0;
   }
+}
 
-  function laserPhase(L, t) { return (((t + L.phase) % LASER_CYCLE) + LASER_CYCLE) % LASER_CYCLE / LASER_CYCLE; }
-  const laserActive = (L, t) => laserPhase(L, t) < LASER_ON;
+function overlapsSolid(x, y, w, h) {
+  const x0 = Math.floor(x / TILE), x1 = Math.floor((x + w - 0.001) / TILE);
+  const y0 = Math.floor(y / TILE), y1 = Math.floor((y + h - 0.001) / TILE);
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (isSolid(tx, ty)) return { tx, ty };
+  return null;
+}
 
-  function hitLaser(p, t) {
-    for (const L of lasers) {
-      if (!laserActive(L, t)) continue;
-      if (L.axis === "h") {
-        if (L.y > p.y + 3 && L.y < p.y + p.h - 3 && p.x + p.w > L.x1 && p.x < L.x2) return true;
-      } else if (L.x > p.x + 3 && L.x < p.x + p.w - 3 && p.y + p.h > L.y1 && p.y < L.y2) return true;
+function moveAxis(p, dx, dy) {
+  // horizontal, in steps no larger than half a tile so fast moves can't skip a wall
+  const nx = Math.ceil(Math.abs(dx) / (TILE / 2)) || 1;
+  for (let i = 0; i < nx; i++) {
+    p.x += dx / nx;
+    const hit = overlapsSolid(p.x, p.y, p.w, p.h);
+    if (hit) { p.x = dx > 0 ? hit.tx * TILE - p.w : (hit.tx + 1) * TILE; p.vx = 0; if (dashT > 0) { dashT = 0; PA.sfx("thud", { vol: 0.4 }); } break; }
+  }
+  p.onGround = false;
+  const ny = Math.ceil(Math.abs(dy) / (TILE / 2)) || 1;
+  for (let i = 0; i < ny; i++) {
+    p.y += dy / ny;
+    const hit = overlapsSolid(p.x, p.y, p.w, p.h);
+    if (hit) {
+      if (dy > 0) { p.y = hit.ty * TILE - p.h; p.onGround = true; if (p.vy > 500) p.squash = 0.22; }
+      else p.y = (hit.ty + 1) * TILE;
+      p.vy = 0;
+      break;
     }
-    return false;
   }
+  if (!p.onGround && dy >= 0 && overlapsSolid(p.x, p.y + 1, p.w, 1)) p.onGround = true;
+}
 
-  function completeLevel() {
-    const secs = levelT;
-    const bonus = 1500 + Math.max(0, Math.round((60 - secs) * 20)) + chips.filter((c) => c.got).length * 100;
-    score += bonus;
-    paintHud();
-    PA.sfx("levelup");
-    PA.flash("rgba(142,233,255,.22)", 320);
-    if (levelIdx + 1 >= LEVELS.length) {
-      if (overSent) return;
-      overSent = true;
-      hud.classList.remove("on");
-      PA.gameOver(score, {
-        kicker: "All sectors synced",
-        title: chipsGot >= totalChipsAll ? "Every chip, every sector!" : deaths === 0 ? "Flawless run!" : "Circuit complete",
-        stats: [["Chips", chipsGot + " / " + totalChipsAll], ["Bots stomped", stomps], ["Deaths", deaths], ["Time", Math.round(simT) + "s"]]
-      });
-      return;
-    }
-    loadLevel(levelIdx + 1, true);
-    texts.add(player.x + player.w / 2, player.y - 30, "+" + bonus.toLocaleString(), { color: COL.portal, size: 18, life: 1.2, vy: -30 });
+function senseWalls(p) {
+  wallDir = 0;
+  if (p.onGround) return;
+  if (overlapsSolid(p.x - 2, p.y + 6, 2, p.h - 12)) wallDir = -1;
+  else if (overlapsSolid(p.x + p.w, p.y + 6, 2, p.h - 12)) wallDir = 1;
+}
+
+function killPlayer(why) {
+  if (invuln > 0 || player.dead) return;
+  player.dead = true;
+  deaths++;
+  dashT = 0;
+  PA.shake(12, 0.45);
+  PA.hitstop(90);
+  hurt = 1;
+  PA.sfx("explode", { pitch: 0.85, vol: 0.65 });
+  const x = wx(player.x + PW / 2), y = wy(player.y + PH / 2);
+  burst(x, y, { n: 60, colors: [0xe6edff, 0x8ee9ff, 0xff4d6d, 0xffffff], speed: 7, life: 0.8, size: 0.12, g: 9, drag: 1.2 });
+  wtext(x, y + 0.6, why || "FRIED", { color: "#ff6b86", size: 18, life: 0.9 });
+  respawnT = 0.6;
+}
+
+function collectChip(c) {
+  c.got = true;
+  chipsGot++;
+  combo = clock - lastChipT < COMBO_T ? combo + 1 : 1;
+  lastChipT = clock;
+  const mult = Math.min(3, 1 + (combo - 1) * 0.5);
+  const pts = Math.round(400 * mult);
+  score += pts;
+  PA.sfx("coin", { pitch: 1 + Math.min(8, combo) * 0.06 });
+  burst(wx(c.x), wy(c.y), { n: 18, colors: [0xffd27a, 0xfff3c4], speed: 3.5, life: 0.5, size: 0.09 });
+  wtext(wx(c.x), wy(c.y) + 0.5, combo > 1 ? "+" + pts + " ×" + mult : "+" + pts, { color: combo > 1 ? "#ffe9a8" : "#ffd27a", size: combo > 1 ? 16 : 14, life: 0.7 });
+  if (c.mesh) c.mesh.visible = false;
+  PA.music.intensity(clamp(0.2 + chipsGot / Math.max(1, totalChipsAll) * 0.6, 0.2, 0.85));
+}
+
+function defeat(e, how) {
+  e.dead = true;
+  const chain = how === "stomp" ? ++airStomps : 1;
+  const pts = how === "smash" ? 300 : Math.min(2000, 250 * Math.pow(2, chain - 1));
+  score += pts;
+  if (how === "stomp") {
+    stomps++;
+    player.vy = -(PA.down.apply(null, JUMP_KEYS) ? STOMP_V * 1.2 : STOMP_V);
+    player.onGround = false; coyote = 0; canDash = true; dashT = 0;
+    PA.sfx("hit", { pitch: 1.3 + chain * 0.1, vol: 0.6 });
+  } else {
+    smashes++;
+    PA.sfx("boom", { pitch: 1.6, vol: 0.5 });
   }
+  PA.shake(4, 0.15);
+  const x = wx(e.x), y = wy(e.y);
+  burst(x, y, { n: 30, colors: e.drone ? [0xff8a3d, 0xffffff] : [0xff6aa8, 0xffffff], speed: 5, life: 0.55, size: 0.1, g: 6 });
+  wtext(x, y + 0.6, chain > 1 ? "+" + pts + " CHAIN ×" + chain : "+" + pts, { color: e.drone ? "#ffb070" : "#ff9ec4", size: 15, life: 0.7 });
+}
 
-  function update(dt, t) {
-    fx.update(dt);
-    texts.update(dt);
-    if (banner) banner.t += dt;
-    for (const f of flags) f.t += dt;
-    for (const e of enemies) if (e.dead) e.squash = Math.min(1, e.squash + dt * 4);
+function laserPhase(L, t) { return (((t + L.phase) % LASER_CYCLE) + LASER_CYCLE) % LASER_CYCLE / LASER_CYCLE; }
+const laserActive = (L, t) => laserPhase(L, t) < LASER_ON;
+function hitLaser(p, t) {
+  for (const L of lasers) {
+    if (!laserActive(L, t)) continue;
+    if (L.axis === "h") {
+      if (L.y > p.y + 3 && L.y < p.y + p.h - 3 && p.x + p.w > L.x1 && p.x < L.x2) return true;
+    } else if (L.x > p.x + 3 && L.x < p.x + p.w - 3 && p.y + p.h > L.y1 && p.y < L.y2) return true;
+  }
+  return false;
+}
 
-    if (PA.state !== "play" || !player) return;
-    simT += dt;
-    if (player.dead) return;
-    levelT += dt;
-    if (invuln > 0) invuln -= dt;
-    if (wallLock > 0) wallLock -= dt;
-    player.squash *= Math.pow(0.0005, dt);
+function rankFor(secs, allChips) {
+  const par = PAR[levelIdx];
+  if (allChips && secs <= par) return "S";
+  if (allChips || secs <= par) return "A";
+  return secs <= par * 1.6 ? "B" : "C";
+}
+function completeLevel() {
+  const secs = levelT;
+  const got = chips.filter((c) => c.got).length, all = got === chips.length;
+  const rank = rankFor(secs, all);
+  ranks.push(rank);
+  const bonus = 1500 + Math.max(0, Math.round((60 - secs) * 20)) + got * 100 + ({ S: 3000, A: 1500, B: 500, C: 0 })[rank];
+  score += bonus;
+  PA.sfx("levelup");
+  warpT = 1.6;
+  warpRank = { rank, secs, got, of: chips.length, bonus, par: PAR[levelIdx] };
+  paintHud(true);
+}
+function afterWarp() {
+  if (levelIdx + 1 >= LEVELS.length) {
+    if (overSent) return;
+    overSent = true;
+    hud.classList.remove("on");
+    const sCount = ranks.filter((r) => r === "S").length;
+    PA.gameOver(score, {
+      kicker: "All sectors synced",
+      title: sCount === LEVELS.length ? "S rank in every sector!" : chipsGot >= totalChipsAll ? "Every chip, every sector!" : deaths === 0 ? "Flawless run!" : "Circuit complete",
+      stats: [["Chips", chipsGot + " / " + totalChipsAll], ["Ranks", ranks.join(" ")], ["Bots beaten", stomps + smashes], ["Deaths", deaths], ["Time", Math.round(simT) + "s"]]
+    });
+    return;
+  }
+  loadLevel(levelIdx + 1, true);
+}
 
-    const left = PA.down("ArrowLeft", "KeyA", "a");
-    const right = PA.down("ArrowRight", "KeyD", "d");
-    const dir = (right ? 1 : 0) - (left ? 1 : 0);
+function update(dt) {
+  clock += dt;
+  updateParts(dt);
+  for (let i = wtexts.length - 1; i >= 0; i--) { const w = wtexts[i]; w.t += dt; w.y += w.vy * dt * (1 - w.t / w.life); if (w.t > w.life) wtexts.splice(i, 1); }
+  if (banner) banner.t += dt;
+  hurt = Math.max(0, hurt - dt * 2.2);
+  levelFlash = Math.max(0, levelFlash - dt * 1.5);
+  if (materialT > 0) materialT -= dt;
+  for (const f of flags) f.t += dt;
+  for (const e of enemies) if (e.dead) e.squash = Math.min(1, e.squash + dt * 4);
+  for (const d of drones) if (d.dead) d.squash = Math.min(1, d.squash + dt * 3);
+  for (const p of pads) p.t += dt;
+
+  if (PA.state !== "play" || !player) return;
+  simT += dt;
+  if (warpT > 0) {
+    warpT -= dt;
+    if (warpT <= 0) afterWarp();
+    return;
+  }
+  if (player.dead) {
+    respawnT -= dt;
+    if (respawnT <= 0) resetPlayer();
+    return;
+  }
+  levelT += dt;
+  if (invuln > 0) invuln -= dt;
+  if (wallLock > 0) wallLock -= dt;
+  if (dashBuf > 0) dashBuf -= dt;
+  player.squash *= Math.pow(0.0005, dt);
+
+  const left = PA.down("ArrowLeft", "KeyA", "a");
+  const right = PA.down("ArrowRight", "KeyD", "d");
+  const dir = (right ? 1 : 0) - (left ? 1 : 0);
+  if (dir && dashT <= 0) player.face = dir;
+
+  // air dash: a burst along the facing, no gravity while it lasts, once per time in the air
+  if (dashBuf > 0 && canDash && dashT <= 0 && !player.onGround) {
+    dashBuf = 0; canDash = false; dashT = DASH_T;
     if (dir) player.face = dir;
-    if (wallLock <= 0) {
-      const a = (player.onGround ? ACCEL : AIR_ACCEL) * dt, target = dir * MOVE;
-      player.vx = player.vx < target ? Math.min(target, player.vx + a) : Math.max(target, player.vx - a);
-    }
-
-    // variable jump: let go early for a short hop
-    const held = PA.down.apply(null, JUMP_KEYS);
-    if (!held && jumpHeld && player.vy < -200) player.vy *= JUMP_CUT;
-    jumpHeld = held;
-
-    player.vy += (player.vy > 0 ? FALL_GRAV : GRAV) * dt;
-    // sliding down a wall you are pushing into
-    if (wallDir && player.vy > WALL_SLIDE && dir === wallDir) player.vy = WALL_SLIDE;
-    player.vy = Math.min(player.vy, MAX_FALL);
-    if (jumpBuf > 0) jumpBuf -= dt;
-    tryJump();
-
-    const wasAirborne = !player.onGround;
-    moveAxis(player, player.vx * dt, player.vy * dt);
-    if (player.onGround) {
-      coyote = COYOTE;
-      if (wasAirborne) fx.burst(player.x + player.w / 2, player.y + player.h, { n: 4, color: COL.player, speed: 50, life: 0.2, size: 1.6 });
-    } else coyote = Math.max(0, coyote - dt);
-    senseWalls(player);
-    if (wallDir && player.vy > 0 && dir === wallDir && Math.random() < 0.3) fx.burst(wallDir > 0 ? player.x + player.w : player.x, player.y + player.h * 0.3, { n: 1, color: COL.wallEdge, speed: 30, life: 0.25, size: 1.5 });
-
-    const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
-
-    for (const e of enemies) {
-      if (e.dead) continue;
-      e.ph += dt * 6;
-      // walk the platform: turn at walls and at ledges
-      const nx = e.x + e.dir * BOT_SPEED * dt;
-      const ahead = Math.floor((nx + e.dir * e.r) / TILE), foot = Math.floor((e.y + e.r + 4) / TILE), row = Math.floor(e.y / TILE);
-      if (isSolid(ahead, row) || !isSolid(ahead, foot)) e.dir *= -1;
-      else e.x = nx;
-      const dx = pcx - e.x, dy = pcy - e.y;
-      if (Math.abs(dx) < e.r + player.w / 2 - 2 && Math.abs(dy) < e.r + player.h / 2 - 2) {
-        if (player.vy > 60 && player.y + player.h - player.vy * dt <= e.y - e.r * 0.3) stomp(e);
-        else killPlayer("ZAPPED");
-      }
-    }
-
-    for (const c of chips) {
-      if (c.got) continue;
-      c.ph += dt * 3;
-      const dx = pcx - c.x, dy = pcy - c.y;
-      if (dx * dx + dy * dy < (c.r + 14) ** 2) collectChip(c);
-    }
-
-    for (const f of flags) {
-      if (f.on || Math.abs(pcx - f.x) > 20 || Math.abs(player.y + player.h - f.y) > 34) continue;
-      flags.forEach((o) => { o.on = false; });
-      f.on = true; f.t = 0;
-      checkpoint = { x: f.x - PW / 2, y: f.y - PH };
-      PA.sfx("power", { pitch: 1.3 });
-      texts.add(f.x, f.y - 46, "CHECKPOINT", { color: COL.flag, size: 14, life: 1, vy: -30 });
-      fx.burst(f.x, f.y - 30, { n: 16, color: COL.flag, speed: 120, life: 0.5, size: 2 });
-    }
-
-    for (const s of spikes) {
-      if (player.x + player.w > s.x + 4 && player.x < s.x + s.w - 4 && player.y + player.h > s.y + 4 && player.y < s.y + s.h) { killPlayer("SPIKED"); break; }
-    }
-
-    if (!player.dead && exit && player.x + player.w > exit.x && player.x < exit.x + exit.w && player.y + player.h > exit.y && player.y < exit.y + exit.h) {
-      completeLevel();
-      return;
-    }
-    if (!player.dead && hitLaser(player, t)) killPlayer("FRIED");
-    if (!player.dead && player.y > levelH + 60) { invuln = 0; killPlayer("LOST SIGNAL"); }
-
-    const c = centerCamera(false);
-    camX += (c.tx - camX) * clamp(dt * 8, 0, 1);
-    camY += (c.ty - camY) * clamp(dt * 6, 0, 1);
+    player.vy = 0; boosting = false;
+    PA.sfx("whoosh", { pitch: 1.5, vol: 0.6 });
+    PA.tone({ freq: 300, to: 900, type: "sawtooth", dur: 0.12, vol: 0.04 });
+    burst(wx(player.x + PW / 2), wy(player.y + PH / 2), { n: 16, colors: [0x8ee9ff, 0xffffff], speed: 3, life: 0.35, size: 0.08, vx: -player.face * 3 });
+  }
+  if (dashT > 0) {
+    dashT -= dt;
+    player.vx = player.face * DASH_V;
+    player.vy = 0;
+  } else if (wallLock <= 0) {
+    const a = (player.onGround ? ACCEL : AIR_ACCEL) * dt, target = dir * MOVE;
+    player.vx = player.vx < target ? Math.min(target, player.vx + a) : Math.max(target, player.vx - a);
   }
 
-  /* ---------------- drawing ---------------- */
-  function drawTiles() {
-    const x0 = Math.floor(camX / TILE) - 1, x1 = Math.ceil((camX + VW()) / TILE) + 1;
-    const y0 = Math.floor(camY / TILE) - 1, y1 = Math.ceil((camY + VH()) / TILE) + 1;
-    ctx.fillStyle = COL.wall;
-    for (let ty = Math.max(0, y0); ty <= Math.min(grid.length - 1, y1); ty++) {
-      for (let tx = Math.max(0, x0); tx <= Math.min(grid[0].length - 1, x1); tx++) {
-        if (grid[ty][tx]) ctx.fillRect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
-      }
+  // variable jump: let go early for a short hop (a boost pad's throw can't be cut)
+  const held = PA.down.apply(null, JUMP_KEYS);
+  if (!held && jumpHeld && player.vy < -200 && !boosting) player.vy *= JUMP_CUT;
+  jumpHeld = held;
+  if (boosting && player.vy >= 0) boosting = false;
+
+  if (dashT <= 0) player.vy += (player.vy > 0 ? FALL_GRAV : GRAV) * dt;
+  if (wallDir && player.vy > WALL_SLIDE && dir === wallDir) player.vy = WALL_SLIDE;
+  player.vy = Math.min(player.vy, MAX_FALL);
+  if (jumpBuf > 0) jumpBuf -= dt;
+  tryJump();
+
+  const wasAirborne = !player.onGround;
+  const vyBefore = player.vy;
+  moveAxis(player, player.vx * dt, player.vy * dt);
+  if (player.onGround) {
+    coyote = COYOTE; canDash = true; airStomps = 0;
+    if (wasAirborne) {
+      burst(wx(player.x + PW / 2), wy(player.y + PH), { n: vyBefore > 600 ? 12 : 5, colors: [0x8ee9ff], speed: 2, life: 0.25, size: 0.07, vy: 0.4 });
+      if (vyBefore > 600) PA.sfx("thud", { vol: 0.35 });
     }
-    // circuit traces inside the walls
-    ctx.strokeStyle = COL.trace; ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let ty = Math.max(0, y0); ty <= Math.min(grid.length - 1, y1); ty++) {
-      for (let tx = Math.max(0, x0); tx <= Math.min(grid[0].length - 1, x1); tx++) {
-        if (!grid[ty][tx] || (tx * 7 + ty * 13) % 5) continue;
-        const X = tx * TILE, Y = ty * TILE;
-        ctx.moveTo(X + 8, Y + 16); ctx.lineTo(X + 16, Y + 16); ctx.lineTo(X + 24, Y + 24);
-        ctx.moveTo(X + 25, Y + 25); ctx.arc(X + 24, Y + 24, 1.5, 0, TAU);
-      }
+  } else coyote = Math.max(0, coyote - dt);
+  senseWalls(player);
+  if (wallDir) canDash = true;
+  if (wallDir && player.vy > 0 && dir === wallDir && Math.random() < 0.35) burst(wx(wallDir > 0 ? player.x + player.w : player.x), wy(player.y + player.h * 0.3), { n: 1, colors: [0xffe0a0], speed: 1.5, life: 0.3, size: 0.06, g: 4 });
+
+  const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+
+  // boost pads
+  for (const p of pads) {
+    if (pcx < p.x + 4 || pcx > p.x + TILE - 4) continue;
+    const feet = player.y + player.h;
+    if (feet < p.y + TILE * 0.55 || feet > p.y + TILE + 1 || player.vy < -50) continue;
+    player.vy = -BOOST_V; player.onGround = false; coyote = 0; boosting = true; canDash = true; dashT = 0;
+    player.squash = -0.35; p.t = 0;
+    PA.sfx("power", { pitch: 1.5, vol: 0.55 });
+    PA.tone({ freq: 220, to: 880, type: "triangle", dur: 0.25, vol: 0.05 });
+    burst(wx(p.x) + 0.5, wy(p.y + TILE) + 0.2, { n: 24, colors: [0x7dffb0, 0xffffff], speed: 3, life: 0.5, size: 0.09, vy: 5 });
+  }
+
+  const touching = (e) => Math.abs(pcx - e.x) < e.r + player.w / 2 - 2 && Math.abs(pcy - e.y) < e.r + player.h / 2 - 2;
+  for (const e of enemies) {
+    if (e.dead) continue;
+    e.ph += dt * 6;
+    // walk the platform: turn at walls and at ledges
+    const nx = e.x + e.dir * BOT_SPEED * dt;
+    const ahead = Math.floor((nx + e.dir * e.r) / TILE), foot = Math.floor((e.y + e.r + 4) / TILE), row = Math.floor(e.y / TILE);
+    if (isSolid(ahead, row) || !isSolid(ahead, foot)) e.dir *= -1;
+    else e.x = nx;
+    if (touching(e)) {
+      if (dashT > 0) defeat(e, "smash");
+      else if (player.vy > 60 && player.y + player.h - player.vy * dt <= e.y - e.r * 0.3) defeat(e, "stomp");
+      else killPlayer("ZAPPED");
     }
-    ctx.stroke();
-    // glowing edges only where a wall meets open air
-    ctx.save();
-    ctx.strokeStyle = COL.wallEdge; ctx.lineWidth = 2; ctx.shadowColor = COL.wallEdge; ctx.shadowBlur = 8; ctx.globalAlpha = 0.7;
-    ctx.beginPath();
-    for (let ty = Math.max(0, y0); ty <= Math.min(grid.length - 1, y1); ty++) {
-      for (let tx = Math.max(0, x0); tx <= Math.min(grid[0].length - 1, x1); tx++) {
-        if (!grid[ty][tx]) continue;
-        const X = tx * TILE, Y = ty * TILE;
-        if (ty > 0 && !grid[ty - 1][tx]) { ctx.moveTo(X, Y + 1); ctx.lineTo(X + TILE, Y + 1); }
-        if (ty < grid.length - 1 && !grid[ty + 1][tx]) { ctx.moveTo(X, Y + TILE - 1); ctx.lineTo(X + TILE, Y + TILE - 1); }
-        if (tx > 0 && !grid[ty][tx - 1]) { ctx.moveTo(X + 1, Y); ctx.lineTo(X + 1, Y + TILE); }
-        if (tx < grid[0].length - 1 && !grid[ty][tx + 1]) { ctx.moveTo(X + TILE - 1, Y); ctx.lineTo(X + TILE - 1, Y + TILE); }
-      }
-    }
-    ctx.stroke();
-    ctx.restore();
   }
-
-  function drawSpikes(t) {
-    ctx.save();
-    ctx.fillStyle = COL.spike; ctx.shadowColor = COL.spike; ctx.shadowBlur = 10 + Math.sin(t * 4) * 3;
-    ctx.beginPath();
-    for (const s of spikes) {
-      for (let i = 0; i < 4; i++) {
-        const x = s.x + i * 8;
-        ctx.moveTo(x, s.y + s.h); ctx.lineTo(x + 4, s.y + 1); ctx.lineTo(x + 8, s.y + s.h);
-      }
-    }
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawChip(c, t) {
-    if (c.got) return;
-    const x = c.x, y = c.y + Math.sin(c.ph) * 3;
-    const r = c.r + Math.sin(t * 4 + c.ph) * 1.2;
-    ctx.save();
-    ctx.shadowColor = COL.chip; ctx.shadowBlur = 14;
-    ctx.fillStyle = COL.chip;
-    ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.85, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.85, y); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = COL.chipCore;
-    ctx.beginPath(); ctx.arc(x, y, r * 0.35, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
-
-  function drawEnemy(e) {
-    if (e.dead && e.squash >= 1) return;
-    const sq = e.dead ? 1 - e.squash : 1;
-    const x = e.x, y = e.y + (1 - sq) * e.r, bob = e.dead ? 0 : Math.abs(Math.sin(e.ph)) * 2;
-    ctx.save();
-    ctx.globalAlpha = sq;
-    ctx.shadowColor = COL.enemy; ctx.shadowBlur = 12;
-    ctx.fillStyle = COL.enemy;
-    ctx.beginPath(); ctx.ellipse(x, y - bob, e.r * (2 - sq), e.r * sq, 0, 0, TAU); ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = "#2a0d1c";
-    ctx.fillRect(x - 7 + e.dir * 2, y - bob - 4, 4, 4 * sq);
-    ctx.fillRect(x + 3 + e.dir * 2, y - bob - 4, 4, 4 * sq);
-    // little antenna, so it reads as a bot
-    ctx.strokeStyle = COL.enemy; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(x, y - bob - e.r * sq); ctx.lineTo(x, y - bob - e.r * sq - 6); ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawLaser(L, t) {
-    const u = laserPhase(L, t), on = u < LASER_ON, warn = !on && u > 0.86;
-    const pulse = 0.55 + 0.45 * Math.sin(t * 8 + L.phase);
-    ctx.save();
-    ctx.globalAlpha = on ? 0.9 : warn ? 0.35 + 0.35 * Math.sin(t * 40) : 0.14;
-    ctx.strokeStyle = on ? COL.laser : "rgba(255,77,109,.6)";
-    ctx.lineWidth = on ? 5 : 2;
-    ctx.shadowColor = COL.laser; ctx.shadowBlur = on ? 18 * pulse : 4;
-    ctx.beginPath(); ctx.moveTo(L.x1, L.y1); ctx.lineTo(L.x2, L.y2); ctx.stroke();
-    if (on) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.shadowBlur = 0; ctx.beginPath(); ctx.moveTo(L.x1, L.y1); ctx.lineTo(L.x2, L.y2); ctx.stroke(); }
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = COL.laserCore;
-    const ex = L.axis === "h" ? [L.x1 + 3, L.x2 - 3] : [L.x], ey = L.axis === "h" ? [L.y] : [L.y1 + 3, L.y2 - 3];
-    for (const X of ex) for (const Y of ey) { ctx.beginPath(); ctx.arc(X, Y, 4, 0, TAU); ctx.fill(); }
-    ctx.restore();
-  }
-
-  function drawFlag(f, t) {
-    const x = f.x, y = f.y;
-    ctx.save();
-    ctx.strokeStyle = "rgba(244,241,255,.55)"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.lineTo(x - 6, y - 38); ctx.stroke();
-    const c = f.on ? COL.flag : "rgba(126,231,168,.35)";
-    ctx.fillStyle = c; ctx.shadowColor = COL.flag; ctx.shadowBlur = f.on ? 14 : 0;
-    const wave = Math.sin(t * 6) * (f.on ? 3 : 1);
-    ctx.beginPath(); ctx.moveTo(x - 6, y - 38); ctx.quadraticCurveTo(x + 6, y - 36 + wave, x + 14, y - 31); ctx.lineTo(x - 6, y - 24); ctx.closePath(); ctx.fill();
-    ctx.restore();
-  }
-
-  function drawExit(e, t) {
-    const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
-    const r = e.w * 0.48 + Math.sin(t * 3 + e.ph) * 2;
-    ctx.save();
-    ctx.shadowColor = COL.portal; ctx.shadowBlur = 24;
-    const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r * 1.15);
-    g.addColorStop(0, COL.portalCore); g.addColorStop(0.55, COL.portal); g.addColorStop(1, "rgba(196,166,255,0)");
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.8, r * 1.15, 0, 0, TAU); ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.55, r * 0.8, 0, t * 2, t * 2 + TAU * 0.7); ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawPlayer(p, t) {
-    if (p.dead) return;
-    const sq = p.squash, w = p.w * (1 + sq), h = p.h * (1 - sq);
-    const x = p.x + (p.w - w) / 2, y = p.y + (p.h - h);
-    ctx.save();
-    if (invuln > 0 && Math.floor(t * 20) % 2 === 0) ctx.globalAlpha = 0.45;
-    ctx.shadowColor = COL.player; ctx.shadowBlur = 16;
-    ctx.fillStyle = COL.player;
-    roundRect(x, y, w, h, 6); ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = COL.playerCore;
-    ctx.fillRect(x + 4 + p.face * 2, y + 6, w - 8, 5);
-    ctx.fillStyle = "#0a1a2a";
-    ctx.fillRect(x + w / 2 - 1 + p.face * 5, y + 7, 3, 3);
-    ctx.restore();
-  }
-
-  function roundRect(x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  function drawBackground() {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, "#0a0e22");
-    g.addColorStop(0.55, "#0c1230");
-    g.addColorStop(1, "#140a1c");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "rgba(244,241,255,.25)";
-    for (let i = 0; i < 70; i++) {
-      const sx = ((i * 173 - camX * Z * 0.12) % W + W) % W;
-      const sy = ((i * 97 - camY * Z * 0.08) % H + H) % H;
-      ctx.fillRect(sx, sy, 2, 2);
+  for (const d of drones) {
+    if (d.dead) continue;
+    d.ph += dt;
+    // hover back and forth, turning at walls or four tiles from home
+    const nx = d.x + d.dir * DRONE_SPEED * dt;
+    const ahead = Math.floor((nx + d.dir * (d.r + 4)) / TILE), row = Math.floor(d.y / TILE);
+    if (isSolid(ahead, row) || Math.abs(nx - d.hx) > TILE * 4) d.dir *= -1;
+    else d.x = nx;
+    d.y = d.hy + Math.sin(d.ph * 2.2) * 9;
+    if (touching(d)) {
+      if (dashT > 0) defeat(d, "smash");
+      else if (player.vy > 60 && player.y + player.h - player.vy * dt <= d.y - d.r * 0.3) defeat(d, "stomp");
+      else killPlayer("ZAPPED");
     }
   }
 
-  function drawBanner() {
-    if (!banner || banner.t > banner.max) return;
+  for (const c of chips) {
+    if (c.got) continue;
+    c.ph += dt * 3;
+    const dx = pcx - c.x, dy = pcy - c.y;
+    if (dx * dx + dy * dy < (c.r + 14) ** 2) collectChip(c);
+  }
+
+  for (const f of flags) {
+    if (f.on || Math.abs(pcx - f.x) > 20 || Math.abs(player.y + player.h - f.y) > 34) continue;
+    flags.forEach((o) => { o.on = false; });
+    f.on = true; f.t = 0;
+    checkpoint = { x: f.x - PW / 2, y: f.y - PH };
+    PA.sfx("power", { pitch: 1.3 });
+    wtext(wx(f.x), wy(f.y) + 1.8, "CHECKPOINT", { color: "#7ee7a8", size: 14, life: 1 });
+    burst(wx(f.x), wy(f.y) + 1.1, { n: 24, colors: [0x7ee7a8, 0xffffff], speed: 3, life: 0.6, size: 0.08 });
+  }
+
+  for (const s of spikes) {
+    if (player.x + player.w > s.x + 4 && player.x < s.x + s.w - 4 && player.y + player.h > s.y + 4 && player.y < s.y + s.h) { killPlayer("SPIKED"); break; }
+  }
+
+  if (!player.dead && exit && player.x + player.w > exit.x && player.x < exit.x + exit.w && player.y + player.h > exit.y && player.y < exit.y + exit.h) {
+    completeLevel();
+    return;
+  }
+  if (!player.dead && hitLaser(player, clock)) killPlayer("FRIED");
+  if (!player.dead && player.y > levelH + 60) { invuln = 0; killPlayer("LOST SIGNAL"); }
+
+  const c = camTarget();
+  camX += (c.tx - camX) * clamp(dt * 7, 0, 1);
+  camY += (c.ty - camY) * clamp(dt * 5, 0, 1);
+}
+
+/* ---------------- rendering ---------------- */
+const bufSize = new THREE.Vector2();
+function resize() {
+  renderer.setPixelRatio(dprCap());
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.getDrawingBufferSize(bufSize);
+  post.setSize(bufSize.x, bufSize.y);
+  const s = bufSize.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+  pointsMat.uniforms.scale.value = s;
+  moteMat.uniforms.scale.value = s;
+}
+
+function render(t) {
+  tv = 0;
+  const sh = PA.shakeOffset();
+  const { V } = viewSize();
+  camD = V / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  const pvx = player && !player.dead ? player.vx / MOVE : 0;
+  lean += (pvx * 0.03 - lean) * 0.08;
+  camera.position.set(camX + sh.x * 0.02 - lean * 4, camY + 1.6 + sh.y * 0.02, camD);
+  camera.lookAt(camX - lean * 2, camY + 0.15, 0);
+  camera.updateMatrixWorld();
+
+  tileMat.uniforms.time.value = t; boardMat.uniforms.time.value = t; moteMat.uniforms.time.value = t;
+  laserMat.uniforms.time.value = t; portalMat.uniforms.time.value = t; padBeamMat.uniforms.time.value = t;
+  tileMat.uniforms.flash.value = levelFlash;
+
+  // hero
+  if (player) {
+    const x = wx(player.x + PW / 2), y = wy(player.y + PH);
+    const alive = !player.dead && warpT <= 0;
+    hero.visible = !player.dead && !(invuln > 0 && materialT <= 0 && Math.floor(t * 20) % 2 === 0);
+    hero.position.set(x, y, 0);
+    const targetYaw = player.face * 0.95;
+    hero.rotation.y += (targetYaw - hero.rotation.y) * 0.25;
+    const sq = player.squash;
+    let sx = 1 + sq, sy = 1 - sq;
+    if (materialT > 0) { const k = 1 - materialT / 0.5; sx *= k; sy *= 0.2 + 0.8 * k; }
+    if (warpT > 0) {
+      const k = clamp(1 - (1.6 - warpT) / 0.6, 0, 1);
+      sx *= k; sy *= k;
+      hero.rotation.y += 0.4;
+      if (exit) { hero.position.x = lerp(exit.mesh.position.x, x, k); hero.position.y = lerp(exit.mesh.position.y - 0.4, y, k); }
+    }
+    heroBody.scale.set(sx * HERO_SCALE, sy * HERO_SCALE, sx * HERO_SCALE);
+    // limbs
+    if (alive) {
+      const sp = Math.abs(player.vx) / MOVE;
+      if (player.onGround) player.run += sp * 0.32 * 60 * (1 / 60) * 6;
+      const sw = player.onGround ? Math.sin(player.run) * 0.8 * sp : (dashT > 0 ? -0.9 : 0.5);
+      HERO.legs[0].rotation.x = sw; HERO.legs[1].rotation.x = player.onGround ? -sw : -0.3;
+      HERO.arms[0].rotation.x = dashT > 0 ? -1.4 : -sw * 0.8; HERO.arms[1].rotation.x = dashT > 0 ? -1.4 : (player.onGround ? sw * 0.8 : -1.2);
+      heroBody.rotation.z = dashT > 0 ? -player.face * 0.0 : 0;
+      heroBody.rotation.x = dashT > 0 ? 0.45 : wallDir && player.vy > 0 ? -0.2 : player.onGround ? sp * 0.12 : 0;
+      heroBody.position.y = player.onGround ? Math.abs(Math.sin(player.run)) * 0.04 * sp : 0;
+    }
+    const ready = canDash || player.onGround;
+    MAT.antenna.color.copy(ready ? hdr(0x8ee9ff, 4) : hdr(0x3a4a66, 1));
+    HERO.glow.material.color.copy(dashT > 0 ? hdr(0x8ee9ff, 1.4) : hdr(0x8ee9ff, 0.4));
+    playerLight.position.set(x, y + 0.6, 1.0);
+    playerLight.intensity = player.dead ? 0 : dashT > 0 ? 12 : 5;
+    tileMat.uniforms.pl.value.set(x, y + 0.5, 0.8);
+    boardMat.uniforms.pl.value.set(x, y + 0.5, 0);
+    // dash ribbon
+    if (alive && dashT > 0) dashTrail.push(x, y + 0.5, 0.05);
+    else if (dashTrail.length) dashTrail.splice(0, 6);
+    while (dashTrail.length > 36) dashTrail.splice(0, 3);
+    ribbon(dashTrail, [1.2, 3.2, 4.0], 0.32);
+  }
+
+  for (const c of chips) {
+    if (c.got || !c.mesh) continue;
+    c.mesh.rotation.y = t * 2.2 + c.ph;
+    c.mesh.position.y = wy(c.y) + Math.sin(t * 3 + c.ph) * 0.08;
+  }
+  for (const e of enemies) {
+    if (!e.mesh) continue;
+    if (e.dead && e.squash >= 1) { e.mesh.visible = false; continue; }
+    e.mesh.position.set(wx(e.x), wy(e.y + e.r), 0);
+    e.mesh.rotation.y = e.dir > 0 ? 0.8 : -0.8;
+    const s = e.dead ? 1 - e.squash : 1;
+    e.body.scale.set(1 + (1 - s) * 0.6, Math.max(0.05, s), 1 + (1 - s) * 0.6);
+    e.body.position.y = e.dead ? 0 : Math.abs(Math.sin(e.ph)) * 0.04;
+  }
+  for (const d of drones) {
+    if (!d.mesh) continue;
+    if (d.dead && d.squash >= 1) { d.mesh.visible = false; continue; }
+    d.mesh.position.set(wx(d.x), wy(d.y), 0);
+    d.ring.rotation.z = t * 6;
+    d.mesh.rotation.y = d.dir * 0.4;
+    d.mesh.scale.setScalar(d.dead ? 1 - d.squash : 1);
+  }
+  for (const L of lasers) {
+    const u = laserPhase(L, clock), on = u < LASER_ON, warn = !on && u > 0.86;
+    L.mat.uniforms.on.value = on ? 1 : 0;
+    L.mat.uniforms.warn.value = warn ? 1 : 0;
+  }
+  for (const f of flags) {
+    if (!f.mesh) continue;
+    f.halo.rotation.y = t * (f.on ? 3 : 0.6);
+    f.halo.material.color.copy(f.on ? hdr(0x7ee7a8, 3) : hdr(0x7ee7a8, 0.5));
+    f.glow.material.color.copy(f.on ? hdr(0x7ee7a8, 0.8) : hdr(0x7ee7a8, 0.12));
+    f.halo.position.y = 1.15 + Math.sin(t * 2) * 0.05;
+  }
+  for (const p of pads) {
+    if (!p.mesh) continue;
+    const k = Math.max(0, 1 - p.t / 0.3);
+    p.base.scale.y = 1 - k * 0.4;
+  }
+  if (exit && exit.mesh) {
+    exit.disc.rotation.z = -t * 0.5;
+    exitLight.intensity = 8 + Math.sin(t * 3) * 2 + (warpT > 0 ? 20 : 0);
+  }
+
+  tGeo.setDrawRange(0, tv);
+  tGeo.attributes.position.needsUpdate = true; tGeo.attributes.color.needsUpdate = true;
+
+  post.comp.uniforms.hurt.value = hurt * 0.55;
+  post.comp.uniforms.warp.value = warpT > 0 ? Math.sin(clamp((1.6 - warpT) / 1.6, 0, 1) * Math.PI) : 0;
+  post.render(scene, camera, t);
+  drawOverlay(t);
+  if (PA.state === "play") paintHud(false);
+}
+
+function drawOverlay(t) {
+  ctx.setTransform(overlay.dpr, 0, 0, overlay.dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const S = clamp(Math.sqrt(W * H) / 820, 0.72, 1.35);
+  ctx.textAlign = "center";
+  for (const w of wtexts) {
+    const p = toScreen(w.x, w.y, 0.4), k = w.t / w.life;
+    ctx.globalAlpha = k < 0.7 ? 1 : (1 - k) / 0.3;
+    ctx.font = `800 ${Math.round(w.size * S)}px Manrope, system-ui, sans-serif`;
+    ctx.lineWidth = 3; ctx.strokeStyle = "rgba(4,6,16,.7)"; ctx.strokeText(w.text, p.x, p.y);
+    ctx.fillStyle = w.color; ctx.fillText(w.text, p.x, p.y);
+  }
+  ctx.globalAlpha = 1;
+  if (PA.state !== "play") return;
+  if (banner && banner.t < banner.max) {
     const k = banner.t / banner.max;
     const a = k < 0.12 ? k / 0.12 : k > 0.78 ? (1 - k) / 0.22 : 1;
-    ctx.save();
     ctx.globalAlpha = a;
-    ctx.textAlign = "center";
-    ctx.font = "600 " + Math.round(26 * S) + "px Manrope, system-ui, sans-serif";
-    ctx.fillStyle = "#8ee9ff";
-    ctx.shadowColor = "#c4a6ff";
-    ctx.shadowBlur = 16;
-    ctx.fillText(banner.text, W / 2, H * 0.24);
-    ctx.font = "500 " + Math.round(13 * S) + "px 'JetBrains Mono', monospace";
+    const by = H * (W < 600 ? 0.3 : 0.24);
+    ctx.font = "800 " + Math.round(30 * S) + "px Manrope, system-ui, sans-serif";
+    ctx.fillStyle = "#e9fbff"; ctx.shadowColor = "#8ee9ff"; ctx.shadowBlur = 18;
+    ctx.fillText(banner.text, W / 2, by);
+    ctx.shadowBlur = 0;
+    ctx.font = "600 " + Math.round(13 * S) + "px 'JetBrains Mono', monospace";
     ctx.fillStyle = "#c4a6ff";
-    ctx.fillText(banner.sub.toUpperCase().split("").join(" "), W / 2, H * 0.24 + 28 * S);
-    ctx.restore();
+    ctx.fillText(banner.sub.toUpperCase().split("").join(" "), W / 2, by + 28 * S);
+    ctx.fillStyle = "rgba(200,220,255,.7)";
+    ctx.fillText("PAR " + banner.par + "s · ALL CHIPS UNDER PAR FOR S", W / 2, by + 50 * S);
+    ctx.globalAlpha = 1;
   }
-
-  function render(t) {
-    const sh = PA.shakeOffset();
-    ctx.setTransform(DPR, 0, 0, DPR, DPR * sh.x, DPR * sh.y);
-    drawBackground();
-    if (!grid.length) return;
-    ctx.save();
-    ctx.scale(Z, Z);
-    ctx.translate(-camX, -camY);
-    drawTiles();
-    drawSpikes(t);
-    lasers.forEach((L) => drawLaser(L, t));
-    flags.forEach((f) => drawFlag(f, t));
-    if (exit) drawExit(exit, t);
-    chips.forEach((c) => drawChip(c, t));
-    enemies.forEach(drawEnemy);
-    if (player) drawPlayer(player, t);
-    fx.draw(ctx);
-    texts.draw(ctx);
-    ctx.restore();
-    drawBanner();
-    if (PA.state === "play" && levelIdx === 0 && W > 640 && player && !player.dead && banner && banner.t > 0.5 && levelT < 9) {
-      ctx.fillStyle = "rgba(168,163,192,.8)";
-      ctx.font = "500 " + Math.round(12 * S) + "px Manrope, system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Grab the chips · land on bots to stomp them · hold jump to jump higher", W / 2, H - 24 * S);
-    }
+  if (warpRank && warpT > 0) {
+    const k = clamp((1.6 - warpT) / 0.25, 0, 1);
+    ctx.globalAlpha = k;
+    const cy = H * 0.4;
+    ctx.fillStyle = "rgba(6,8,22,.72)";
+    const bw = Math.min(360, W - 40), bh = 170 * Math.min(1, S);
+    ctx.beginPath(); ctx.roundRect(W / 2 - bw / 2, cy - bh / 2, bw, bh, 18); ctx.fill();
+    ctx.strokeStyle = "rgba(196,166,255,.45)"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.font = "600 " + Math.round(11 * Math.min(1, S)) + "px 'JetBrains Mono', monospace"; ctx.fillStyle = "#7dffb0";
+    ctx.fillText("SECTOR " + (levelIdx + 1) + " SYNCED", W / 2, cy - bh / 2 + 26);
+    const rc = { S: "#ffd27a", A: "#8ee9ff", B: "#c4a6ff", C: "#a8a3c0" }[warpRank.rank];
+    ctx.font = "900 " + Math.round(64 * Math.min(1, S)) + "px Manrope, system-ui, sans-serif"; ctx.fillStyle = rc;
+    ctx.shadowColor = rc; ctx.shadowBlur = 24;
+    ctx.fillText(warpRank.rank, W / 2, cy + 18);
+    ctx.shadowBlur = 0;
+    ctx.font = "600 " + Math.round(12 * Math.min(1, S)) + "px 'JetBrains Mono', monospace"; ctx.fillStyle = "#dfe6ff";
+    ctx.fillText(warpRank.secs.toFixed(1) + "s / par " + warpRank.par + "s · chips " + warpRank.got + "/" + warpRank.of, W / 2, cy + bh / 2 - 34);
+    ctx.fillStyle = "#ffd27a";
+    ctx.fillText("+" + warpRank.bonus.toLocaleString(), W / 2, cy + bh / 2 - 14);
+    ctx.globalAlpha = 1;
   }
+  if (levelIdx === 0 && player && !player.dead && banner && banner.t > 0.5 && levelT < 10) {
+    ctx.fillStyle = "rgba(200,210,235,.82)";
+    ctx.font = "600 " + Math.round(12.5 * S) + "px Manrope, system-ui, sans-serif";
+    ctx.fillText(PA.isTouch ? "Grab the chips · stomp bots or DASH through them" : "Grab the chips · stomp bots or dash through them (Shift) · hold jump to jump higher", W / 2, H - (PA.isTouch ? 120 : 26 * S));
+  }
+  if (combo > 1 && clock - lastChipT < COMBO_T) {
+    const k = 1 - (clock - lastChipT) / COMBO_T;
+    ctx.font = "800 " + Math.round(13 * S) + "px 'JetBrains Mono', monospace";
+    ctx.fillStyle = `rgba(255,214,122,${0.4 + k * 0.6})`;
+    ctx.fillText("CHIP COMBO ×" + Math.min(3, 1 + (combo - 1) * 0.5), W / 2, (W < 560 ? 132 : 84));
+    ctx.fillRect(W / 2 - 50, (W < 560 ? 138 : 90), 100 * k, 3);
+  }
+}
 
-  window.__chop = () => ({
-    score,
-    level: levelIdx + 1,
-    levelName: LEVELS[levelIdx] ? LEVELS[levelIdx].name : null,
-    levels: LEVELS.length,
-    chips: chipsGot,
-    chipsTotal: totalChipsAll,
-    chipsLevel: chips.filter((c) => c.got).length,
-    chipsLevelTotal: chips.length,
-    x: player ? player.x : 0,
-    y: player ? player.y : 0,
-    vx: player ? player.vx : 0,
-    vy: player ? player.vy : 0,
-    onGround: !!(player && player.onGround),
-    wallDir,
-    deaths,
-    stomps,
-    camX,
-    camY,
-    zoom: Z,
-    alive: !!(player && !player.dead),
-    overSent,
-    simT
-  });
-  // test hook: drop the player on a tile (x, y in tiles)
-  window.__chopWarp = (tx, ty) => { if (player) { player.x = tx * TILE + (TILE - PW) / 2; player.y = ty * TILE + TILE - PH; player.vx = player.vy = 0; invuln = 0.3; } };
-  window.__chopLevel = (i) => loadLevel(i, true);
+/* ---------------- boot ---------------- */
+addEventListener("resize", resize);
+resize();
+totalChipsAll = countAllChips();
+parseLevel(0);
+buildScene(0);
+resetPlayer();
+materialT = 0;
+{ const c = camTarget(); camX = c.tx; camY = c.ty; }
+PA.loop(update, render);
 
-  PA.loop(update, render);
+window.__chop = () => ({
+  score,
+  level: levelIdx + 1,
+  levelName: LEVELS[levelIdx] ? LEVELS[levelIdx].name : null,
+  levels: LEVELS.length,
+  chips: chipsGot,
+  chipsTotal: totalChipsAll,
+  chipsLevel: chips.filter((c) => c.got).length,
+  chipsLevelTotal: chips.length,
+  x: player ? player.x : 0,
+  y: player ? player.y : 0,
+  vx: player ? player.vx : 0,
+  vy: player ? player.vy : 0,
+  onGround: !!(player && player.onGround),
+  wallDir,
+  deaths,
+  stomps,
+  smashes,
+  ranks: ranks.slice(),
+  canDash,
+  camX,
+  camY,
+  alive: !!(player && !player.dead),
+  overSent,
+  simT
+});
+// test hooks: drop the player on a tile (x, y in tiles), jump to a sector, step the sim
+window.__chopWarp = (tx, ty) => { if (player) { player.x = tx * TILE + (TILE - PW) / 2; player.y = ty * TILE + TILE - PH; player.vx = player.vy = 0; invuln = 0.3; const c = camTarget(); camX = c.tx; camY = c.ty; } };
+window.__chopLevel = (i) => loadLevel(i, true);
+window.__ch = { foes: () => enemies.concat(drones).map((e) => ({ x: e.x, y: e.y, dead: e.dead })), sim: (sec) => { for (let i = 0; i < sec * 60; i++) update(1 / 60); }, dash: () => { dashBuf = 0.12; }, jump: () => { jumpBuf = JUMP_BUF; } };
 })();
 </script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"a350f886e6974df098681db56e5946d2","r":1,"spa":2}' crossorigin="anonymous"></script>
 </body></html>

@@ -3,32 +3,49 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
 <title>Void Rocks — PromptArcade</title>
 <style>
-html,body{margin:0;height:100%;background:#05070f;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
-canvas{display:block;position:fixed;inset:0}
+html,body{margin:0;height:100%;background:#03040a;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#game{position:fixed;inset:0;z-index:1}
+#game canvas{display:block;width:100%;height:100%}
+#fx{position:fixed;inset:0;z-index:2;pointer-events:none}
 #vr-hud{opacity:0;transition:opacity .45s ease}
 #vr-hud.on{opacity:1}
 #s-ships b{color:#8ee9ff;letter-spacing:.08em}
+#s-refit b{color:#ffd27a}
+#s-refit .bar{position:relative;width:76px;height:5px;margin-top:5px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
+#s-refit .bar i{position:absolute;inset:0;width:0;border-radius:4px;background:linear-gradient(90deg,#ffd27a,#8ee9ff);transition:width .25s ease}
+@media (max-width:560px){#vr-hud{right:136px}#s-refit .bar{width:56px}}
 </style></head><body>
-<canvas id="c" aria-label="Void Rocks playfield"></canvas>
+<div id="game" aria-label="Void Rocks: a salvage tug in a drifting rock field"></div>
+<canvas id="fx" aria-hidden="true"></canvas>
 <div class="pa-hud" id="vr-hud">
   <div class="pa-stat" id="s-score"><small>Score</small><b>0</b></div>
   <div class="pa-stat" id="s-wave"><small>Wave</small><b>1</b></div>
   <div class="pa-stat" id="s-ships"><small>Ships</small><b>▲▲▲</b></div>
-  <div class="pa-stat" id="s-chain"><small>Best chain</small><b>—</b></div>
+  <div class="pa-stat" id="s-refit"><small>Refit</small><b>Mk I</b><div class="bar"><i></i></div></div>
 </div>
 <script>
 window.paConfig = {
   slug: "void-rocks", title: "Void Rocks", native: true, music: "space", unit: "points",
-  controls: [["← → / A D", "Rotate"], ["↑ / W", "Thrust"], ["Space", "Fire"], ["E / X", "Tether: grab, then fling"], ["Shift / H", "Blink: jump a short way ahead"], ["Drones", "Scrapper drones latch onto big rocks and cut them up"]]
+  controls: [["← → / A D", "Rotate"], ["↑ / W", "Thrust"], ["Space", "Fire"], ["E / X", "Tether: grab, then fling"], ["Shift / H", "Blink: jump a short way ahead"], ["Salvage", "Fly through the gold crystals to refit the tug"], ["Rifts", "Fling a rock into a rift to seal it"]]
 };
 </script>
-<script src="/games/play/pa-score.js?v=e650da0b4c"></script>
-<script src="/games/play/pa-gate.js?v=e650da0b4c"></script>
-<script src="/games/play/pa-kit.js?v=e650da0b4c"></script>
-<script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script type="module">
+import * as THREE from "/vendor/three/three.module.min.js";
+
 (() => {
-  const TAU = Math.PI * 2;
-  const { rand, randInt, choice, clamp } = PA;
+"use strict";
+// A rock-field shooter seen from above, in real 3D. The rules are the original wrapping arena in screen
+// pixels (inertia, splitting rocks, the tractor tether, scrapper drones and the blink), and the scene draws
+// it on a plane under a straight-down camera, so every pixel of the field maps to one spot on the deck and
+// things that cross an edge show on both sides. Added: salvage crystals that refit the tug (twin guns, a
+// stronger tether, a spread), and rifts that drag everything in until you fling a rock in to seal them.
+const PA = window.PA;
+const TAU = Math.PI * 2;
+const { rand, randInt, choice, clamp, lerp } = PA;
+const FIELD_H = 30;
   const ROCK_R = [0, 13, 25, 46];
   const ROCK_PTS = [0, 120, 60, 30];
   const ROCK_COL = [0, "#ff9f7e", "#8ee9ff", "#c4a6ff"];
@@ -57,135 +74,720 @@ window.paConfig = {
       shapes[size].push(pts);
     }
   }
+/* ---------------- renderer + post ---------------- */
+const mount = document.getElementById("game");
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+const dprCap = () => Math.min(PA.isTouch ? 1.5 : 2, devicePixelRatio || 1);
+renderer.setPixelRatio(dprCap());
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+mount.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05040d);
+scene.fog = new THREE.FogExp2(0x070516, 0.012);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.3, 500);
+const hdr = (c, k) => new THREE.Color(c).multiplyScalar(k);
 
-  let W = 0, H = 0, S = 1, DPR = 1;
-  let spr = null, bg = null, stars = [];
-  let rocks = [], shots = [], eshots = [], debris = [], drone = null, ship = null;
-  let score = 0, lives = 3, wave = 1, nextLife = LIFE_EVERY;
-  let waveClearT = 0, droneT = 12, respawnT = 0, respawnWait = 0, overT = 0, overSent = false, simT = 0;
-  let fireCd = 0, hyperCd = 0, thrustSfxT = 0, emitT = 0, banner = null;
-  let tether = null, tetherCd = 0, flings = 0, smashes = 0, bestChain = 0, hintT = 0;
-  let shotsFired = 0, hits = 0, rocksKilled = 0, dronesKilled = 0, hypers = 0, peakWave = 1;
-  let parX = 0, parY = 0, shx = 0, shy = 0;
-
-  const view = PA.canvas(document.getElementById("c"), { onResize: layout });
-  const ctx = view.ctx;
-  const fx = new PA.Particles(700), texts = new PA.Texts();
-  const hud = document.getElementById("vr-hud");
-
-  /* ---------- sprites ---------- */
-  function makeCanvas(w, h) {
-    const c = document.createElement("canvas");
-    c.width = Math.ceil(w * DPR); c.height = Math.ceil(h * DPR);
-    const g = c.getContext("2d");
-    g.scale(DPR, DPR);
-    return [c, g];
+function makePost() {
+  const ext = renderer.extensions;
+  const fullFloat = ext.has("EXT_color_buffer_float"), hdrOk = fullFloat || ext.has("EXT_color_buffer_half_float");
+  const type = hdrOk ? THREE.HalfFloatType : THREE.UnsignedByteType;
+  const main = new THREE.WebGLRenderTarget(1, 1, { type, samples: hdrOk && !fullFloat ? 0 : PA.isTouch ? 2 : 4 });
+  const LV = 5, lv = [], tmp = [];
+  for (let i = 0; i < LV; i++) {
+    lv.push(new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false }));
+    tmp.push(new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false }));
   }
-  function glowStroke(g, color, path, lw) {
-    g.save();
-    g.lineJoin = "round"; g.lineCap = "round";
-    g.shadowColor = color; g.shadowBlur = 18 * DPR;
-    g.globalAlpha = 0.55; g.strokeStyle = color; g.lineWidth = lw * 2.8; path(g); g.stroke();
-    g.shadowBlur = 6 * DPR; g.globalAlpha = 1; g.lineWidth = lw; path(g); g.stroke();
-    g.shadowBlur = 0; g.strokeStyle = "rgba(255,255,255,.8)"; g.lineWidth = lw * 0.42; path(g); g.stroke();
-    g.restore();
-  }
-  function sprite(R, color, path, lw, fillA) {
-    const pad = 16, size = (R + pad) * 2;
-    const [c, g] = makeCanvas(size, size);
-    g.translate(size / 2, size / 2);
-    if (fillA) {
-      path(g);
-      const grd = g.createRadialGradient(-R * 0.3, -R * 0.3, 0, 0, 0, R);
-      grd.addColorStop(0, color); grd.addColorStop(1, "rgba(0,0,0,0)");
-      g.globalAlpha = fillA; g.fillStyle = grd; g.fill();
-      g.globalAlpha = fillA * 0.35; g.fillStyle = color; g.fill(); g.globalAlpha = 1;
-    }
-    glowStroke(g, color, path, lw);
-    return { c, half: size / 2 };
-  }
-  function polyPath(pts, k) {
-    return (g) => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0] * k, p[1] * k) : g.moveTo(p[0] * k, p[1] * k)); g.closePath(); };
-  }
-  function segPath(segs, k) {
-    return (g) => { g.beginPath(); segs.forEach(s => { g.moveTo(s[0][0] * k, s[0][1] * k); g.lineTo(s[1][0] * k, s[1][1] * k); }); };
-  }
-  function dotSprite(r, color) {
-    const pad = r * 4, size = (r + pad) * 2;
-    const [c, g] = makeCanvas(size, size);
-    const m = size / 2;
-    const grd = g.createRadialGradient(m, m, 0, m, m, m);
-    grd.addColorStop(0, "#fff"); grd.addColorStop(0.18, color); grd.addColorStop(0.45, color + "55"); grd.addColorStop(1, color + "00");
-    g.fillStyle = grd; g.fillRect(0, 0, size, size);
-    return { c, half: m };
-  }
-  // rocks are solid, cratered stone lit from one side, with only a thin coloured rim of light
-  function rockSprite(R, color, pts) {
-    const pad = 10, size = (R + pad) * 2;
-    const [c, g] = makeCanvas(size, size);
-    g.translate(size / 2, size / 2);
-    const path = polyPath(pts, R);
-    path(g);
-    const body = g.createRadialGradient(-R * .35, -R * .4, R * .1, 0, 0, R * 1.1);
-    body.addColorStop(0, "#8d8794"); body.addColorStop(.55, "#4d4856"); body.addColorStop(1, "#211e29");
-    g.fillStyle = body; g.fill();
-    g.save(); path(g); g.clip();
-    g.globalAlpha = .22; g.fillStyle = color; g.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4); g.globalAlpha = 1;
-    for (let k = 0; k < 3 + (R > 30 * S ? 3 : 0); k++) {
-      const a = rand(TAU), d = rand(0, R * .55), cr = rand(R * .1, R * .24), x = Math.cos(a) * d, y = Math.sin(a) * d;
-      g.fillStyle = "rgba(15,12,22,.45)"; g.beginPath(); g.ellipse(x, y, cr, cr * .8, a, 0, TAU); g.fill();
-      g.strokeStyle = "rgba(200,195,215,.25)"; g.lineWidth = Math.max(1, cr * .18); g.beginPath(); g.ellipse(x - cr * .12, y - cr * .12, cr, cr * .8, a, Math.PI * .9, Math.PI * 1.9); g.stroke();
-    }
-    g.restore();
-    g.save(); g.shadowColor = color; g.shadowBlur = 8 * DPR; g.strokeStyle = color; g.globalAlpha = .7; g.lineWidth = 1.2 * Math.max(1, S); g.lineJoin = "round"; path(g); g.stroke(); g.restore();
-    return { c, half: size / 2 };
-  }
-  function buildSprites() {
-    const lw = 1.7 * Math.max(1, S);
-    spr = { rock: [null, [], [], []] };
-    for (let size = 1; size <= 3; size++) {
-      for (let v = 0; v < VARIANTS; v++) {
-        const R = ROCK_R[size] * S;
-        spr.rock[size].push(rockSprite(R, ROCK_COL[size], shapes[size][v]));
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+  quad.frustumCulled = false;
+  const pscene = new THREE.Scene();
+  pscene.add(quad);
+  const vs = "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }";
+  const mk = (fs, uniforms) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
+  const box4 = "vec3 c = 0.25 * (texture2D(tex, vUv + px * vec2(-0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(-0.5, 0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, 0.5)).rgb);";
+  const bright = mk([
+    "uniform sampler2D tex; uniform vec2 px; uniform float thr; varying vec2 vUv;",
+    "void main(){", box4,
+    "  float l = max(c.r, max(c.g, c.b));",
+    "  float knee = thr * 0.5, soft = clamp(l - thr + knee, 0.0, 2.0 * knee);",
+    "  soft = soft * soft / (4.0 * knee + 1e-4);",
+    "  gl_FragColor = vec4(min(c * max(soft, l - thr) / max(l, 1e-4), vec3(30.0)), 1.0);",
+    "}"].join("\n"), { tex: { value: null }, px: { value: new THREE.Vector2() }, thr: { value: hdrOk ? 0.95 : 0.7 } });
+  const down = mk("uniform sampler2D tex; uniform vec2 px; varying vec2 vUv; void main(){ " + box4 + " gl_FragColor = vec4(c, 1.0); }",
+    { tex: { value: null }, px: { value: new THREE.Vector2() } });
+  const blur = mk([
+    "uniform sampler2D tex; uniform vec2 dir; varying vec2 vUv;",
+    "void main(){",
+    "  vec3 c = texture2D(tex, vUv).rgb * 0.2270270270;",
+    "  c += (texture2D(tex, vUv + dir * 1.3846153846).rgb + texture2D(tex, vUv - dir * 1.3846153846).rgb) * 0.3162162162;",
+    "  c += (texture2D(tex, vUv + dir * 3.2307692308).rgb + texture2D(tex, vUv - dir * 3.2307692308).rgb) * 0.0702702703;",
+    "  gl_FragColor = vec4(c, 1.0);",
+    "}"].join("\n"), { tex: { value: null }, dir: { value: new THREE.Vector2() } });
+  const comp = mk([
+    "uniform sampler2D tScene, b0, b1, b2, b3, b4; uniform float strength, grain, time, hurt, chroma; uniform vec4 lens; varying vec2 vUv;",
+    "void main(){",
+    "  vec2 q = vUv - 0.5;",
+    "  vec2 uv = vUv; float hole = 1.0;",
+    "  if (lens.z > 0.0) {",
+    // a rift bends the light round it and swallows the middle
+    "    vec2 d = uv - lens.xy; d.x *= lens.w; float r = length(d);",
+    "    vec2 dir = d / max(r, 1e-4); dir.x /= lens.w;",
+    "    uv += dir * lens.z * lens.z / (r + lens.z * 0.6) * 0.55 * smoothstep(lens.z * 7.0, lens.z, r);",
+    "    hole = smoothstep(lens.z * 0.55, lens.z * 0.95, r);",
+    "  }",
+    "  vec3 c;",
+    "  c.r = texture2D(tScene, uv + q * chroma * 0.012).r;",
+    "  c.g = texture2D(tScene, uv).g;",
+    "  c.b = texture2D(tScene, uv - q * chroma * 0.012).b;",
+    "  c *= hole;",
+    "  vec3 b = texture2D(b0, vUv).rgb * 0.5 + texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.75 + texture2D(b3, vUv).rgb * 0.85 + texture2D(b4, vUv).rgb * 0.95;",
+    "  c += b * strength;",
+    "  float vig = dot(q, q);",
+    "  c *= 1.0 - vig * 0.85;",
+    "  c += vec3(1.0, 0.2, 0.45) * hurt * smoothstep(0.08, 0.4, vig);",
+    "  gl_FragColor = vec4(c, 1.0);",
+    "  #include <tonemapping_fragment>",
+    "  #include <colorspace_fragment>",
+    "  float n = fract(sin(dot(gl_FragCoord.xy + fract(time) * 97.0, vec2(12.9898, 78.233))) * 43758.5453);",
+    "  gl_FragColor.rgb += (n - 0.5) * grain;",
+    "}"].join("\n"), {
+    tScene: { value: main.texture }, b0: { value: lv[0].texture }, b1: { value: lv[1].texture }, b2: { value: lv[2].texture },
+    b3: { value: lv[3].texture }, b4: { value: lv[4].texture }, strength: { value: 0.5 }, grain: { value: 0.02 }, time: { value: 0 }, hurt: { value: 0 }, chroma: { value: 0.1 }, lens: { value: new THREE.Vector4() }
+  });
+  const pass = (m, target) => { quad.material = m; renderer.setRenderTarget(target); renderer.render(pscene, cam); };
+  return {
+    comp,
+    setSize(w, h) {
+      main.setSize(w, h);
+      for (let i = 0; i < LV; i++) {
+        const lw = Math.max(1, w >> (i + 1)), lh = Math.max(1, h >> (i + 1));
+        lv[i].setSize(lw, lh); tmp[i].setSize(lw, lh);
       }
+    },
+    render(sc, cm, t) {
+      renderer.setRenderTarget(main);
+      renderer.render(sc, cm);
+      bright.uniforms.tex.value = main.texture;
+      bright.uniforms.px.value.set(1 / main.width, 1 / main.height);
+      pass(bright, lv[0]);
+      for (let i = 0; i < LV; i++) {
+        if (i) {
+          down.uniforms.tex.value = lv[i - 1].texture;
+          down.uniforms.px.value.set(1 / lv[i - 1].width, 1 / lv[i - 1].height);
+          pass(down, lv[i]);
+        }
+        blur.uniforms.tex.value = lv[i].texture; blur.uniforms.dir.value.set(1 / lv[i].width, 0);
+        pass(blur, tmp[i]);
+        blur.uniforms.tex.value = tmp[i].texture; blur.uniforms.dir.value.set(0, 1 / lv[i].height);
+        pass(blur, lv[i]);
+      }
+      comp.uniforms.time.value = t;
+      pass(comp, null);
     }
-    spr.ship = sprite(20 * S, SHIP_COL, polyPath(SHIP_PTS, S), lw * 1.15, 0.22);
-    spr.big = sprite(22 * S, BIG_COL, segPath(DRONE_SEGS, S), lw, 0);
-    spr.small = sprite(14 * S, SMALL_COL, segPath(DRONE_SEGS, S * 14 / 22), lw, 0);
-    spr.shot = dotSprite(2.2 * S, "#8ee9ff");
-    spr.eshot = dotSprite(2.4 * S, ESHOT_COL);
-  }
-  function buildBackground() {
-    const [c, g] = makeCanvas(W, H);
-    const lg = g.createLinearGradient(0, 0, 0, H);
-    lg.addColorStop(0, "#070b16"); lg.addColorStop(0.55, "#0a1230"); lg.addColorStop(1, "#12081c");
-    g.fillStyle = lg; g.fillRect(0, 0, W, H);
-    const neb = [[0.2, 0.25, 0.55, "rgba(196,166,255,.16)"], [0.82, 0.7, 0.6, "rgba(255,126,182,.11)"], [0.6, 0.15, 0.4, "rgba(142,233,255,.09)"], [0.1, 0.85, 0.45, "rgba(142,233,255,.07)"]];
-    neb.forEach(([x, y, r, col]) => {
-      const R = Math.max(W, H) * r;
-      const rg = g.createRadialGradient(x * W, y * H, 0, x * W, y * H, R);
-      rg.addColorStop(0, col); rg.addColorStop(1, "rgba(0,0,0,0)");
-      g.fillStyle = rg; g.fillRect(0, 0, W, H);
-    });
-    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
-    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.55)");
-    g.fillStyle = vg; g.fillRect(0, 0, W, H);
-    bg = c;
-  }
-  function layout(v) {
-    W = v.w; H = v.h; DPR = v.dpr;
-    S = clamp(Math.sqrt(W * H) / 820, 0.7, 1.3);
-    buildSprites();
-    buildBackground();
-    const want = Math.min(420, Math.round(W * H / 4200));
-    stars = [];
-    for (let i = 0; i < want; i++) {
-      const z = Math.random() < 0.55 ? 0 : Math.random() < 0.7 ? 1 : 2;
-      stars.push({ x: Math.random(), y: Math.random(), z, ph: rand(TAU), sp: rand(0.6, 2.2) });
+  };
+}
+const post = makePost();
+function canvasTex(w, h, paint, o) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  paint(cv.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = o && o.linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+  if (o && o.repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+const glowTex = canvasTex(128, 128, (g, w) => {
+  const gr = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+  gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(.2, "rgba(255,255,255,.5)"); gr.addColorStop(.55, "rgba(255,255,255,.1)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, w, w);
+});
+function glowSprite(color, scale) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  s.scale.setScalar(scale);
+  return s;
+}
+// ribbon trails (ball paths, beams)
+const TV = 9000;
+const tPos = new Float32Array(TV * 3), tCol = new Float32Array(TV * 3);
+const tGeo = new THREE.BufferGeometry();
+tGeo.setAttribute("position", new THREE.BufferAttribute(tPos, 3).setUsage(THREE.DynamicDrawUsage));
+tGeo.setAttribute("color", new THREE.BufferAttribute(tCol, 3).setUsage(THREE.DynamicDrawUsage));
+const trailMesh = new THREE.Mesh(tGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+trailMesh.frustumCulled = false;
+scene.add(trailMesh);
+let tv = 0;
+const camDir = new THREE.Vector3();
+function ribbon(tr, col, width, taper) {
+  const n = tr.length / 3;
+  if (n < 2) return;
+  for (let i = 1; i < n && tv + 6 <= TV; i++) {
+    const ax = tr[i * 3 - 3], ay = tr[i * 3 - 2], az = tr[i * 3 - 1], bx = tr[i * 3], by = tr[i * 3 + 1], bz = tr[i * 3 + 2];
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    camDir.set(camera.position.x - bx, camera.position.y - by, camera.position.z - bz).normalize();
+    const px = dy * camDir.z - dz * camDir.y, py = dz * camDir.x - dx * camDir.z, pz = dx * camDir.y - dy * camDir.x;
+    const pl = Math.hypot(px, py, pz) || 1;
+    const k0 = taper === false ? 1 : (i - 1) / (n - 1), k1 = taper === false ? 1 : i / (n - 1);
+    const w0 = width * k0 / pl, w1 = width * k1 / pl;
+    const v = [ax - px * w0, ay - py * w0, az - pz * w0, ax + px * w0, ay + py * w0, az + pz * w0, bx - px * w1, by - py * w1, bz - pz * w1, bx + px * w1, by + py * w1, bz + pz * w1];
+    for (const q of [0, 1, 2, 1, 3, 2]) {
+      tPos[tv * 3] = v[q * 3]; tPos[tv * 3 + 1] = v[q * 3 + 1]; tPos[tv * 3 + 2] = v[q * 3 + 2];
+      const k = q < 2 ? k0 : k1, kk = taper === false ? 1 : k * k;
+      tCol[tv * 3] = col[0] * kk; tCol[tv * 3 + 1] = col[1] * kk; tCol[tv * 3 + 2] = col[2] * kk;
+      tv++;
     }
   }
+}
 
-  /* ---------- helpers ---------- */
+scene.background = new THREE.Color(0x020309);
+scene.fog = null;
+camera.fov = 30; camera.near = 1; camera.far = 1200;
+renderer.toneMappingExposure = 1.05;
+post.comp.uniforms.strength.value = 0.62;
+const CAM_D = FIELD_H / 2 / Math.tan(THREE.MathUtils.degToRad(15));
+const bufSize = new THREE.Vector2();
+let K = 26;   // screen pixels per world unit
+function resize3d() {
+  renderer.setPixelRatio(dprCap());
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.getDrawingBufferSize(bufSize);
+  post.setSize(bufSize.x, bufSize.y);
+  pointsMat.uniforms.scale.value = starMat.uniforms.scale.value = bufSize.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+}
+
+/* ---------------- deep space ---------------- */
+{
+  const env = canvasTex(512, 256, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, "#1a1440"); gr.addColorStop(0.5, "#2b2a5e"); gr.addColorStop(1, "#06060e");
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.fillStyle = "#ffe0b0"; g.fillRect(60, 40, 80, 14);
+    g.fillStyle = "#8ee9ff"; g.fillRect(300, 70, 90, 8);
+  });
+  env.mapping = THREE.EquirectangularReflectionMapping;
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromEquirectangular(env).texture;
+  env.dispose(); pm.dispose();
+}
+const NOISE = `
+  float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
+  float fb(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * n2(p); p = p * 2.03 + 1.7; a *= 0.5; } return s; }`;
+const nebMat = new THREE.ShaderMaterial({
+  depthWrite: false,
+  uniforms: { time: { value: 0 }, off: { value: new THREE.Vector2() }, rift: { value: 0 } },
+  vertexShader: "varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `uniform float time, rift; uniform vec2 off; varying vec2 vP;
+    ${NOISE}
+    void main(){
+      vec2 p = (vP + off) * 0.006;
+      float n = fb(p * 2.0 + vec2(time * 0.004, 0.0));
+      float m = fb(p * 3.5 - n * 0.8 + 7.0);
+      vec3 col = vec3(0.006, 0.008, 0.02);
+      col += vec3(0.32, 0.12, 0.55) * pow(smoothstep(0.42, 0.85, n), 2.0) * 0.55;
+      col += vec3(0.05, 0.4, 0.5) * pow(smoothstep(0.5, 0.9, m), 2.0) * 0.4;
+      col += vec3(0.6, 0.2, 0.35) * pow(smoothstep(0.62, 0.95, n * m * 1.6), 2.0) * 0.3;
+      // dust lanes
+      col *= 0.55 + 0.45 * smoothstep(0.25, 0.6, fb(p * 6.0 + 3.0));
+      col += vec3(0.4, 0.1, 0.6) * rift * 0.08;
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+const neb = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1000).rotateX(-Math.PI / 2), nebMat);
+neb.position.y = -320;
+scene.add(neb);
+// star layers at real depths: they slide against each other as the tug moves
+const starMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { time: { value: 0 }, off: { value: new THREE.Vector2() }, scale: { value: 600 }, span: { value: new THREE.Vector2(120, 80) } },
+  vertexShader: `uniform float time, scale; uniform vec2 off, span; attribute float seed; varying float vA; varying vec3 vC;
+    void main(){
+      vec3 p = position;
+      float depth = -p.y;
+      vec2 s = span * (1.0 + depth / 56.0);
+      p.xz = mod(p.xz + off * (14.0 / (14.0 + depth)) + s * 0.5, s) - s * 0.5;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      vA = 0.45 + 0.55 * (0.5 + 0.5 * sin(time * (0.6 + seed * 2.0) + seed * 50.0));
+      vC = mix(vec3(0.7, 0.85, 1.0), vec3(1.0, 0.85, 0.7), step(0.7, fract(seed * 13.0)));
+      gl_PointSize = max(1.0, (0.12 + seed * 0.2) * scale / -mv.z);
+      gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: "varying float vA; varying vec3 vC; void main(){ float d = length(gl_PointCoord - 0.5); gl_FragColor = vec4(vC * vA * smoothstep(0.5, 0.0, d) * 1.4, 1.0); }"
+});
+{
+  const N = 1500, pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) { pos.set([rand(-200, 200), -rand(6, 220), rand(-200, 200)], i * 3); seed[i] = Math.random(); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
+  const m = new THREE.Points(g, starMat); m.frustumCulled = false;
+  scene.add(m);
+}
+
+/* ---------------- lights (a fixed set: unused ones sit at zero) ---------------- */
+scene.add(new THREE.HemisphereLight(0x8c96ff, 0x120818, 0.5));
+const keyL = new THREE.DirectionalLight(0xfff0dc, 2.0); keyL.position.set(-40, 26, -22); scene.add(keyL);
+const fillL = new THREE.DirectionalLight(0x6aa8ff, 0.55); fillL.position.set(30, 18, 30); scene.add(fillL);
+const shipL = new THREE.PointLight(0xffb35a, 0, 7, 1.6); scene.add(shipL);
+const tetherL = new THREE.PointLight(0xffd27a, 0, 8, 1.6); scene.add(tetherL);
+const droneL = new THREE.PointLight(0xffd27a, 0, 8, 1.6); scene.add(droneL);
+const riftL = new THREE.PointLight(0xb070ff, 0, 18, 1.4); scene.add(riftL);
+const expL = [new THREE.PointLight(0xffffff, 0, 12, 1.6), new THREE.PointLight(0xffffff, 0, 12, 1.6)];
+for (const l of expL) scene.add(l);
+const expS = [{ k: 0 }, { k: 0 }];
+let expI = 0;
+
+/* ---------------- rocks: faceted, cratered, veined with the colour of their size ---------------- */
+const ROCK_HEX = [0, 0xff9f7e, 0x8ee9ff, 0xc4a6ff];
+function hashN(x, y, z) { const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x, y, z) {
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z), fx = x - ix, fy = y - iy, fz = z - iz;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz);
+  const L = (a, b, t) => a + (b - a) * t;
+  return L(L(L(hashN(ix, iy, iz), hashN(ix + 1, iy, iz), u), L(hashN(ix, iy + 1, iz), hashN(ix + 1, iy + 1, iz), u), v),
+           L(L(hashN(ix, iy, iz + 1), hashN(ix + 1, iy, iz + 1), u), L(hashN(ix, iy + 1, iz + 1), hashN(ix + 1, iy + 1, iz + 1), u), v), w);
+}
+function rockGeo(seed, detail, lumpy) {
+  const g = new THREE.IcosahedronGeometry(1, detail);
+  const p = g.attributes.position, n = p.count;
+  const craters = [];
+  for (let i = 0; i < 7; i++) { const v = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize(); craters.push([v, rand(0.25, 0.55), rand(0.08, 0.16)]); }
+  const st = [rand(0.8, 1.15), rand(0.75, 1), rand(0.85, 1.2)];
+  const vein = new Float32Array(n), shade = new Float32Array(n), v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    v.set(p.getX(i), p.getY(i), p.getZ(i)).normalize();
+    let r = 1 + (vnoise(v.x * 2.2 + seed, v.y * 2.2, v.z * 2.2) - 0.5) * 0.5 * lumpy + (vnoise(v.x * 5 + seed, v.y * 5, v.z * 5) - 0.5) * 0.16;
+    for (const [c, size, depth] of craters) {
+      const d = v.angleTo(c) / size;
+      if (d < 1) r -= depth * (1 - d * d);
+      else if (d < 1.35) r += depth * 0.35 * Math.sin((d - 1) / 0.35 * Math.PI);
+    }
+    p.setXYZ(i, v.x * r * st[0], v.y * r * st[1], v.z * r * st[2]);
+    const vn = vnoise(v.x * 4 + seed * 3, v.y * 4, v.z * 4);
+    vein[i] = Math.pow(Math.max(0, 1 - Math.abs(vn - 0.5) * 20), 2);
+    shade[i] = 0.75 + vnoise(v.x * 7 - seed, v.y * 7, v.z * 7) * 0.5;
+  }
+  g.setAttribute("vein", new THREE.BufferAttribute(vein, 1));
+  g.setAttribute("shade", new THREE.BufferAttribute(shade, 1));
+  g.computeVertexNormals();
+  return g;
+}
+const rockMat = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 }, key: { value: keyL.position.clone().normalize() }, fill: { value: fillL.position.clone().normalize() } },
+  vertexShader: `attribute float vein, shade; varying vec3 vN, vW, vC, vO; varying float vVein, vShade;
+    void main(){
+      vO = position;
+      vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0);
+      vW = w.xyz; vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
+      vC = instanceColor; vVein = vein; vShade = shade;
+      gl_Position = projectionMatrix * viewMatrix * w;
+    }`,
+  fragmentShader: `uniform float time; uniform vec3 key, fill; varying vec3 vN, vW, vC, vO; varying float vVein, vShade;
+    float h3(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+    float n3(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
+                 mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z); }
+    void main(){
+      vec3 N = normalize(vN), V = normalize(cameraPosition - vW);
+      vec3 alb = vec3(0.095, 0.08, 0.075) * vShade;
+      float k = max(dot(N, key), 0.0), f = max(dot(N, fill), 0.0);
+      vec3 col = alb * (k * vec3(1.9, 1.75, 1.6) + f * vec3(0.35, 0.5, 0.9) + 0.1);
+      float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+      col += vC * rim * 0.55;
+      float vn = n3(vO * 2.6) * 0.65 + n3(vO * 6.0) * 0.35;
+      float vein = 1.0 - smoothstep(0.0, 0.035, abs(vn - 0.5));
+      col *= 1.0 - vein * 0.5;
+      col += vC * vein * (1.2 + 0.6 * sin(time * 2.0 + vW.x * 0.7 + vW.z * 0.5));
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+const VARIANTS_3D = 7, ROCK_CAP = 18;
+const rockMeshes = [null, [], [], []];
+for (let s = 1; s <= 3; s++) {
+  for (let v = 0; v < VARIANTS_3D; v++) {
+    const m = new THREE.InstancedMesh(rockGeo(s * 10 + v * 3.7, s === 3 ? 2 : 1, s === 3 ? 1 : 0.8), rockMat, ROCK_CAP);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.setColorAt(0, new THREE.Color());
+    m.count = 0; m.frustumCulled = false;
+    scene.add(m);
+    rockMeshes[s].push(m);
+  }
+}
+// a few huge rocks far below, for depth
+const farRocks = [];
+for (let i = 0; i < 5; i++) {
+  const m = new THREE.Mesh(rockGeo(90 + i * 5, 2, 1.1), new THREE.MeshStandardMaterial({ color: 0x2a2630, roughness: 0.95, flatShading: true }));
+  const sc = rand(3.5, 7);
+  m.scale.setScalar(sc);
+  m.userData = { x: rand(-90, 90), z: rand(-60, 60), y: -rand(90, 170), w: new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize(), sp: rand(0.02, 0.06) };
+  scene.add(m);
+  farRocks.push(m);
+}
+// rubble: little tumbling chunks thrown out when a rock breaks
+const CH_MAX = 320;
+const chunkMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x9a929e, roughness: 0.85, flatShading: true }), CH_MAX);
+chunkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+chunkMesh.setColorAt(0, new THREE.Color());
+chunkMesh.count = 0; chunkMesh.frustumCulled = false;
+scene.add(chunkMesh);
+// glowing cut lines: the old vector debris, now hot slivers
+const DB_MAX = 300;
+const debrisMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: 0xffffff }), DB_MAX);
+debrisMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+debrisMesh.setColorAt(0, new THREE.Color());
+debrisMesh.count = 0; debrisMesh.frustumCulled = false;
+scene.add(debrisMesh);
+// rings round rocks on the tether or in flight
+const hotRings = [];
+for (let i = 0; i < 3; i++) {
+  const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 6, 48).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: hdr(0xffd27a, 2.5), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  m.visible = false; scene.add(m); hotRings.push(m);
+}
+
+/* ---------------- the tug ---------------- */
+const shipG = new THREE.Group(), shipBody = new THREE.Group();
+shipG.add(shipBody);
+const hullMat = new THREE.MeshStandardMaterial({ color: 0x2a3150, metalness: 0.8, roughness: 0.3 });
+const trimMat = new THREE.MeshStandardMaterial({ color: 0xb8c4e8, metalness: 0.9, roughness: 0.22 });
+const glowCyan = new THREE.MeshBasicMaterial({ color: hdr(0x8ee9ff, 3) });
+{
+  const sh = new THREE.Shape();
+  SHIP_PTS.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
+  sh.closePath();
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 5, bevelEnabled: true, bevelThickness: 1.6, bevelSize: 1.3, bevelSegments: 2 });
+  g.rotateX(Math.PI / 2);
+  g.translate(0, 2.5, 0);
+  const hull = new THREE.Mesh(g, hullMat);
+  shipBody.add(hull);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(4.2, 18, 12, 0, TAU, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8ee9ff, metalness: 0.2, roughness: 0.05, emissive: 0x1a5a70, emissiveIntensity: 0.8, transparent: true, opacity: 0.85 }));
+  dome.scale.set(1.3, 0.8, 1); dome.position.set(5, 3.6, 0);
+  shipBody.add(dome);
+  for (const s of [-1, 1]) {
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.6, 7, 12).rotateZ(Math.PI / 2), trimMat);
+    pod.position.set(-6, 2.5, s * 8.5);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.5, 6, 18).rotateY(Math.PI / 2), glowCyan);
+    ring.position.set(-9.6, 2.5, s * 8.5);
+    shipBody.add(pod, ring);
+  }
+  // the tether rig at the stern
+  const rig = new THREE.Mesh(new THREE.TorusGeometry(3, 0.7, 8, 24).rotateX(Math.PI / 2), trimMat);
+  rig.position.set(-9, 4.6, 0);
+  shipBody.add(rig);
+  const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1, 8, 8).rotateZ(Math.PI / 2), trimMat);
+  gun.position.set(17, 2.6, 0);
+  shipBody.add(gun);
+}
+const flameMat = new THREE.MeshBasicMaterial({ color: hdr(0xffb35a, 3), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+const flames = [];
+for (const s of [-1, 1]) {
+  const f = new THREE.Mesh(new THREE.ConeGeometry(1.8, 1, 10).rotateZ(Math.PI / 2).translate(-0.5, 0, 0), flameMat);
+  f.position.set(-9.8, 2.5, s * 8.5);
+  shipBody.add(f); flames.push(f);
+}
+const engineGlow = glowSprite(0xffb35a, 22);
+engineGlow.position.set(-12, 2.5, 0);
+shipBody.add(engineGlow);
+const shieldMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { time: { value: 0 }, k: { value: 1 } },
+  vertexShader: "varying vec3 vN, vV; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vN = normalize(mat3(modelMatrix) * normal); vV = cameraPosition - w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
+  fragmentShader: "uniform float time, k; varying vec3 vN, vV; void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2); float hx = 0.6 + 0.4 * sin(vN.x * 16.0 + time * 4.0) * sin(vN.z * 16.0 - time * 3.0); gl_FragColor = vec4(vec3(0.45, 0.85, 1.0) * f * (1.0 + hx) * k, 1.0); }"
+});
+const shieldBall = new THREE.Mesh(new THREE.SphereGeometry(22, 28, 18), shieldMat);
+shieldBall.scale.y = 0.5;
+shipG.add(shieldBall);
+scene.add(shipG);
+// blink marker
+const blinkRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 6, 40).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: hdr(0xc4a6ff, 3), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+blinkRing.visible = false;
+scene.add(blinkRing);
+
+/* ---------------- the scrapper drone ---------------- */
+const droneG = new THREE.Group();
+const droneTint = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const droneArms = new THREE.Group();
+{
+  const podMat = new THREE.MeshStandardMaterial({ color: 0x3a3442, metalness: 0.85, roughness: 0.3 });
+  const pod = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.1, 0.55, 6), podMat);
+  pod.rotation.y = Math.PI / 6;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.9, 0.3, 6), trimMat);
+  cap.position.y = 0.4; cap.rotation.y = Math.PI / 6;
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), new THREE.MeshBasicMaterial({ color: hdr(0xff4d6d, 4) }));
+  eye.position.y = 0.6;
+  const band = new THREE.Mesh(new THREE.TorusGeometry(1.08, 0.07, 6, 6).rotateX(Math.PI / 2), droneTint);
+  band.rotation.y = Math.PI / 6;
+  droneG.add(pod, cap, eye, band);
+  for (let i = 0; i < 3; i++) {
+    const a = i / 3 * TAU;
+    const arm = new THREE.Group();
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.16, 0.22), podMat);
+    bar.position.x = 1.35;
+    const blade = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.7, 4).rotateZ(-Math.PI / 2), droneTint);
+    blade.position.x = 1.95;
+    arm.add(bar, blade);
+    arm.rotation.y = a;
+    droneArms.add(arm);
+  }
+  droneG.add(droneArms);
+  const gl = glowSprite(0xffffff, 3.2);
+  gl.material.color = droneTint.color;
+  droneG.add(gl);
+}
+droneG.visible = false;
+scene.add(droneG);
+
+/* ---------------- shots, salvage, rifts ---------------- */
+const ES_MAX = 40;
+const eshotMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: hdr(0xffb35a, 4) }), ES_MAX);
+const eshotGlow = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTex, color: hdr(0xff7a3a, 1.8), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), ES_MAX);
+for (const m of [eshotMesh, eshotGlow]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.count = 0; m.frustumCulled = false; scene.add(m); }
+const GEM_MAX = 60;
+const gemMesh = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0xffe2a0, metalness: 0.3, roughness: 0.1, emissive: 0xffb84a, emissiveIntensity: 1.6 }), GEM_MAX);
+const gemGlow = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTex, color: hdr(0xffc65a, 1.4), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), GEM_MAX);
+for (const m of [gemMesh, gemGlow]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.count = 0; m.frustumCulled = false; scene.add(m); }
+const riftMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  uniforms: { time: { value: 0 }, k: { value: 0 } },
+  vertexShader: "varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `uniform float time, k; varying vec2 vP;
+    void main(){
+      float r = length(vP), a = atan(vP.y, vP.x);
+      if (r > 1.0) discard;
+      float arms = 0.5 + 0.5 * sin(a * 3.0 + log(r + 0.02) * 7.0 + time * 2.6);
+      float arms2 = 0.5 + 0.5 * sin(a * 5.0 - log(r + 0.02) * 11.0 + time * 4.1);
+      float ring = exp(-pow((r - 0.16) * 22.0, 2.0));
+      float fall = smoothstep(1.0, 0.15, r) * smoothstep(0.08, 0.16, r);
+      vec3 col = mix(vec3(0.55, 0.2, 1.0), vec3(1.0, 0.35, 0.7), arms2) * pow(arms, 2.0) * fall * 1.4;
+      col += vec3(1.0, 0.85, 1.0) * ring * 3.0;
+      gl_FragColor = vec4(col * k, 1.0);
+    }`
+});
+const riftG = new THREE.Group();
+const riftDisk = new THREE.Mesh(new THREE.PlaneGeometry(2, 2, 1, 1).rotateX(-Math.PI / 2), riftMat);
+const riftCore = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+riftG.add(riftDisk, riftCore);
+riftG.visible = false;
+scene.add(riftG);
+
+/* ---------------- particles (in field pixels, drawn in the scene) ---------------- */
+const PMAX = 2600;
+const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3), pSize = new Float32Array(PMAX);
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute("color", new THREE.BufferAttribute(pCol, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute("size", new THREE.BufferAttribute(pSize, 1).setUsage(THREE.DynamicDrawUsage));
+const pointsMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { scale: { value: 600 } },
+  vertexShader: "uniform float scale; attribute float size; attribute vec3 color; varying vec3 vC; void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = max(1.0, size * scale / -mv.z); gl_Position = projectionMatrix * mv; }",
+  fragmentShader: "varying vec3 vC; void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.05, d); gl_FragColor = vec4(vC * a * a, 1.0); }"
+});
+const ptsMesh = new THREE.Points(pGeo, pointsMat);
+ptsMesh.frustumCulled = false;
+scene.add(ptsMesh);
+const colCache = {};
+function colOf(c) {
+  if (typeof c === "number") c = "#" + c.toString(16).padStart(6, "0");
+  let v = colCache[c];
+  if (!v) { const k = new THREE.Color(c); v = colCache[c] = [k.r, k.g, k.b]; }
+  return v;
+}
+// same calls as the flat game's particle kit, so the rules code is untouched
+function makeFx() {
+  const list = [];
+  return {
+    list,
+    burst(x, y, o) {
+      o = o || {};
+      const n = o.n || 10, cols = o.colors || [o.color || "#ffffff"];
+      for (let i = 0; i < n && list.length < PMAX; i++) {
+        const a = o.angle != null ? o.angle + rand(-0.5, 0.5) * (o.spread == null ? 1 : o.spread) * 2 : Math.random() * TAU;
+        const sp = (o.speed == null ? 100 : o.speed) * rand(0.25, 1), life = (o.life || 0.5) * rand(0.6, 1.1);
+        list.push({ x, y, h: rand(0.2, 1.2), vx: Math.cos(a) * sp + (o.vx || 0), vy: Math.sin(a) * sp + (o.vy || 0), life, max: life,
+          size: (o.size || 2) * rand(0.7, 1.3), c: colOf(cols[(Math.random() * cols.length) | 0]), drag: o.drag || 0 });
+      }
+    },
+    update(dt) {
+      let j = 0;
+      for (let i = 0; i < list.length; i++) {
+        const p = list[i];
+        p.life -= dt;
+        if (p.life <= 0) continue;
+        if (p.drag) { const k = Math.exp(-p.drag * dt); p.vx *= k; p.vy *= k; }
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        list[j++] = p;
+      }
+      list.length = j;
+    },
+    clear() { list.length = 0; }
+  };
+}
+
+/* ---------------- state ---------------- */
+let W = innerWidth, H = innerHeight, S = 1, DPR = 1;
+let rocks = [], shots = [], eshots = [], debris = [], drone = null, ship = null;
+let score = 0, lives = 3, wave = 1, nextLife = LIFE_EVERY;
+let waveClearT = 0, droneT = 12, respawnT = 0, respawnWait = 0, overT = 0, overSent = false, simT = 0;
+let fireCd = 0, hyperCd = 0, thrustSfxT = 0, emitT = 0, banner = null;
+let tether = null, tetherCd = 0, flings = 0, smashes = 0, bestChain = 0, hintT = 0;
+let shotsFired = 0, hits = 0, rocksKilled = 0, dronesKilled = 0, hypers = 0, peakWave = 1;
+let parX = 0, parY = 0, shx = 0, shy = 0;
+// salvage refits the tug; rifts drag everything in until a flung rock seals them
+const REFIT = [0, 0, 10, 24, 42], REFIT_NAME = ["", "Mk I", "Mk II", "Mk III", "Mk IV"], REFIT_GAIN = ["", "", "Twin guns", "Heavy tether", "Spread guns"];
+let gems = [], salvage = 0, refit = 1, peakRefit = 1, rift = null, riftsSealed = 0, chunks = [], swallowed = 0;
+
+const hud = document.getElementById("vr-hud");
+const refitBar = document.querySelector("#s-refit .bar i");
+const fx = makeFx(), texts = new PA.Texts();
+const view = PA.canvas(document.getElementById("fx"), { onResize: layout });
+const ctx = view.ctx;
+function layout(v) {
+  W = v.w; H = v.h; DPR = v.dpr;
+  S = clamp(Math.sqrt(W * H) / 820, 0.7, 1.3);
+  K = H / FIELD_H;
+  resize3d();
+}
+const X = (x) => (x - W / 2) / K, Z = (y) => (y - H / 2) / K;
+
+function maxShots() { return MAX_SHOTS * (refit >= 4 ? 3 : refit >= 2 ? 2 : 1); }
+const tetherMul = () => (refit >= 3 ? 1.35 : 1);
+function boom(x, y, color, k) {
+  const i = expI++ % 2;
+  expL[i].position.set(X(x), 2.5, Z(y)); expL[i].color.set(color); expS[i].k = k || 1;
+}
+function spawnChunks(x, y, n, size, vx, vy, col) {
+  for (let i = 0; i < n; i++) {
+    if (chunks.length >= CH_MAX) chunks.shift();
+    const a = rand(TAU), sp = rand(40, 160) * S;
+    const life = rand(0.9, 1.8);
+    chunks.push({ x, y, h: rand(-0.3, 0.5), vx: vx * 0.4 + Math.cos(a) * sp, vy: vy * 0.4 + Math.sin(a) * sp, vh: rand(-1, 2),
+      rx: rand(TAU), ry: rand(TAU), wx: rand(-8, 8), wy: rand(-8, 8), s: size * rand(0.5, 1.2), life, max: life, col: new THREE.Color(col).multiplyScalar(0.35).addScalar(0.45) });
+  }
+}
+function dropGems(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    if (gems.length >= GEM_MAX) gems.shift();
+    const a = rand(TAU), sp = rand(30, 90) * S;
+    gems.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 11, spin: rand(TAU) });
+  }
+}
+function updateGems(dt) {
+  for (let i = gems.length - 1; i >= 0; i--) {
+    const g = gems[i];
+    g.life -= dt; g.spin += dt * 3;
+    if (g.life <= 0) { gems.splice(i, 1); continue; }
+    if (ship && ship.alive && ship.hyper <= 0) {
+      const dx = wd(ship.x - g.x, W), dy = wd(ship.y - g.y, H), d = Math.hypot(dx, dy);
+      if (d < 22 * S) { gems.splice(i, 1); takeGem(g); continue; }
+      if (d < 140 * S) { const a = 1500 * S * (1 - d / (140 * S)) + 300 * S; g.vx += dx / d * a * dt; g.vy += dy / d * a * dt; }
+    }
+    const k = Math.exp(-1.6 * dt); g.vx *= k; g.vy *= k;
+    g.x += g.vx * dt; g.y += g.vy * dt; wrap(g);
+  }
+}
+function takeGem(g) {
+  salvage++;
+  score += 25;
+  fx.burst(g.x, g.y, { n: 8, colors: ["#ffd27a", "#ffffff"], speed: 90, life: 0.3, size: 2, drag: 3 });
+  PA.tone({ freq: 1200 + (salvage % 6) * 120, to: 1800, type: "sine", dur: 0.06, vol: 0.04 });
+  if (refit < 4 && salvage >= REFIT[refit + 1]) {
+    refit++; peakRefit = Math.max(peakRefit, refit);
+    PA.sfx("powerup");
+    PA.flash("#ffd27a2a", 240);
+    if (ship) texts.add(ship.x, ship.y - 34 * S, "REFIT " + REFIT_NAME[refit] + " · " + REFIT_GAIN[refit].toUpperCase(), { color: "#ffe6a8", size: 16, life: 1.6, vy: -26 });
+  }
+  paintHud();
+}
+function spawnRift() {
+  let x = W / 2, y = H / 2;
+  for (let k = 0; k < 40; k++) {
+    x = rand(W * 0.18, W * 0.82); y = rand(H * 0.2, H * 0.8);
+    if (!ship || !near(x, y, ship.x, ship.y, Math.min(W, H) * 0.32)) break;
+  }
+  rift = { x, y, core: 22 * S, reach: Math.min(W, H) * 0.42 + 60 * S, k: 0, t: 0, dying: false };
+  PA.tone({ freq: 90, to: 40, type: "sawtooth", dur: 1.2, vol: 0.08 });
+  texts.add(x, y - 50 * S, "RIFT · FLING A ROCK IN TO SEAL IT", { color: "#d9b8ff", size: 14, life: 2.4, vy: -10 });
+}
+function riftPull(o, dt, mul) {
+  const dx = wd(rift.x - o.x, W), dy = wd(rift.y - o.y, H), d = Math.hypot(dx, dy);
+  if (d > rift.reach || d < 1) return d;
+  const a = 46000 * S * S * (mul || 1) * rift.k / (d + 80 * S) * (1 - d / rift.reach * 0.6);
+  o.vx += dx / d * a * dt; o.vy += dy / d * a * dt;
+  return d;
+}
+function sealRift(byRock, chain) {
+  const rx = rift.x, ry = rift.y, reach = 230 * S;
+  riftsSealed++;
+  const bonus = 1000 * Math.max(1, chain);
+  rift = null;
+  PA.sfx("explode", { pitch: 0.6, vol: 0.9 });
+  PA.sfx("levelup");
+  PA.flash("#d9b8ff44", 380);
+  PA.shake(18 * S, 0.6);
+  PA.hitstop(110);
+  boom(rx, ry, 0xc49bff, 3);
+  fx.burst(rx, ry, { n: 120, colors: ["#d9b8ff", "#ffffff", "#ff7eb6", "#8ee9ff"], speed: 520, life: 1.1, size: 3.2, drag: 1.6 });
+  addScore(bonus, rx, ry - 30 * S, "#e6d0ff", true);
+  texts.add(rx, ry - 64 * S, "RIFT SEALED", { color: "#ffffff", size: 26, life: 1.6, vy: -24 });
+  // the collapse throws out a shockwave that breaks everything close by
+  for (let j = rocks.length - 1; j >= 0; j--) {
+    const r = rocks[j];
+    if (r === byRock || r.held) continue;
+    if (near(r.x, r.y, rx, ry, reach + ROCK_R[r.size] * S)) destroyRock(j, true, wd(r.x - rx, W) * 4, wd(r.y - ry, H) * 4);
+  }
+}
+function updateRift(dt) {
+  if (!rift) return;
+  rift.t += dt;
+  rift.k = rift.dying ? Math.max(0, rift.k - dt * 1.5) : Math.min(1, rift.k + dt * 0.6);
+  if (rift.dying && rift.k <= 0) { rift = null; return; }
+  if (!rift.dying) {
+    if (Math.random() < 0.6) {
+      const a = rand(TAU), r = rift.reach * rand(0.4, 0.9);
+      fx.burst(rift.x + Math.cos(a) * r, rift.y + Math.sin(a) * r, { n: 1, colors: ["#b07aff", "#ff8ad0"], speed: 0, life: 0.9, size: 1.8, vx: -Math.cos(a) * r * 0.9 - Math.sin(a) * 120 * S, vy: -Math.sin(a) * r * 0.9 + Math.cos(a) * 120 * S });
+    }
+  }
+  for (let j = rocks.length - 1; j >= 0; j--) {
+    const r = rocks[j];
+    if (!r || r.held) continue;
+    const d = riftPull(r, dt, r.flung ? 0.4 : 1);
+    const R = ROCK_R[r.size] * S;
+    if (d < rift.core + R * 0.55 && rift.k > 0.5 && !rift.dying) {
+      if (r.flung) { const ch = r.flung.chain + 1; if (ch > bestChain) bestChain = ch; const k = rocks.indexOf(r); if (k >= 0) { rocks.splice(k, 1); } sealRift(r, ch); return; }
+      rocks.splice(j, 1);
+      swallowed++;
+      fx.burst(r.x, r.y, { n: 20, colors: ["#b07aff", ROCK_COL[r.size], "#ffffff"], speed: 120, life: 0.6, size: 2.2, drag: 2 });
+      PA.tone({ freq: 220, to: 50, type: "sine", dur: 0.4, vol: 0.08 });
+    }
+  }
+  for (const b of shots) riftPull(b, dt, 0.5);
+  for (const b of eshots) riftPull(b, dt, 0.5);
+  for (const g of gems) riftPull(g, dt, 0.3);
+  if (drone) riftPull(drone, dt, 0.3);
+  if (ship && ship.alive && ship.hyper <= 0 && PA.state === "play") {
+    const d = riftPull(ship, dt, 0.75);
+    if (d < rift.core + 6 * S && ship.inv <= 0 && !rift.dying && rift.k > 0.5) killShip();
+  }
+}
+function updateChunks(dt) {
+  let j = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    c.life -= dt;
+    if (c.life <= 0) continue;
+    const k = Math.exp(-0.8 * dt);
+    c.vx *= k; c.vy *= k;
+    c.x += c.vx * dt; c.y += c.vy * dt; c.h += c.vh * dt; c.vh *= k;
+    c.rx += c.wx * dt; c.ry += c.wy * dt;
+    chunks[j++] = c;
+  }
+  chunks.length = j;
+}
   function wd(d, L) { return d > L / 2 ? d - L : d < -L / 2 ? d + L : d; }
   function near(ax, ay, bx, by, r) { const dx = wd(ax - bx, W), dy = wd(ay - by, H); return dx * dx + dy * dy < r * r; }
   function wrap(o) { o.x = ((o.x % W) + W) % W; o.y = ((o.y % H) + H) % H; }
@@ -216,7 +818,8 @@ window.paConfig = {
     PA.stat("s-score", score.toLocaleString());
     PA.stat("s-wave", wave);
     PA.stat("s-ships", lives <= 0 ? "—" : lives <= 5 ? "▲".repeat(lives) : "▲×" + lives);
-    PA.stat("s-chain", bestChain ? "×" + bestChain : "—");
+    PA.stat("s-refit", REFIT_NAME[refit]);
+    refitBar.style.width = (refit >= 4 ? 100 : (salvage - REFIT[refit]) / (REFIT[refit + 1] - REFIT[refit]) * 100).toFixed(0) + "%";
   }
   function addScore(p, x, y, col, big) {
     score += p;
@@ -261,6 +864,9 @@ window.paConfig = {
       }
     }
     addDebris(polySegs(shapes[r.size][r.v]), r.x, r.y, R, r.a, col, r.vx, r.vy);
+    spawnChunks(r.x, r.y, 3 + r.size * 3, R / K * 0.2, r.vx, r.vy, col);
+    if (byPlayer && r.size >= 2) dropGems(r.x, r.y, r.size === 3 ? 2 : Math.random() < 0.5 ? 1 : 0);
+    if (r.size === 3) boom(r.x, r.y, col, 1.1);
     fx.burst(r.x, r.y, { n: 5 + r.size * 5, colors: [col, "#ffffff", col], speed: 90 + r.size * 70, life: 0.45 + r.size * 0.12, size: 2.2, shape: "spark", drag: 2.4 });
     fx.burst(r.x, r.y, { n: 3 + r.size * 2, color: col, speed: 40 + r.size * 20, life: 0.7, size: 2.6, drag: 1.6 });
     if (r.size === 3) { PA.sfx("explode", { pitch: 0.85, vary: 0.15 }); PA.shake(7 * S, 0.28); }
@@ -276,6 +882,9 @@ window.paConfig = {
     addDebris(DRONE_SEGS, s.x, s.y, s.small ? S * 14 / 22 : S, 0, col, s.vx, s.vy, 1.6);
     fx.burst(s.x, s.y, { n: 30, colors: [col, "#fff", "#ff7eb6"], speed: 300, life: 0.8, size: 2.4, shape: "spark", drag: 2 });
     PA.sfx("explode", { pitch: s.small ? 1.4 : 1.05 });
+    boom(s.x, s.y, col, 1.6);
+    spawnChunks(s.x, s.y, 10, 0.12, s.vx, s.vy, col);
+    dropGems(s.x, s.y, s.small ? 4 : 3);
     PA.shake(9 * S, 0.32);
     PA.hitstop(45);
   }
@@ -283,6 +892,9 @@ window.paConfig = {
     if (!ship || !ship.alive) return;
     ship.alive = false;
     lives--;
+    boom(ship.x, ship.y, 0xff7eb6, 2);
+    spawnChunks(ship.x, ship.y, 12, 0.1, ship.vx, ship.vy, "#8ee9ff");
+    if (refit > 1) { refit--; salvage = REFIT[refit]; }
     dropTether();
     addDebris(polySegs(SHIP_PTS), ship.x, ship.y, S, ship.a, SHIP_COL, ship.vx, ship.vy, 1.4);
     fx.burst(ship.x, ship.y, { n: 46, colors: ["#8ee9ff", "#ffffff", "#ff7eb6", "#ffd27a"], speed: 380, life: 1.1, size: 2.6, shape: "spark", drag: 1.8 });
@@ -298,11 +910,16 @@ window.paConfig = {
 
   /* ---------- player actions ---------- */
   function fire(cd) {
-    if (PA.state !== "play" || !ship || !ship.alive || ship.hyper > 0 || fireCd > 0 || shots.length >= MAX_SHOTS) return;
+    if (PA.state !== "play" || !ship || !ship.alive || ship.hyper > 0 || fireCd > 0 || shots.length >= maxShots()) return;
     fireCd = cd;
     const c = Math.cos(ship.a), s = Math.sin(ship.a), sp = 640 * S;
     const x = ship.x + c * 20 * S, y = ship.y + s * 20 * S;
-    shots.push({ x, y, vx: ship.vx + c * sp, vy: ship.vy + s * sp, life: 0.8 });
+    // refits add a second barrel, then a spread
+    const lanes = refit >= 4 ? [[-6, -0.12], [0, 0], [6, 0.12]] : refit >= 2 ? [[-6, 0], [6, 0]] : [[0, 0]];
+    for (const [off, da] of lanes) {
+      const cc = Math.cos(ship.a + da), ss = Math.sin(ship.a + da);
+      shots.push({ x: x - s * off * S, y: y + c * off * S, vx: ship.vx + cc * sp, vy: ship.vy + ss * sp, life: 0.8 });
+    }
     shotsFired++;
     ship.recoil = 1;
     PA.tone({ freq: 1500, to: 360, type: "square", dur: 0.08, vol: 0.035, filter: 3600 });
@@ -324,11 +941,11 @@ window.paConfig = {
     if (PA.state !== "play" || !ship || !ship.alive || ship.hyper > 0) return;
     if (tether) { if (tether.pull <= 0) fling(); return; }
     if (tetherCd > 0) return;
-    let best = null, bestD = TETHER_RANGE * S, heavy = null;
+    let best = null, bestD = TETHER_RANGE * S * tetherMul(), heavy = null;
     for (const r of rocks) {
       if (r.held || r.flung) continue;
       const d = Math.hypot(wd(r.x - ship.x, W), wd(r.y - ship.y, H)) - ROCK_R[r.size] * S;
-      if (d > TETHER_RANGE * S) continue;
+      if (d > TETHER_RANGE * S * tetherMul()) continue;
       if (r.size === 3) { if (!heavy || d < heavy.d) heavy = { r, d }; continue; }
       if (d < bestD) { bestD = d; best = r; }
     }
@@ -391,7 +1008,7 @@ window.paConfig = {
       t.pull -= dt;
       t.dist += (t.L - t.dist) * Math.min(1, dt * 14);
     } else t.dist = t.L;
-    t.spin = Math.min(9, t.spin + dt * 4.2);
+    t.spin = Math.min(9, t.spin + dt * (refit >= 3 ? 6.5 : 4.2));
     t.ang += t.spin * dt;
     r.x = ship.x + Math.cos(t.ang) * t.dist; r.y = ship.y + Math.sin(t.ang) * t.dist;
     r.vx = wd(r.x - px, W) / Math.max(dt, 1e-3); r.vy = wd(r.y - py, H) / Math.max(dt, 1e-3);
@@ -491,6 +1108,7 @@ window.paConfig = {
     waveClearT = 0; droneT = rand(11, 15); respawnT = 0; overT = 0; overSent = false;
     fireCd = 0; hyperCd = 0; thrustSfxT = 0; emitT = 0;
     tether = null; tetherCd = 0; flings = 0; smashes = 0; bestChain = 0; hintT = 7;
+    gems = []; salvage = 0; refit = 1; peakRefit = 1; rift = null; riftsSealed = 0; chunks = []; swallowed = 0;
     shotsFired = 0; hits = 0; rocksKilled = 0; dronesKilled = 0; hypers = 0;
     spawnShip(2);
     spawnWave();
@@ -505,7 +1123,7 @@ window.paConfig = {
   function update(dt) {
     simT += dt;
     const playing = PA.state === "play";
-    fx.update(dt); texts.update(dt);
+    fx.update(dt); texts.update(dt); updateChunks(dt); updateGems(dt); updateRift(dt);
     if (banner) { banner.t += dt; if (banner.t > banner.max) banner = null; }
 
     const dvx = ship && ship.alive ? ship.vx : 0, dvy = ship && ship.alive ? ship.vy : 0;
@@ -574,7 +1192,7 @@ window.paConfig = {
         hud.classList.remove("on");
         PA.sfx("gameover");
         const acc = shotsFired ? Math.round(hits / shotsFired * 100) : 0;
-        PA.gameOver(score, { title: "Lost to the void", stats: [["Wave", peakWave], ["Rocks", rocksKilled], ["Tether smashes", smashes], ["Best chain", bestChain ? "×" + bestChain : "—"], ["Drones", dronesKilled], ["Accuracy", acc + "%"]] });
+        PA.gameOver(score, { title: "Lost to the void", stats: [["Wave", peakWave], ["Rocks", rocksKilled], ["Tether smashes", smashes], ["Best chain", bestChain ? "×" + bestChain : "—"], ["Drones", dronesKilled], ["Rifts sealed", riftsSealed], ["Refit", REFIT_NAME[peakRefit]], ["Accuracy", acc + "%"]] });
       }
       return;
     }
@@ -593,7 +1211,9 @@ window.paConfig = {
 
     if (rocks.length === 0 && waveClearT <= 0) {
       waveClearT = 2.4;
-      showBanner("WAVE " + (wave + 1), "Incoming", 2.4);
+      const nw = wave + 1;
+      showBanner("WAVE " + nw, (nw % 2 === 1 && nw >= 3) || nw >= 8 ? "A rift is opening" : "Incoming", 2.4);
+      if (rift) rift.dying = true;
       PA.sfx("power");
     }
     if (waveClearT > 0) {
@@ -601,6 +1221,7 @@ window.paConfig = {
       if (waveClearT <= 0) {
         wave++; peakWave = wave;
         spawnWave();
+        if ((wave % 2 === 1 && wave >= 3) || wave >= 8) spawnRift();
         droneT = Math.min(droneT, rand(8, 13));
         PA.music.intensity(Math.min(1, (wave - 1) / 8));
         paintHud();
@@ -717,177 +1338,302 @@ window.paConfig = {
   }
 
   /* ---------- render ---------- */
-  function blit(sp, x, y, a, alpha) {
-    const c = a ? Math.cos(a) : 1, s = a ? Math.sin(a) : 0;
-    ctx.setTransform(DPR * c, DPR * s, -DPR * s, DPR * c, DPR * (x + shx), DPR * (y + shy));
-    if (alpha != null) ctx.globalAlpha = alpha;
-    ctx.drawImage(sp.c, -sp.half, -sp.half, sp.half * 2, sp.half * 2);
-    if (alpha != null) ctx.globalAlpha = 1;
-  }
-  function blitWrapped(sp, x, y, R, a) {
-    blit(sp, x, y, a);
-    const ex = x < R ? W : x > W - R ? -W : 0, ey = y < R ? H : y > H - R ? -H : 0;
-    if (ex) blit(sp, x + ex, y, a);
-    if (ey) blit(sp, x, y + ey, a);
-    if (ex && ey) blit(sp, x + ex, y + ey, a);
-  }
-  function drawStars(t) {
-    const depth = [0.12, 0.3, 0.65], size = [1, 1.5, 2.2], col = ["#9aa4d8", "#c4d6ff", "#ffffff"];
-    for (let z = 0; z < 3; z++) {
-      ctx.fillStyle = col[z];
-      const ox = parX * depth[z], oy = parY * depth[z], s = size[z];
-      for (const st of stars) {
-        if (st.z !== z) continue;
-        const x = (((st.x * W + ox) % W) + W) % W, y = (((st.y * H + oy) % H) + H) % H;
-        ctx.globalAlpha = (0.35 + z * 0.2) * (0.65 + 0.35 * Math.sin(t * st.sp + st.ph));
-        ctx.fillRect(x, y, s, s);
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-  function drawLine(x1, y1, x2, y2, col, alpha, wide) {
-    ctx.strokeStyle = col;
-    ctx.globalAlpha = alpha * 0.3; ctx.lineWidth = wide * 3;
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    ctx.globalAlpha = alpha; ctx.lineWidth = wide;
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-  }
-  function render(t) {
-    const sh = PA.shakeOffset();
-    shx = sh.x; shy = sh.y;
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
-    if (bg) ctx.drawImage(bg, 0, 0, W, H);
-    ctx.save();
-    ctx.translate(shx * 0.3, shy * 0.3);
-    drawStars(t);
-    ctx.restore();
 
-    ctx.globalCompositeOperation = "lighter";
-    if (tether && ship && ship.alive) drawTether(t);
-    ctx.globalCompositeOperation = "source-over";
-    for (const r of rocks) blitWrapped(spr.rock[r.size][r.v], r.x, r.y, ROCK_R[r.size] * S + 16, r.a);
-    ctx.globalCompositeOperation = "lighter";
-    for (const r of rocks) {
-      if (!r.held && !r.flung) continue;
-      ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
-      ctx.strokeStyle = TETHER_COL; ctx.lineWidth = 2 * S;
-      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * 20);
-      ctx.beginPath(); ctx.arc(r.x, r.y, ROCK_R[r.size] * S * 1.12, 0, TAU); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    if (drone) blit(drone.small ? spr.small : spr.big, drone.x, drone.y, 0);
+/* ---------------- render ---------------- */
+const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e4 = new THREE.Euler(), v4 = new THREE.Vector3(), s4 = new THREE.Vector3(), ax4 = new THREE.Vector3();
+const cA = new THREE.Color();
+const HOT = new THREE.Color(0xffd27a).multiplyScalar(2.2);
+const ROCK_C = ROCK_HEX.map((h) => new THREE.Color(h || 0));
+// calls fn once for the thing and once more for each edge it is crossing, so wrapping looks seamless
+function ghosts(x, y, r, fn) {
+  fn(x, y);
+  const nx = x < r ? W : x > W - r ? -W : 0, ny = y < r ? H : y > H - r ? -H : 0;
+  if (nx) fn(x + nx, y);
+  if (ny) fn(x, y + ny);
+  if (nx && ny) fn(x + nx, y + ny);
+}
+let lastA = 0, bank = 0, lastHud = "";
+function render(t) {
+  const dtR = 1 / 60;
+  const sh = PA.shakeOffset();
+  shx = sh.x; shy = sh.y;
+  camera.position.set(-sh.x / K, CAM_D, -sh.y / K);
+  camera.up.set(0, 0, -1);
+  camera.lookAt(-sh.x / K, 0, -sh.y / K);
+  camera.updateMatrixWorld();
+  const playing = PA.state === "play";
 
-    ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
-    ctx.lineCap = "round";
-    for (const d of debris) {
-      const k = d.life / d.max, hx = Math.cos(d.a) * d.len / 2, hy = Math.sin(d.a) * d.len / 2;
-      drawLine(d.x - hx, d.y - hy, d.x + hx, d.y + hy, d.col, Math.min(1, k * 1.5), 1.4 * Math.max(1, S));
-    }
-    for (const b of shots) {
-      const tx = b.x - b.vx * 0.022, ty = b.y - b.vy * 0.022;
-      if (Math.abs(tx - b.x) < W / 2 && Math.abs(ty - b.y) < H / 2) drawLine(tx, ty, b.x, b.y, "#8ee9ff", 0.7, 1.6);
-    }
-    for (const b of shots) blit(spr.shot, b.x, b.y, 0);
-    for (const b of eshots) blit(spr.eshot, b.x, b.y, 0, 0.75 + 0.25 * Math.sin(t * 30));
-
-    if (ship && ship.alive && ship.hyper <= 0 && PA.state !== "gate") {
-      const blink = ship.inv > 0 && Math.floor(ship.inv * 9) % 2 === 0;
-      if (ship.thrust) {
-        const c = Math.cos(ship.a), s = Math.sin(ship.a), fl = (11 + Math.random() * 12) * S;
-        ctx.setTransform(DPR * c, DPR * s, -DPR * s, DPR * c, DPR * (ship.x + shx), DPR * (ship.y + shy));
-        ctx.lineJoin = "round";
-        ctx.strokeStyle = "#ffb35a"; ctx.globalAlpha = 0.35; ctx.lineWidth = 6 * S;
-        ctx.beginPath(); ctx.moveTo(-9 * S, -6 * S); ctx.lineTo(-9 * S - fl, 0); ctx.lineTo(-9 * S, 6 * S); ctx.stroke();
-        ctx.strokeStyle = "#ffe7b0"; ctx.globalAlpha = 1; ctx.lineWidth = 1.6 * S;
-        ctx.beginPath(); ctx.moveTo(-9 * S, -4.5 * S); ctx.lineTo(-9 * S - fl * 0.8, 0); ctx.lineTo(-9 * S, 4.5 * S); ctx.stroke();
-      }
-      const rx = -Math.cos(ship.a) * ship.recoil * 2.5 * S, ry = -Math.sin(ship.a) * ship.recoil * 2.5 * S;
-      blit(spr.ship, ship.x + rx, ship.y + ry, ship.a, blink ? 0.25 : 1);
-      if (ship.inv > 0) {
-        ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
-        ctx.strokeStyle = "#8ee9ff"; ctx.globalAlpha = Math.min(0.5, ship.inv) * (0.5 + 0.5 * Math.sin(t * 12)); ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(ship.x, ship.y, 22 * S, 0, TAU); ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-    } else if (ship && ship.alive && ship.hyper > 0) {
-      ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
-      const k = 1 - ship.hyper / BLINK;
-      ctx.strokeStyle = "#c4a6ff"; ctx.globalAlpha = 0.8 * k; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(ship.tx, ship.ty, (1 - k) * 26 * S + 4, 0, TAU); ctx.stroke();
-      // a streak along the jump
-      ctx.globalAlpha = .5 * (1 - k); ctx.beginPath(); ctx.moveTo(ship.x, ship.y); if (Math.hypot(ship.tx - ship.x, ship.ty - ship.y) < 200 * S) ctx.lineTo(ship.tx, ship.ty); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-
-    ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
-    fx.draw(ctx);
-    texts.draw(ctx);
-    if (hintT > 0 && !banner && ship && ship.alive && !tether && PA.state === "play") {
-      ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
-      ctx.globalAlpha = Math.min(1, hintT) * 0.8;
-      ctx.font = "600 12px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = TETHER_COL;
-      ctx.fillText(PA.isTouch ? "⊚ TETHER A NEARBY ROCK" : "E  TETHER A NEARBY ROCK", ship.x, ship.y + 40 * S);
-      ctx.globalAlpha = 1;
-    }
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    if (banner && PA.state === "play") drawBanner();
+  // backdrop parallax
+  nebMat.uniforms.time.value = t; nebMat.uniforms.off.value.set(-parX * 0.05, -parY * 0.05);
+  nebMat.uniforms.rift.value = rift ? rift.k : 0;
+  starMat.uniforms.time.value = t; starMat.uniforms.off.value.set(parX / K * 0.6, parY / K * 0.6);
+  starMat.uniforms.span.value.set(W / K * 1.3, H / K * 1.3);
+  for (const m of farRocks) {
+    const u = m.userData;
+    m.position.set(u.x + parX / K * 0.12, u.y, u.z + parY / K * 0.12);
+    m.quaternion.setFromAxisAngle(u.w, t * u.sp);
   }
-  function drawTether(t) {
+  rockMat.uniforms.time.value = t;
+
+  // rocks
+  for (let s = 1; s <= 3; s++) for (const m of rockMeshes[s]) m.count = 0;
+  let hr = 0;
+  for (const r of rocks) {
+    if (!r.axis) r.axis = new THREE.Vector3(rand(-1, 1), rand(-0.4, 0.4), rand(-1, 1)).normalize();
+    const R = ROCK_R[r.size] * S / K;
+    const m = rockMeshes[r.size][r.v % VARIANTS_3D];
+    const hot = r.held || r.flung;
+    q4.setFromAxisAngle(r.axis, r.a);
+    cA.copy(hot ? HOT : ROCK_C[r.size]);
+    ghosts(r.x, r.y, ROCK_R[r.size] * S * 1.2, (x, y) => {
+      if (m.count >= ROCK_CAP) return;
+      m4.compose(v4.set(X(x), 0, Z(y)), q4, s4.setScalar(R));
+      m.setMatrixAt(m.count, m4); m.setColorAt(m.count, cA);
+      m.count++;
+    });
+    if (hot && hr < hotRings.length) {
+      const ring = hotRings[hr++];
+      ring.visible = true;
+      ring.position.set(X(r.x), 0.2, Z(r.y));
+      ring.scale.setScalar(R * (1.25 + Math.sin(t * 20) * 0.04));
+      ring.material.opacity = 0.6 + Math.sin(t * 20) * 0.3;
+    }
+  }
+  for (; hr < hotRings.length; hr++) hotRings[hr].visible = false;
+  for (let s = 1; s <= 3; s++) for (const m of rockMeshes[s]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+
+  // rubble and hot slivers
+  let ci = 0;
+  for (const c of chunks) {
+    const k = Math.min(1, c.life / 0.4) * c.s;
+    e4.set(c.rx, c.ry, 0); q4.setFromEuler(e4);
+    m4.compose(v4.set(X(c.x), c.h, Z(c.y)), q4, s4.setScalar(k));
+    chunkMesh.setMatrixAt(ci, m4); chunkMesh.setColorAt(ci, c.col);
+    ci++;
+  }
+  chunkMesh.count = ci;
+  chunkMesh.instanceMatrix.needsUpdate = true; if (chunkMesh.instanceColor) chunkMesh.instanceColor.needsUpdate = true;
+  let di = 0;
+  for (const d of debris) {
+    if (di >= DB_MAX) break;
+    const k = d.life / d.max;
+    e4.set(0, -d.a, 0); q4.setFromEuler(e4);
+    m4.compose(v4.set(X(d.x), 0.6, Z(d.y)), q4, s4.set(Math.max(0.01, d.len / K), 1.4, 1.4));
+    debrisMesh.setMatrixAt(di, m4);
+    const c = colOf(d.col), b = 3 * Math.min(1, k * 1.5);
+    debrisMesh.setColorAt(di, cA.setRGB(c[0] * b, c[1] * b, c[2] * b));
+    di++;
+  }
+  debrisMesh.count = di;
+  debrisMesh.instanceMatrix.needsUpdate = true; if (debrisMesh.instanceColor) debrisMesh.instanceColor.needsUpdate = true;
+
+  // the tug
+  const alive = ship && ship.alive && PA.state !== "gate";
+  shipG.visible = !!alive && ship.hyper <= 0;
+  shipL.intensity = 0;
+  if (alive) {
+    const da = ((ship.a - lastA + Math.PI * 3) % TAU) - Math.PI;
+    bank += (clamp(da / dtR * 0.12, -0.5, 0.5) - bank) * 0.15;
+    const rx = -Math.cos(ship.a) * ship.recoil * 2.5 * S, ry = -Math.sin(ship.a) * ship.recoil * 2.5 * S;
+    shipG.position.set(X(ship.x + rx), 0.3, Z(ship.y + ry));
+    shipG.rotation.set(0, -ship.a, 0);
+    shipBody.rotation.x = -bank;
+    shipG.scale.setScalar(S / K * 1.3);
+    const blink = ship.inv > 0 && Math.floor(ship.inv * 9) % 2 === 0;
+    shipBody.visible = !blink || ship.inv > 1e6;
+    const fl = ship.thrust ? 7 + Math.random() * 7 : 0;
+    for (const f of flames) { f.visible = !!ship.thrust; f.scale.set(fl, 1, 1); }
+    engineGlow.material.opacity = ship.thrust ? 0.9 : 0.25;
+    shieldBall.visible = ship.inv > 0 && ship.inv < 1e6;
+    shieldMat.uniforms.time.value = t; shieldMat.uniforms.k.value = Math.min(1, ship.inv) * (0.6 + 0.4 * Math.sin(t * 12));
+    shipL.intensity = ship.thrust ? 22 : 6;
+    shipL.position.set(X(ship.x - Math.cos(ship.a) * 18 * S), 1.2, Z(ship.y - Math.sin(ship.a) * 18 * S));
+    lastA = ship.a;
+  }
+  blinkRing.visible = !!(alive && ship.hyper > 0);
+  if (blinkRing.visible) {
+    const k = 1 - ship.hyper / BLINK;
+    blinkRing.position.set(X(ship.tx), 0.3, Z(ship.ty));
+    blinkRing.scale.setScalar(((1 - k) * 26 * S + 4) / K);
+    blinkRing.material.opacity = 0.9 * k;
+  }
+
+  // drone
+  droneG.visible = !!drone;
+  droneL.intensity = drone ? 14 : 0;
+  if (drone) {
+    const col = drone.small ? 0x7ee7a8 : 0xffd27a;
+    droneTint.color.set(col).multiplyScalar(2.5);
+    droneG.position.set(X(drone.x), 0.6, Z(drone.y));
+    droneG.scale.setScalar(drone.R / K);
+    droneArms.rotation.y = t * (drone.mode === "cut" ? 9 : 2.5);
+    droneG.rotation.z = clamp(drone.vx / 600, -0.3, 0.3); droneG.rotation.x = clamp(-drone.vy / 600, -0.3, 0.3);
+    droneL.position.set(X(drone.x), 2, Z(drone.y)); droneL.color.set(col);
+  }
+
+  // salvage
+  let gi = 0;
+  for (const g of gems) {
+    const blinkOut = g.life < 2 && Math.floor(g.life * 8) % 2 === 0;
+    ghosts(g.x, g.y, 12, (x, y) => {
+      if (gi >= GEM_MAX || blinkOut) return;
+      e4.set(0.5, g.spin, 0.3); q4.setFromEuler(e4);
+      m4.compose(v4.set(X(x), 0.7 + Math.sin(t * 3 + g.spin) * 0.1, Z(y)), q4, s4.set(0.2, 0.32, 0.2));
+      gemMesh.setMatrixAt(gi, m4);
+      m4.compose(v4.set(X(x), 0.2, Z(y)), q4.identity(), s4.setScalar(1.3));
+      gemGlow.setMatrixAt(gi, m4);
+      gi++;
+    });
+  }
+  gemMesh.count = gemGlow.count = gi;
+  gemMesh.instanceMatrix.needsUpdate = true; gemGlow.instanceMatrix.needsUpdate = true;
+
+  // rift
+  riftG.visible = !!rift;
+  riftL.intensity = rift ? 30 * rift.k : 0;
+  post.comp.uniforms.lens.value.set(0, 0, 0, W / H);
+  if (rift) {
+    riftG.position.set(X(rift.x), 0.05, Z(rift.y));
+    riftDisk.scale.setScalar(rift.reach / K * 0.85);
+    riftCore.scale.setScalar(rift.core / K * rift.k);
+    riftMat.uniforms.time.value = t; riftMat.uniforms.k.value = rift.k;
+    riftL.position.set(X(rift.x), 3, Z(rift.y));
+    post.comp.uniforms.lens.value.set(rift.x / W, 1 - rift.y / H, rift.core / H * 2.2 * rift.k, W / H);
+  }
+
+  // enemy shots
+  let ei = 0;
+  for (const b of eshots) {
+    if (ei >= ES_MAX) break;
+    const k = 0.75 + 0.25 * Math.sin(t * 30 + ei);
+    m4.compose(v4.set(X(b.x), 0.6, Z(b.y)), q4.identity(), s4.setScalar(4 * S / K * k));
+    eshotMesh.setMatrixAt(ei, m4);
+    m4.compose(v4.set(X(b.x), 0.3, Z(b.y)), q4, s4.setScalar(22 * S / K));
+    eshotGlow.setMatrixAt(ei, m4);
+    ei++;
+  }
+  eshotMesh.count = eshotGlow.count = ei;
+  eshotMesh.instanceMatrix.needsUpdate = true; eshotGlow.instanceMatrix.needsUpdate = true;
+
+  // trails: shots, the tether, flung rocks, the drone's cutter
+  tv = 0;
+  for (const b of shots) {
+    const tx = b.x - b.vx * 0.03, ty = b.y - b.vy * 0.03;
+    if (Math.abs(tx - b.x) > W / 2 || Math.abs(ty - b.y) > H / 2) continue;
+    ribbon([X(tx), 0.6, Z(ty), X(b.x), 0.6, Z(b.y)], [0.6, 2.2, 3.2], 3 * S / K, false);
+    ribbon([X(b.x - b.vx * 0.012), 0.62, Z(b.y - b.vy * 0.012), X(b.x), 0.62, Z(b.y)], [3.5, 3.5, 3.5], 1.2 * S / K, false);
+  }
+  tetherL.intensity = 0;
+  if (tether && alive) {
     const r = tether.rock, wind = clamp((tether.spin - 3) / 6, 0, 1);
-    ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
-    ctx.lineCap = "round";
-    const dx = wd(r.x - ship.x, W), dy = wd(r.y - ship.y, H), n = 10;
-    ctx.beginPath();
+    const dx = wd(r.x - ship.x, W), dy = wd(r.y - ship.y, H), L = Math.hypot(dx, dy) || 1, n = 12, pts = [];
     for (let i = 0; i <= n; i++) {
       const k = i / n, wob = Math.sin(k * Math.PI) * Math.sin(t * 40 + k * 9) * 4 * S;
-      const x = ship.x + dx * k - dy / (Math.hypot(dx, dy) || 1) * wob, y = ship.y + dy * k + dx / (Math.hypot(dx, dy) || 1) * wob;
-      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      pts.push(X(ship.x + dx * k - dy / L * wob), 0.7, Z(ship.y + dy * k + dx / L * wob));
     }
-    ctx.strokeStyle = TETHER_COL;
-    ctx.globalAlpha = 0.25 + wind * 0.2; ctx.lineWidth = 7 * S; ctx.stroke();
-    ctx.globalAlpha = 0.95; ctx.lineWidth = 1.6 * S; ctx.stroke();
-    // The whirl ring and an aim line that brightens as the throw winds up.
-    ctx.globalAlpha = 0.12 + wind * 0.18; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.arc(ship.x, ship.y, tether.dist, 0, TAU); ctx.stroke();
+    ribbon(pts, [1.6 + wind * 1.5, 1.1 + wind, 0.3], (5 + wind * 4) * S / K, false);
+    ribbon(pts, [3, 3, 2.4], 1.4 * S / K, false);
+    tetherL.position.set(X(ship.x + dx), 1.5, Z(ship.y + dy)); tetherL.intensity = 10 + wind * 14;
     if (tether.pull <= 0) {
-      const c = Math.cos(ship.a), s = Math.sin(ship.a), len = (200 + wind * 260) * S;
-      ctx.setLineDash([6 * S, 10 * S]); ctx.lineDashOffset = -t * 60;
-      ctx.globalAlpha = 0.25 + wind * 0.45; ctx.lineWidth = 1.6 * S;
-      ctx.beginPath(); ctx.moveTo(ship.x + c * 26 * S, ship.y + s * 26 * S); ctx.lineTo(ship.x + c * len, ship.y + s * len); ctx.stroke();
-      ctx.setLineDash([]);
+      // aim line for the throw
+      const c = Math.cos(ship.a), s = Math.sin(ship.a), len = (200 + wind * 260) * S, seg = 16 * S, gap = 10 * S, off = (t * 60) % (seg + gap);
+      for (let d = 26 * S + off; d < len; d += seg + gap) {
+        const d2 = Math.min(len, d + seg);
+        ribbon([X(ship.x + c * d), 0.5, Z(ship.y + s * d), X(ship.x + c * d2), 0.5, Z(ship.y + s * d2)], [0.6 + wind, 0.45 + wind * 0.7, 0.12], 1.4 * S / K, false);
+      }
     }
+  }
+  for (const r of rocks) {
+    if (!r.flung) continue;
+    r.trail = r.trail || [];
+    r.trail.push(X(r.x), 0.4, Z(r.y));
+    if (r.trail.length > 3 * 14) r.trail.splice(0, 3);
+    // drop the trail across a wrap
+    const tr = r.trail;
+    for (let i = tr.length - 6; i >= 0; i -= 3) if (Math.abs(tr[i] - tr[i + 3]) > 4 || Math.abs(tr[i + 2] - tr[i + 5]) > 4) { tr.splice(0, i + 3); break; }
+    ribbon(tr, [2.2, 1.4, 0.4], ROCK_R[r.size] * S / K * 0.9);
+  }
+  if (drone && drone.mode === "cut" && drone.target) {
+    const r = drone.target, ox = drone.x - Math.cos(drone.orbit) * drone.R * 0.6, oy = drone.y - Math.sin(drone.orbit) * drone.R * 0.6;
+    const flick = 0.6 + Math.random() * 0.6;
+    ribbon([X(drone.x), 0.6, Z(drone.y), X(ox), 0.5, Z(oy)], [3 * flick, 1.2 * flick, 0.4 * flick], 2 * S / K, false);
+  }
+  tGeo.setDrawRange(0, tv);
+  tGeo.attributes.position.needsUpdate = true; tGeo.attributes.color.needsUpdate = true;
+
+  // particles
+  const list = fx.list;
+  const n = Math.min(list.length, PMAX);
+  for (let i = 0; i < n; i++) {
+    const p = list[i], k = p.life / p.max;
+    pPos[i * 3] = X(p.x); pPos[i * 3 + 1] = p.h; pPos[i * 3 + 2] = Z(p.y);
+    pCol[i * 3] = p.c[0] * 2.4 * k; pCol[i * 3 + 1] = p.c[1] * 2.4 * k; pCol[i * 3 + 2] = p.c[2] * 2.4 * k;
+    pSize[i] = p.size * 2.6 / K;
+  }
+  pGeo.setDrawRange(0, n);
+  pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true; pGeo.attributes.size.needsUpdate = true;
+  for (let i = 0; i < 2; i++) { expS[i].k = Math.max(0, expS[i].k - dtR * 2.2); expL[i].intensity = expS[i].k * 45; }
+
+  post.comp.uniforms.hurt.value = overT > 0 ? 0.3 : 0;
+  post.comp.uniforms.chroma.value = 0.12 + (alive && ship.hyper > 0 ? 1.2 : 0) + (rift ? rift.k * 0.3 : 0);
+  post.render(scene, camera, t);
+  drawOverlay(t);
+  if (playing) { const key = score + "|" + lives + "|" + wave + "|" + refit + "|" + salvage; if (key !== lastHud) { lastHud = key; paintHud(); } }
+}
+function drawOverlay(t) {
+  ctx.setTransform(DPR, 0, 0, DPR, DPR * shx, DPR * shy);
+  ctx.clearRect(-50, -50, W + 100, H + 100);
+  texts.draw(ctx);
+  if (hintT > 0 && !banner && ship && ship.alive && !tether && PA.state === "play") {
+    ctx.globalAlpha = Math.min(1, hintT) * 0.8;
+    ctx.font = "600 12px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = TETHER_COL;
+    ctx.fillText(PA.isTouch ? "⊚ TETHER A NEARBY ROCK" : "E  TETHER A NEARBY ROCK", ship.x, ship.y + 40 * S);
     ctx.globalAlpha = 1;
   }
-  function drawBanner() {
-    const b = banner, k = b.t / b.max;
-    const a = k < 0.15 ? k / 0.15 : k > 0.75 ? (1 - k) / 0.25 : 1;
-    const sc = 1 + (1 - PA.ease.outCubic(Math.min(1, k / 0.2))) * 0.25;
-    const fs = Math.round(clamp(Math.min(W, H) * 0.09, 30, 64) * sc);
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, a);
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.font = "600 " + fs + "px Manrope, system-ui, sans-serif";
-    ctx.shadowColor = "#c4a6ff"; ctx.shadowBlur = 24;
-    const grd = ctx.createLinearGradient(W / 2 - fs * 2.5, 0, W / 2 + fs * 2.5, 0);
-    grd.addColorStop(0, "#ffffff"); grd.addColorStop(0.5, "#8ee9ff"); grd.addColorStop(1, "#c4a6ff");
-    ctx.fillStyle = grd;
-    ctx.fillText(b.text, W / 2, H * 0.36);
-    ctx.shadowBlur = 0;
-    ctx.font = "500 " + Math.round(fs * 0.26) + "px 'JetBrains Mono', monospace";
-    ctx.fillStyle = "#8ee9ff";
-    ctx.fillText(b.sub.toUpperCase().split("").join(" "), W / 2, H * 0.36 + fs * 0.7);
-    ctx.restore();
-  }
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (banner && PA.state === "play") drawBanner();
+}
+function drawBanner() {
+  const b = banner, k = b.t / b.max;
+  const a = k < 0.15 ? k / 0.15 : k > 0.75 ? (1 - k) / 0.25 : 1;
+  const sc = 1 + (1 - PA.ease.outCubic(Math.min(1, k / 0.2))) * 0.25;
+  const fs = Math.round(clamp(Math.min(W, H) * 0.09, 30, 64) * sc);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, a);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = "600 " + fs + "px Manrope, system-ui, sans-serif";
+  ctx.shadowColor = "#c4a6ff"; ctx.shadowBlur = 24;
+  const grd = ctx.createLinearGradient(W / 2 - fs * 2.5, 0, W / 2 + fs * 2.5, 0);
+  grd.addColorStop(0, "#ffffff"); grd.addColorStop(0.5, "#8ee9ff"); grd.addColorStop(1, "#c4a6ff");
+  ctx.fillStyle = grd;
+  ctx.fillText(b.text, W / 2, H * 0.36);
+  ctx.shadowBlur = 0;
+  ctx.font = "500 " + Math.round(fs * 0.26) + "px 'JetBrains Mono', monospace";
+  ctx.fillStyle = "#8ee9ff";
+  ctx.fillText(b.sub.toUpperCase().split("").join(" "), W / 2, H * 0.36 + fs * 0.7);
+  ctx.restore();
+}
 
-  window.__vrDrone = () => { droneT = 0; };
-  window.__vrInv = () => { if (ship) ship.inv = 1e9; };
-  window.__vr = () => ({ drone: drone && { mode: drone.mode, cuts: drone.cuts }, score, lives, wave, simT, rocks: rocks.length, tether: !!tether, flings, smashes, bestChain, alive: !!(ship && ship.alive), x: ship ? ship.x : 0, y: ship ? ship.y : 0, a: ship ? ship.a : 0, shots: shotsFired });
-  PA.loop(update, render);
+/* ---------------- boot ---------------- */
+addEventListener("resize", () => layout({ w: innerWidth, h: innerHeight, dpr: view.dpr || devicePixelRatio || 1 }));
+layout({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1 });
+window.__vrDrone = () => { droneT = 0; };
+window.__vrInv = () => { if (ship) ship.inv = 1e9; };
+window.__vr = () => ({ drone: drone && { mode: drone.mode, cuts: drone.cuts }, score, lives, wave, simT, rocks: rocks.length, tether: !!tether, flings, smashes, bestChain, alive: !!(ship && ship.alive), x: ship ? ship.x : 0, y: ship ? ship.y : 0, a: ship ? ship.a : 0, shots: shotsFired, refit, salvage, gems: gems.length, rift: rift ? { x: rift.x, y: rift.y, k: rift.k } : null, riftsSealed, swallowed });
+window.__vrx = {
+  sim: (sec) => { for (let i = 0; i < sec * 60; i++) update(1 / 60); },
+  wave: (n) => { rocks = []; wave = n; spawnWave(); if ((wave % 2 === 1 && wave >= 3) || wave >= 8) spawnRift(); },
+  openRift: () => spawnRift(),
+  salvage: (n) => { for (let i = 0; i < n; i++) takeGem({ x: ship ? ship.x : 0, y: ship ? ship.y : 0 }); },
+  gems: (n) => dropGems(ship.x + 60, ship.y, n),
+  grab: () => tetherKey(),
+  fling: () => { if (tether) { tether.pull = 0; tether.spin = 8; fling(); } },
+  aimAt: (x, y) => { if (ship) ship.a = Math.atan2(y - ship.y, x - ship.x); },
+  get rift() { return rift; },
+  get ship() { return ship; },
+  get rocks() { return rocks; }
+};
+PA.loop(update, render);
 })();
 </script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"a350f886e6974df098681db56e5946d2","r":1,"spa":2}' crossorigin="anonymous"></script>
 </body></html>

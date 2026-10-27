@@ -3,839 +3,1726 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
 <title>Star Siege — PromptArcade</title>
 <style>
-html,body{margin:0;height:100%;background:#05070f;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
-canvas{display:block;position:fixed;inset:0}
+html,body{margin:0;height:100%;background:#03040b;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#game{position:fixed;inset:0;z-index:1}
+#game canvas{display:block;width:100%;height:100%}
+#fx{position:fixed;inset:0;z-index:2;pointer-events:none}
 #ss-hud{opacity:0;transition:opacity .45s ease}
 #ss-hud.on{opacity:1}
 #s-wave b{color:#c4a6ff}
 #s-ships b{color:#ffd27a}
+#s-over .bar{position:relative;width:84px;height:6px;margin-top:5px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
+#s-over .bar i{position:absolute;inset:0;width:0;border-radius:4px;background:linear-gradient(90deg,#ff4fa3,#ffcf4a,#5dff9a,#3fe3ff);transition:width .2s ease}
+#s-over.full .bar i{animation:ssGlow .5s ease infinite alternate}
+@keyframes ssGlow{to{box-shadow:0 0 12px #fff;filter:brightness(1.4)}}
+@media (max-width:560px){#ss-hud{right:136px}#s-ships{display:none}#s-over .bar{width:60px}}
+#ss-pow{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:30;display:flex;gap:6px;pointer-events:none}
+#ss-pow span{display:flex;align-items:center;gap:5px;padding:.25rem .55rem;border-radius:999px;background:rgba(8,10,26,.6);border:1px solid rgba(255,255,255,.14);font:600 .62rem 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.08em;color:#fff;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#ss-pow i{display:block;width:30px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}
+#ss-pow i b{display:block;height:100%;border-radius:2px}
 </style></head><body>
-<canvas id="c" aria-label="Star Siege playfield"></canvas>
+<div id="game" aria-label="Star Siege: a colour swarm in low orbit"></div>
+<canvas id="fx" aria-hidden="true"></canvas>
 <div class="pa-hud" id="ss-hud">
   <div class="pa-stat" id="s-score"><small>Score</small><b>0</b></div>
   <div class="pa-stat" id="s-wave"><small>Wave</small><b>1</b></div>
   <div class="pa-stat" id="s-ships"><small>Swarm</small><b>0</b></div>
   <div class="pa-stat" id="s-lives"><small>Lives</small><b>♦♦♦</b></div>
-  <div class="pa-stat" id="s-cluster"><small>Best cluster</small><b>—</b></div>
+  <div class="pa-stat" id="s-over"><small>Overload</small><div class="bar"><i></i></div></div>
 </div>
+<div id="ss-pow" aria-live="polite"></div>
 <script>
 window.paConfig = {
   slug: "star-siege", title: "Star Siege", native: true, music: "space", unit: "points",
-  controls: [["← → / A D", "Move cannon"], ["Space / ↑", "Switch laser colour"], ["Touch drag", "Move · auto fire"]]
+  controls: [["← → / A D", "Move the cannon"], ["Space / ↑", "Switch laser colour"], ["1–4", "Pick a colour"], ["X / Shift", "Overload beam once it's charged"], ["Touch drag", "Move · auto fire"]]
 };
 </script>
-<script src="/games/play/pa-score.js?v=e650da0b4c"></script>
-<script src="/games/play/pa-gate.js?v=e650da0b4c"></script>
-<script src="/games/play/pa-kit.js?v=e650da0b4c"></script>
-<script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script type="module">
+import * as THREE from "/vendor/three/three.module.min.js";
+
 (() => {
-  const TAU = Math.PI * 2;
-  const { rand, randInt, clamp } = PA;
-  const COL = {
-    sky: "#0a0e22",
-    player: "#7ee7a8",
-    playerCore: "#8ee9ff",
-    alien: ["#ff7eb6", "#c4a6ff", "#8ee9ff", "#7ee7a8", "#ffd27a"],
-    shield: "#c4a6ff",
-    mothership: "#ffd27a",
-    bulletP: "#7ee7a8",
-    bulletE: "#ff7eb6"
+"use strict";
+// A colour-swarm shooter in low orbit, in real 3D. The rules are the original flat game laid on the deck
+// plane (x across, z toward the cannon): a honeycomb swarm glides and sinks, your laser carries a colour,
+// a hit on a different colour paints the alien yours, and a hit on a match chain-pops every touching alien
+// of that colour. Added: divers that peel off and swoop, an overload beam you sweep across the swarm to
+// paint whole columns, power capsules from big clusters, and a hive queen every fourth wave who can only
+// be hurt by a matching hit or a cluster popped right beside her.
+const PA = window.PA;
+const TAU = Math.PI * 2;
+const { clamp, lerp, rand } = PA;
+
+/* ---------------- arena ---------------- */
+const LEFT = -10, RIGHT = 10, CANNON_Z = 9.2, TOP_Z = -18.5;
+// the swarm is a honeycomb: odd rows sit half a cell over, so each alien touches up to six others
+const ROWS = 6, COLS = 9, DX = 1.86, DZ = 1.62, AHW = 0.72, AHD = 0.55, AY = 1.15;
+const ALIEN_SCORE = [35, 25, 25, 20, 15];
+const SHIELD_COUNT = 3, SHIELD_Z = 5.4, CELL = 0.23, SR = 6;
+const BULLET_V = 24, PLAYER_V = 15, PHW = 1.0;
+const OVER_MAX = 30, BEAM_T = 1.1, BEAM_HW = 1.25;
+// The twist: your laser carries a colour. A hit on a different colour paints that alien yours;
+// a hit on a matching one detonates every touching alien of that colour in a chain.
+const PAINT = [0xff4fa3, 0x3fe3ff, 0xffcf4a, 0x5dff9a];
+const PAINT_CSS = ["#ff4fa3", "#3fe3ff", "#ffcf4a", "#5dff9a"];
+const PAINT_NAME = ["Pink", "Cyan", "Gold", "Green"];
+const CAPS = {
+  spread: { l: "S", c: 0x8ee9ff, name: "Spread", dur: 10 },
+  rapid: { l: "R", c: 0xffd27a, name: "Rapid", dur: 8 },
+  bubble: { l: "B", c: 0xc4a6ff, name: "Bubble", dur: 0 }
+};
+/* ---------------- renderer + post ---------------- */
+const mount = document.getElementById("game");
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+const dprCap = () => Math.min(PA.isTouch ? 1.5 : 2, devicePixelRatio || 1);
+renderer.setPixelRatio(dprCap());
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+mount.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05040d);
+scene.fog = new THREE.FogExp2(0x070516, 0.012);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.3, 500);
+const hdr = (c, k) => new THREE.Color(c).multiplyScalar(k);
+
+function makePost() {
+  const ext = renderer.extensions;
+  const fullFloat = ext.has("EXT_color_buffer_float"), hdrOk = fullFloat || ext.has("EXT_color_buffer_half_float");
+  const type = hdrOk ? THREE.HalfFloatType : THREE.UnsignedByteType;
+  const main = new THREE.WebGLRenderTarget(1, 1, { type, samples: hdrOk && !fullFloat ? 0 : PA.isTouch ? 2 : 4 });
+  const LV = 5, lv = [], tmp = [];
+  for (let i = 0; i < LV; i++) {
+    lv.push(new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false }));
+    tmp.push(new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false }));
+  }
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+  quad.frustumCulled = false;
+  const pscene = new THREE.Scene();
+  pscene.add(quad);
+  const vs = "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }";
+  const mk = (fs, uniforms) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
+  const box4 = "vec3 c = 0.25 * (texture2D(tex, vUv + px * vec2(-0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(-0.5, 0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, 0.5)).rgb);";
+  const bright = mk([
+    "uniform sampler2D tex; uniform vec2 px; uniform float thr; varying vec2 vUv;",
+    "void main(){", box4,
+    "  float l = max(c.r, max(c.g, c.b));",
+    "  float knee = thr * 0.5, soft = clamp(l - thr + knee, 0.0, 2.0 * knee);",
+    "  soft = soft * soft / (4.0 * knee + 1e-4);",
+    "  gl_FragColor = vec4(min(c * max(soft, l - thr) / max(l, 1e-4), vec3(30.0)), 1.0);",
+    "}"].join("\n"), { tex: { value: null }, px: { value: new THREE.Vector2() }, thr: { value: hdrOk ? 0.95 : 0.7 } });
+  const down = mk("uniform sampler2D tex; uniform vec2 px; varying vec2 vUv; void main(){ " + box4 + " gl_FragColor = vec4(c, 1.0); }",
+    { tex: { value: null }, px: { value: new THREE.Vector2() } });
+  const blur = mk([
+    "uniform sampler2D tex; uniform vec2 dir; varying vec2 vUv;",
+    "void main(){",
+    "  vec3 c = texture2D(tex, vUv).rgb * 0.2270270270;",
+    "  c += (texture2D(tex, vUv + dir * 1.3846153846).rgb + texture2D(tex, vUv - dir * 1.3846153846).rgb) * 0.3162162162;",
+    "  c += (texture2D(tex, vUv + dir * 3.2307692308).rgb + texture2D(tex, vUv - dir * 3.2307692308).rgb) * 0.0702702703;",
+    "  gl_FragColor = vec4(c, 1.0);",
+    "}"].join("\n"), { tex: { value: null }, dir: { value: new THREE.Vector2() } });
+  const comp = mk([
+    "uniform sampler2D tScene, b0, b1, b2, b3, b4; uniform float strength, grain, time, hurt, chroma; varying vec2 vUv;",
+    "void main(){",
+    "  vec2 q = vUv - 0.5;",
+    "  vec3 c;",
+    "  c.r = texture2D(tScene, vUv + q * chroma * 0.012).r;",
+    "  c.g = texture2D(tScene, vUv).g;",
+    "  c.b = texture2D(tScene, vUv - q * chroma * 0.012).b;",
+    "  vec3 b = texture2D(b0, vUv).rgb * 0.5 + texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.75 + texture2D(b3, vUv).rgb * 0.85 + texture2D(b4, vUv).rgb * 0.95;",
+    "  c += b * strength;",
+    "  float vig = dot(q, q);",
+    "  c *= 1.0 - vig * 0.85;",
+    "  c += vec3(1.0, 0.2, 0.45) * hurt * smoothstep(0.08, 0.4, vig);",
+    "  gl_FragColor = vec4(c, 1.0);",
+    "  #include <tonemapping_fragment>",
+    "  #include <colorspace_fragment>",
+    "  float n = fract(sin(dot(gl_FragCoord.xy + fract(time) * 97.0, vec2(12.9898, 78.233))) * 43758.5453);",
+    "  gl_FragColor.rgb += (n - 0.5) * grain;",
+    "}"].join("\n"), {
+    tScene: { value: main.texture }, b0: { value: lv[0].texture }, b1: { value: lv[1].texture }, b2: { value: lv[2].texture },
+    b3: { value: lv[3].texture }, b4: { value: lv[4].texture }, strength: { value: 0.5 }, grain: { value: 0.02 }, time: { value: 0 }, hurt: { value: 0 }, chroma: { value: 0.1 }
+  });
+  const pass = (m, target) => { quad.material = m; renderer.setRenderTarget(target); renderer.render(pscene, cam); };
+  return {
+    comp,
+    setSize(w, h) {
+      main.setSize(w, h);
+      for (let i = 0; i < LV; i++) {
+        const lw = Math.max(1, w >> (i + 1)), lh = Math.max(1, h >> (i + 1));
+        lv[i].setSize(lw, lh); tmp[i].setSize(lw, lh);
+      }
+    },
+    render(sc, cm, t) {
+      renderer.setRenderTarget(main);
+      renderer.render(sc, cm);
+      bright.uniforms.tex.value = main.texture;
+      bright.uniforms.px.value.set(1 / main.width, 1 / main.height);
+      pass(bright, lv[0]);
+      for (let i = 0; i < LV; i++) {
+        if (i) {
+          down.uniforms.tex.value = lv[i - 1].texture;
+          down.uniforms.px.value.set(1 / lv[i - 1].width, 1 / lv[i - 1].height);
+          pass(down, lv[i]);
+        }
+        blur.uniforms.tex.value = lv[i].texture; blur.uniforms.dir.value.set(1 / lv[i].width, 0);
+        pass(blur, tmp[i]);
+        blur.uniforms.tex.value = tmp[i].texture; blur.uniforms.dir.value.set(0, 1 / lv[i].height);
+        pass(blur, lv[i]);
+      }
+      comp.uniforms.time.value = t;
+      pass(comp, null);
+    }
   };
-  // the swarm is a honeycomb: odd rows sit half a cell over, so each alien touches up to six others
-  const ALIEN_ROWS = 6;
-  const ALIEN_COLS = 9;
-  const ALIEN_SCORE = [35, 25, 25, 20, 15];
-  const SHIELD_COUNT = 3;
-  // The twist: your laser carries a colour. A hit on a different colour paints that alien yours;
-  // a hit on a matching one detonates every touching alien of that colour in a chain.
-  const PAINT = ["#ff7eb6", "#8ee9ff", "#ffd27a", "#7ee7a8"];
-  const PAINT_NAME = ["Pink", "Cyan", "Gold", "Green"];
+}
+const post = makePost();
+scene.background = new THREE.Color(0x02030a);
+scene.fog = null;
+camera.far = 2400;
+renderer.toneMappingExposure = 1.05;
+post.comp.uniforms.strength.value = 0.6;
 
-  let W = 0, H = 0, S = 1, DPR = 1;
-  let playL = 0, playR = 0, playW = 0, floorY = 0;
-  let score = 0, wave = 1, lives = 3, invadersLeft = 0;
-  let player = null, aliens = [], pBullets = [], eBullets = [];
-  let shields = [], mothership = null, mothershipCd = 0;
-  let formX = 0, formY = 0, marchDir = 1, marchTimer = 0, marchDelay = 0.72;
-  let enemyFireCd = 0, fireCd = 0, overSent = false, banner = null, simT = 0;
-  let respawnT = 0, invulnT = 0, waveClearT = 0, kills = 0, mothershipHits = 0;
-  let ptrX = null, stars = [], bgGrad = null;
-  let gun = 0, colours = 3, bestCluster = 0, clusters = 0, paints = 0, swapT = 0;
+let W = innerWidth, H = innerHeight;
+const overlay = PA.canvas(document.getElementById("fx"), { onResize: (o) => { W = o.w; H = o.h; } });
+const ctx = overlay.ctx;
+const texts = new PA.Texts();
+const bufSize = new THREE.Vector2();
+const tmpV = new THREE.Vector3();
+let camDist = 30, camElev = 0.95;
+const camLook = new THREE.Vector3(0, 0, -3.2);
+function placeCamera(d, ox) {
+  camera.position.set(ox || 0, Math.sin(camElev) * d, camLook.z + Math.cos(camElev) * d);
+  camera.lookAt(camLook.x + (ox || 0) * 0.5, 0, camLook.z);
+}
+function fitCamera() {
+  // Steeper and further back on tall screens, so the whole field always fits.
+  const a = camera.aspect;
+  camElev = a < 0.75 ? 1.22 : a < 1.1 ? 1.08 : 0.94;
+  camLook.z = a < 0.75 ? -3.6 : -3.2;
+  const pts = [[LEFT - 0.7, TOP_Z + 1.5], [RIGHT + 0.7, TOP_Z + 1.5], [LEFT - 0.7, CANNON_Z + 1.6], [RIGHT + 0.7, CANNON_Z + 1.6]];
+  let d = 12;
+  for (; d < 160; d += 0.5) {
+    placeCamera(d); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
+    let ok = true;
+    for (const [x, z] of pts) {
+      tmpV.set(x, 1, z).project(camera);
+      if (Math.abs(tmpV.x) > 0.98 || tmpV.y > (a < 0.75 ? 0.72 : 0.8) || tmpV.y < -0.92) { ok = false; break; }
+    }
+    if (ok) break;
+  }
+  camDist = d;
+}
+function resize() {
+  renderer.setPixelRatio(dprCap());
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.getDrawingBufferSize(bufSize);
+  post.setSize(bufSize.x, bufSize.y);
+  fitCamera();
+  pointsMat.uniforms.scale.value = moteMat.uniforms.scale.value = bufSize.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+}
+function toScreen(x, y, z) {
+  tmpV.set(x, y, z).project(camera);
+  return { x: (tmpV.x + 1) / 2 * W, y: (1 - tmpV.y) / 2 * H };
+}
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), deckPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+function pointerToDeck(cx, cy) {
+  ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  return raycaster.ray.intersectPlane(deckPlane, tmpV) ? tmpV.x : null;
+}
 
-  const view = PA.canvas(document.getElementById("c"), { onResize: layout });
-  const ctx = view.ctx;
-  const canvas = view.canvas;
-  const fx = new PA.Particles(1000), texts = new PA.Texts();
-  const hud = document.getElementById("ss-hud");
+function canvasTex(w, h, paint, o) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  paint(cv.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = o && o.linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+  if (o && o.repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+const glowTex = canvasTex(128, 128, (g, w) => {
+  const gr = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+  gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(.2, "rgba(255,255,255,.5)"); gr.addColorStop(.55, "rgba(255,255,255,.1)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, w, w);
+});
+function glowSprite(color, scale) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  s.scale.setScalar(scale);
+  return s;
+}
 
-  function layout(v) {
-    W = v.w; H = v.h; DPR = v.dpr;
-    S = clamp(Math.sqrt(W * H) / 820, 0.72, 1.35);
-    playL = W * 0.05;
-    playR = W * 0.95;
-    playW = playR - playL;
-    floorY = H - Math.max(52, H * 0.09);
-    buildSky();
-    if (player) {
-      player.y = floorY - player.h;
-      player.w = playW * 0.11;
-      clampPlayer();
+/* ---------------- the world below: a planet turning under the fight ---------------- */
+{
+  const env = canvasTex(512, 256, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, "#0b0c26"); gr.addColorStop(0.45, "#2a2a6a"); gr.addColorStop(0.55, "#10183a"); gr.addColorStop(1, "#04060e");
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.fillStyle = "#ffe6c0"; g.fillRect(40, 30, 70, 14);
+    g.fillStyle = "#8ee9ff"; g.fillRect(300, 50, 90, 8);
+    g.fillStyle = "#ff8ac8"; g.fillRect(180, 60, 50, 6);
+  });
+  env.mapping = THREE.EquirectangularReflectionMapping;
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromEquirectangular(env).texture;
+  env.dispose(); pm.dispose();
+}
+const NOISE = `
+  float h3(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+  float n3(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z); }
+  float fb(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * n3(p); p = p * 2.03 + 1.7; a *= 0.5; } return s; }`;
+const planetMat = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 }, sun: { value: new THREE.Vector3(-1, 0.06, -0.35).normalize() } },
+  vertexShader: `varying vec3 vObj; varying vec3 vN; varying vec3 vW;
+    void main(){ vObj = normalize(position); vN = normalize(mat3(modelMatrix) * normal); vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+  fragmentShader: `uniform float time; uniform vec3 sun; varying vec3 vObj; varying vec3 vN; varying vec3 vW;
+    ${NOISE}
+    void main(){
+      vec3 p = vObj * 7.0;
+      float land = fb(p + fb(p * 1.7) * 0.6);
+      float cont = smoothstep(0.5, 0.56, land);
+      float d = dot(normalize(vN), sun);
+      float day = smoothstep(-0.14, 0.2, d);
+      vec3 ocean = mix(vec3(0.004, 0.02, 0.06), vec3(0.02, 0.09, 0.2), smoothstep(0.3, 0.5, land));
+      vec3 ground = mix(vec3(0.05, 0.07, 0.035), vec3(0.11, 0.09, 0.06), n3(p * 6.0));
+      vec3 col = mix(ocean, ground, cont) * (0.12 + day * 1.1);
+      // city lights on the night side
+      float city = smoothstep(0.78, 0.95, n3(vObj * 1100.0)) * smoothstep(0.45, 0.75, n3(vObj * 140.0)) * cont;
+      col += vec3(1.0, 0.62, 0.3) * city * (1.0 - day) * 1.6;
+      // two drifting cloud decks
+      float cl = smoothstep(0.52, 0.78, fb(vObj * 16.0 + vec3(time * 0.004, 0.0, time * 0.002)));
+      col = mix(col, vec3(0.75, 0.8, 0.9) * (0.04 + day * 0.85), cl * 0.75);
+      // the terminator glows warm, the limb glows blue
+      col += vec3(1.0, 0.45, 0.2) * exp(-pow(d * 9.0, 2.0)) * 0.12;
+      vec3 V = normalize(cameraPosition - vW);
+      float rim = pow(1.0 - max(dot(normalize(vN), V), 0.0), 3.0);
+      col += vec3(0.25, 0.5, 1.0) * rim * (0.2 + day);
+      gl_FragColor = vec4(col * 0.42, 1.0);
+    }`
+});
+const planet = new THREE.Mesh(new THREE.SphereGeometry(420, 96, 64), planetMat);
+planet.position.set(0, -505, -60);
+scene.add(planet);
+// dust drifting between the deck and the planet gives the drop its depth
+const moteMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { time: { value: 0 }, scale: { value: 600 } },
+  vertexShader: `uniform float time, scale; attribute float seed; varying float vA;
+    void main(){ vec3 p = position; p.z = mod(p.z + time * (0.6 + seed * 1.4) + 40.0, 80.0) - 50.0;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0); vA = 0.3 + 0.7 * (0.5 + 0.5 * sin(time * 1.3 + seed * 40.0));
+      gl_PointSize = max(1.0, (0.05 + seed * 0.1) * scale / -mv.z); gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: "varying float vA; void main(){ float d = length(gl_PointCoord - 0.5); gl_FragColor = vec4(vec3(0.55, 0.7, 1.0) * vA * smoothstep(0.5, 0.0, d), 1.0); }"
+});
+{
+  const N = 700, pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) { pos.set([rand(-40, 40), rand(-45, -2), rand(-50, 30)], i * 3); seed[i] = Math.random(); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
+  const m = new THREE.Points(g, moteMat); m.frustumCulled = false;
+  scene.add(m);
+}
+
+/* ---------------- the deck: a hex grid of light with rails down each side ---------------- */
+const deckMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { time: { value: 0 }, px: { value: 0 }, beam: { value: 0 }, beamX: { value: 0 }, beamC: { value: new THREE.Color() }, hurt: { value: 0 } },
+  vertexShader: "varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
+  fragmentShader: `uniform float time, px, beam, beamX, hurt; uniform vec3 beamC; varying vec3 vW;
+    float hexD(vec2 p){ const vec2 s = vec2(1.0, 1.7320508); vec4 hc = floor(vec4(p, p - vec2(0.5, 1.0)) / s.xyxy) + 0.5;
+      vec4 h = vec4(p - hc.xy * s, p - (hc.zw + 0.5) * s); vec2 q = dot(h.xy, h.xy) < dot(h.zw, h.zw) ? h.xy : h.zw; q = abs(q);
+      return max(dot(q, s * 0.5), q.x); }
+    void main(){
+      vec2 p = vW.xz / 1.1;
+      float e = hexD(p);
+      float line = smoothstep(0.45, 0.5, e);
+      float fadeX = smoothstep(11.5, 9.0, abs(vW.x));
+      float fadeZ = smoothstep(-20.0, -8.0, vW.z) * smoothstep(13.0, 10.5, vW.z);
+      float near = exp(-pow((vW.z - 9.2) * 0.35, 2.0)) * exp(-pow((vW.x - px) * 0.25, 2.0));
+      float wave = exp(-pow(mod(vW.z - time * 6.0, 40.0) - 20.0, 2.0) * 0.08);
+      vec3 col = vec3(0.25, 0.55, 1.0) * line * (0.08 + near * 0.8 + wave * 0.2);
+      col += beamC * beam * exp(-pow((vW.x - beamX) * 0.9, 2.0)) * (0.3 + line);
+      col += vec3(1.0, 0.2, 0.4) * hurt * line * 0.6;
+      gl_FragColor = vec4(col * fadeX * fadeZ, 1.0);
+    }`
+});
+const deck = new THREE.Mesh(new THREE.PlaneGeometry(26, 36).rotateX(-Math.PI / 2), deckMat);
+deck.position.set(0, 0, -3.5);
+scene.add(deck);
+{
+  const railMat = new THREE.MeshBasicMaterial({ color: hdr(0x7a8cff, 2.2) });
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x1a1f36, metalness: 0.8, roughness: 0.35 });
+  const capMat = new THREE.MeshBasicMaterial({ color: hdr(0x8ee9ff, 3) });
+  for (const s of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 30), railMat);
+    rail.position.set(s * 10.9, 0.12, -3.5);
+    scene.add(rail);
+    for (let z = -18; z <= 11; z += 3.2) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 0.7, 6), postMat);
+      p.position.set(s * 10.9, 0.35, z);
+      const c = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), capMat);
+      c.position.set(s * 10.9, 0.75, z);
+      scene.add(p, c);
     }
   }
+  // the cannon's track
+  const track = new THREE.Mesh(new THREE.BoxGeometry(21.6, 0.05, 0.12), new THREE.MeshBasicMaterial({ color: hdr(0x5a6cff, 1.6) }));
+  track.position.set(0, 0.04, CANNON_Z + 0.95);
+  scene.add(track);
+}
 
-  function buildSky() {
-    const cv = document.createElement("canvas");
-    cv.width = Math.ceil(W * DPR); cv.height = Math.ceil(H * DPR);
-    const g = cv.getContext("2d");
-    g.scale(DPR, DPR);
-    const lg = g.createLinearGradient(0, 0, 0, H);
-    lg.addColorStop(0, "#070b16");
-    lg.addColorStop(0.45, "#0a1230");
-    lg.addColorStop(1, "#140818");
-    g.fillStyle = lg; g.fillRect(0, 0, W, H);
-    const neb = [
-      [0.2, 0.15, 0.42, "rgba(196,166,255,.12)"],
-      [0.78, 0.28, 0.38, "rgba(142,233,255,.1)"],
-      [0.5, 0.62, 0.48, "rgba(255,126,182,.07)"]
-    ];
-    neb.forEach(([x, y, r, col]) => {
-      const R = Math.max(W, H) * r;
-      const rg = g.createRadialGradient(x * W, y * H, 0, x * W, y * H, R);
-      rg.addColorStop(0, col); rg.addColorStop(1, "rgba(0,0,0,0)");
-      g.fillStyle = rg; g.fillRect(0, 0, W, H);
-    });
-    bgGrad = cv;
-    const n = Math.min(320, Math.round(W * H / 4200));
-    stars = [];
-    for (let i = 0; i < n; i++) {
-      stars.push({
-        x: Math.random() * W, y: Math.random() * H * 0.78,
-        z: Math.random() < 0.5 ? 0 : Math.random() < 0.65 ? 1 : 2,
-        ph: rand(TAU), sp: rand(0.3, 1.6)
+/* ---------------- lights (a fixed set: unused ones sit at zero) ---------------- */
+scene.add(new THREE.HemisphereLight(0x7c8cff, 0x0a0614, 0.55));
+const sunL = new THREE.DirectionalLight(0xffe2c0, 1.6);
+sunL.position.set(-12, 14, -6);
+scene.add(sunL);
+const rimL = new THREE.DirectionalLight(0x6aa8ff, 0.7);
+rimL.position.set(10, 6, 14);
+scene.add(rimL);
+const cannonL = new THREE.PointLight(0xffffff, 0, 9, 1.6); scene.add(cannonL);
+const boltL = [new THREE.PointLight(0xffffff, 0, 6, 1.8), new THREE.PointLight(0xffffff, 0, 6, 1.8)];
+for (const l of boltL) scene.add(l);
+const popL = [new THREE.PointLight(0xffffff, 0, 10, 1.6), new THREE.PointLight(0xffffff, 0, 10, 1.6)];
+for (const l of popL) scene.add(l);
+const beamL = new THREE.PointLight(0xffffff, 0, 14, 1.4); scene.add(beamL);
+const queenL = new THREE.PointLight(0xffffff, 0, 12, 1.6); scene.add(queenL);
+const cometL = new THREE.PointLight(0xffe6a0, 0, 10, 1.6); scene.add(cometL);
+let popLi = 0;
+const popLs = [0, 0];
+function popLight(x, z, color, k) {
+  const i = popLi++ % 2;
+  popL[i].position.set(x, AY + 0.8, z); popL[i].color.setHex(color); popLs[i] = k || 1;
+}
+
+/* ---------------- the swarm: instanced jelly drones with a visor and beating fins ---------------- */
+const NA = ROWS * COLS;
+const bodyGeo = new THREE.SphereGeometry(0.5, 28, 18);
+bodyGeo.scale(1.36, 0.74, 1.05);
+const alienMat = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 }, sun: { value: new THREE.Vector3(-0.5, 0.8, 0.2).normalize() } },
+  vertexShader: `attribute vec4 aFx; varying vec3 vN, vV, vL, vC; varying vec4 vFx;
+    void main(){
+      vec3 p = position;
+      p *= 1.0 + aFx.z * 0.18;
+      vL = position; vC = instanceColor; vFx = aFx;
+      vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0);
+      vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
+      vV = cameraPosition - w.xyz;
+      gl_Position = projectionMatrix * viewMatrix * w;
+    }`,
+  fragmentShader: `uniform float time; uniform vec3 sun; varying vec3 vN, vV, vL, vC; varying vec4 vFx;
+    void main(){
+      vec3 N = normalize(vN), V = normalize(vV);
+      float dif = 0.3 + 0.7 * max(dot(N, sun), 0.0);
+      vec3 base = vC;
+      vec3 col = base * 0.32 * dif;
+      float fr = pow(1.0 - max(dot(N, V), 0.0), 2.4);
+      col += base * fr * 2.4;
+      // a glowing seam round the middle and stripes on the dome
+      float seam = smoothstep(0.05, 0.0, abs(vL.y + 0.04 + 0.025 * sin(atan(vL.z, vL.x) * 6.0 + time * 3.0)));
+      col += base * seam * 3.0;
+      float stripe = smoothstep(0.75, 1.0, sin(atan(vL.z, vL.x) * 5.0)) * smoothstep(0.0, 0.25, vL.y);
+      col += base * stripe * 0.35;
+      // dark visor and a bright eye on the side facing the cannon
+      vec2 vp = vec2(vL.x / 0.42, (vL.y + 0.02) / 0.16);
+      float visor = smoothstep(1.05, 0.9, length(vp)) * step(0.0, vL.z);
+      col = mix(col, vec3(0.01, 0.01, 0.03), visor * 0.92);
+      float eye = smoothstep(0.1, 0.05, length(vec2(vL.x - sin(time * 1.3 + vFx.w * 9.0) * 0.12, vL.y + 0.02))) * step(0.0, vL.z);
+      col += mix(base, vec3(1.0), 0.55) * eye * 5.0;
+      // match pulse, primed flicker and the paint flash
+      col += base * vFx.y * fr * (1.4 + 1.2 * sin(time * 8.0));
+      col = mix(col, vec3(4.0), vFx.z * (0.5 + 0.5 * sin(time * 60.0)));
+      col = mix(col, vec3(3.5), vFx.x);
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+const aliensMesh = new THREE.InstancedMesh(bodyGeo, alienMat, NA + 1);   // the last slot is the queen
+const aFx = new Float32Array((NA + 1) * 4);
+bodyGeo.setAttribute("aFx", new THREE.InstancedBufferAttribute(aFx, 4).setUsage(THREE.DynamicDrawUsage));
+aliensMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+aliensMesh.setColorAt(0, new THREE.Color());
+aliensMesh.frustumCulled = false;
+scene.add(aliensMesh);
+// fins: both wings in one geometry, beaten in the vertex shader round their root
+const finGeo = (() => {
+  const parts = [];
+  for (const s of [-1, 1]) {
+    const g = new THREE.BoxGeometry(0.62, 0.035, 0.36, 3, 1, 1).toNonIndexed();
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i) + 0.31, z = p.getZ(i);
+      p.setXYZ(i, s * (x + 0.52), p.getY(i) + 0.02, z * (1 - x * 0.9) - x * 0.18);
+    }
+    g.computeVertexNormals();
+    const side = new Float32Array(p.count).fill(s);
+    g.setAttribute("side", new THREE.BufferAttribute(side, 1));
+    parts.push(g);
+  }
+  const out = new THREE.BufferGeometry();
+  for (const k of ["position", "normal", "side"]) {
+    const a = parts[0].attributes[k], b = parts[1].attributes[k];
+    const arr = new Float32Array(a.array.length + b.array.length);
+    arr.set(a.array); arr.set(b.array, a.array.length);
+    out.setAttribute(k, new THREE.BufferAttribute(arr, a.itemSize));
+  }
+  return out;
+})();
+const finMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  uniforms: { time: { value: 0 } },
+  vertexShader: `uniform float time; attribute float side; attribute vec4 aFx; varying vec3 vC; varying float vK;
+    void main(){
+      vec3 p = position;
+      float a = 0.22 + 0.42 * sin(time * 11.0 + aFx.w * 20.0);
+      float r = abs(p.x) - 0.52;
+      p.y += r * sin(a); p.x = side * (0.52 + r * cos(a));
+      vK = clamp(r / 0.62, 0.0, 1.0); vC = instanceColor;
+      gl_Position = projectionMatrix * viewMatrix * modelMatrix * instanceMatrix * vec4(p, 1.0);
+    }`,
+  fragmentShader: "varying vec3 vC; varying float vK; void main(){ gl_FragColor = vec4(vC * (0.25 + vK * 1.1), 1.0); }"
+});
+finGeo.setAttribute("aFx", bodyGeo.attributes.aFx);
+const finsMesh = new THREE.InstancedMesh(finGeo, finMat, NA + 1);
+finsMesh.instanceMatrix = aliensMesh.instanceMatrix;
+finsMesh.instanceColor = aliensMesh.instanceColor;
+finsMesh.frustumCulled = false;
+scene.add(finsMesh);
+// a pool of light under each drone, where its thruster hits the deck
+const haloMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.8, 1.8).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), NA + 1);
+haloMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+haloMesh.setColorAt(0, new THREE.Color());
+haloMesh.frustumCulled = false;
+scene.add(haloMesh);
+// aim rings under the aliens a shot would pop (or paint)
+const aimMesh = new THREE.InstancedMesh(new THREE.RingGeometry(0.62, 0.74, 6).rotateX(-Math.PI / 2).rotateY(Math.PI / 6),
+  new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }), NA + 1);
+aimMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+aimMesh.setColorAt(0, new THREE.Color());
+aimMesh.count = 0;
+aimMesh.frustumCulled = false;
+scene.add(aimMesh);
+
+/* ---------------- the hive queen's crown and shell ---------------- */
+const queenG = new THREE.Group();
+{
+  const gold = new THREE.MeshStandardMaterial({ color: 0xffd27a, metalness: 0.9, roughness: 0.25, emissive: 0x6a4a10, emissiveIntensity: 0.6 });
+  for (let i = 0; i < 7; i++) {
+    const a = i / 7 * TAU, s = new THREE.Mesh(new THREE.ConeGeometry(0.13, i % 2 ? 0.55 : 0.8, 6), gold);
+    s.position.set(Math.cos(a) * 0.62, 0.62, Math.sin(a) * 0.55);
+    s.rotation.set(Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35);
+    queenG.add(s);
+  }
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.06, 8, 40).rotateX(Math.PI / 2), gold);
+  band.position.y = 0.42;
+  queenG.add(band);
+}
+const queenRing = new THREE.Mesh(new THREE.TorusGeometry(1.75, 0.05, 8, 64).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+queenG.add(queenRing);
+const queenRing2 = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.025, 6, 64), queenRing.material);
+queenG.add(queenRing2);
+queenG.visible = false;
+scene.add(queenG);
+
+/* ---------------- crystal barriers ---------------- */
+const SH_MAX = 520;
+const shieldMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(CELL * 0.56, CELL * 0.62, 1, 6),
+  new THREE.MeshStandardMaterial({ color: 0xb8a4ff, metalness: 0.15, roughness: 0.12, emissive: 0x3c2290, emissiveIntensity: 0.9, transparent: true, opacity: 0.88 }), SH_MAX);
+shieldMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+shieldMesh.setColorAt(0, new THREE.Color());
+shieldMesh.frustumCulled = false;
+scene.add(shieldMesh);
+
+/* ---------------- the cannon ---------------- */
+const cannon = new THREE.Group();
+const hullMat = new THREE.MeshStandardMaterial({ color: 0x1c2442, metalness: 0.85, roughness: 0.28 });
+const trimMat = new THREE.MeshStandardMaterial({ color: 0x9aa6d8, metalness: 0.9, roughness: 0.2 });
+const gunGlow = new THREE.MeshBasicMaterial({ color: 0xffffff });
+{
+  const hull = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 1.3, 6, 16).rotateZ(Math.PI / 2), hullMat);
+  hull.scale.set(1, 0.55, 1.15); hull.position.y = 0.42;
+  const nose = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.5, 4, 12).rotateX(Math.PI / 2), hullMat);
+  nose.scale.set(1.3, 0.6, 1); nose.position.set(0, 0.48, -0.42);
+  cannon.add(hull, nose);
+  for (const s of [-1, 1]) {
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.9, 12).rotateX(Math.PI / 2), trimMat);
+    pod.position.set(s * 1.0, 0.36, 0.1);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.05, 6, 20), gunGlow);
+    ring.position.set(s * 1.0, 0.36, 0.56);
+    const jet = glowSprite(0x6aa8ff, 1.1);
+    jet.position.set(s * 1.0, 0.1, 0.3);
+    cannon.add(pod, ring, jet);
+  }
+  const turret = new THREE.Mesh(new THREE.SphereGeometry(0.36, 20, 14, 0, TAU, 0, Math.PI / 2), trimMat);
+  turret.position.y = 0.62;
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.1, 1.15, 10).rotateX(Math.PI / 2), trimMat);
+  barrel.position.set(0, 0.8, -0.62);
+  const tip = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 6, 16), gunGlow);
+  tip.position.set(0, 0.8, -1.2);
+  cannon.add(turret, barrel, tip);
+}
+const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), gunGlow);
+gem.position.set(0, 1.18, 0.05);
+cannon.add(gem);
+// the four colours sit round the turret; the live one burns
+const gemSlots = [];
+for (let i = 0; i < 4; i++) {
+  const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.075), new THREE.MeshBasicMaterial({ color: hdr(PAINT[i], 1) }));
+  cannon.add(m);
+  gemSlots.push(m);
+}
+const hoverGlow = glowSprite(0x8ee9ff, 2.6);
+hoverGlow.position.set(0, 0.05, 0);
+cannon.add(hoverGlow);
+const bubbleMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { time: { value: 0 }, k: { value: 1 } },
+  vertexShader: "varying vec3 vN, vV; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vN = normalize(mat3(modelMatrix) * normal); vV = cameraPosition - w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
+  fragmentShader: "uniform float time, k; varying vec3 vN, vV; void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.5); float hx = 0.6 + 0.4 * sin(vN.x * 18.0 + time * 3.0) * sin(vN.y * 18.0 - time * 2.0); gl_FragColor = vec4(vec3(0.7, 0.55, 1.0) * f * (1.2 + hx) * k, 1.0); }"
+});
+const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.45, 32, 20), bubbleMat);
+bubble.position.y = 0.5; bubble.scale.y = 0.75;
+cannon.add(bubble);
+cannon.position.set(0, 0, CANNON_Z);
+scene.add(cannon);
+
+/* ---------------- shots, capsules, the comet ---------------- */
+const EB_MAX = 48;
+const eShotMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.17, 1), new THREE.MeshBasicMaterial({ color: hdr(0xff3d6e, 3.5) }), EB_MAX);
+eShotMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+eShotMesh.count = 0; eShotMesh.frustumCulled = false;
+scene.add(eShotMesh);
+const eGlowMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.1, 1.1).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ map: glowTex, color: hdr(0xff2a5e, 1.6), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), EB_MAX);
+eGlowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+eGlowMesh.count = 0; eGlowMesh.frustumCulled = false;
+scene.add(eGlowMesh);
+const letterTex = {};
+for (const k in CAPS) {
+  letterTex[k] = canvasTex(128, 128, (g, w) => {
+    g.clearRect(0, 0, w, w);
+    g.font = "800 82px Manrope, system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.shadowColor = "#fff"; g.shadowBlur = 10; g.fillStyle = "#fff";
+    g.fillText(CAPS[k].l, w / 2, w / 2 + 4);
+  });
+}
+const capPool = [];
+for (let i = 0; i < 4; i++) {
+  const g = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.55, 6, 14).rotateZ(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.3, roughness: 0.2, emissive: 0xffffff, emissiveIntensity: 0.6, transparent: true, opacity: 0.9 }));
+  const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: letterTex.spread, depthWrite: false, transparent: true }));
+  lab.scale.setScalar(0.62); lab.position.y = 0.62;
+  const gl = glowSprite(0xffffff, 1.8);
+  g.add(shell, lab, gl);
+  g.visible = false;
+  scene.add(g);
+  capPool.push({ g, shell, lab, gl });
+}
+const cometG = new THREE.Group();
+{
+  const geo = new THREE.IcosahedronGeometry(0.55, 2);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) { const k = 1 + (Math.sin(p.getX(i) * 7) * Math.cos(p.getZ(i) * 5) + Math.sin(p.getY(i) * 9)) * 0.08; p.setXYZ(i, p.getX(i) * k, p.getY(i) * k, p.getZ(i) * k); }
+  geo.computeVertexNormals();
+  const rock = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcfe8ff, roughness: 0.35, metalness: 0.1, emissive: 0x6aa8ff, emissiveIntensity: 0.55 }));
+  const gl = glowSprite(0xffe6a0, 4.2);
+  cometG.add(rock, gl);
+  cometG.userData.rock = rock;
+}
+cometG.visible = false;
+scene.add(cometG);
+const muzzle = glowSprite(0xffffff, 1.6);
+muzzle.visible = false;
+scene.add(muzzle);
+/* ---------------- particles + shards ---------------- */
+const PMAX = 3000;
+const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3), pSize = new Float32Array(PMAX);
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute("color", new THREE.BufferAttribute(pCol, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute("size", new THREE.BufferAttribute(pSize, 1).setUsage(THREE.DynamicDrawUsage));
+const pointsMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { scale: { value: 600 } },
+  vertexShader: "uniform float scale; attribute float size; attribute vec3 color; varying vec3 vC; void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = max(1.0, size * scale / -mv.z); gl_Position = projectionMatrix * mv; }",
+  fragmentShader: "varying vec3 vC; void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.05, d); gl_FragColor = vec4(vC * a * a, 1.0); }"
+});
+const ptsMesh = new THREE.Points(pGeo, pointsMat);
+ptsMesh.frustumCulled = false;
+scene.add(ptsMesh);
+const parts = [];
+const C3 = (hex, k) => { const c = new THREE.Color(hex); return [c.r * k, c.g * k, c.b * k]; };
+function burst(x, z, o) {
+  o = o || {};
+  const n = o.n || 16, cols = o.colors || [0xffffff];
+  for (let i = 0; i < n && parts.length < PMAX; i++) {
+    const a = o.angle != null ? o.angle + rand(-1, 1) * (o.spread || 0.6) : Math.random() * TAU;
+    const sp = (o.speed || 6) * rand(0.3, 1), life = (o.life || 0.6) * rand(0.5, 1.1);
+    parts.push({ x, y: o.y == null ? 0.4 : o.y, z, vx: Math.cos(a) * sp, vy: rand(0.2, 1) * (o.up == null ? 3 : o.up), vz: Math.sin(a) * sp, g: o.g == null ? 6 : o.g,
+      life, max: life, size: (o.size || 0.22) * rand(0.6, 1.3), c: C3(cols[(Math.random() * cols.length) | 0], o.bright || 2.4) });
+  }
+}
+function updateParts(dt) {
+  let j = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    p.life -= dt;
+    if (p.life <= 0) continue;
+    p.vy -= p.g * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    if (p.y < 0.03) { p.y = 0.03; p.vy *= -0.4; p.vx *= 0.7; p.vz *= 0.7; }
+    parts[j++] = p;
+  }
+  parts.length = j;
+  for (let i = 0; i < j; i++) {
+    const p = parts[i], k = p.life / p.max;
+    pPos[i * 3] = p.x; pPos[i * 3 + 1] = p.y; pPos[i * 3 + 2] = p.z;
+    pCol[i * 3] = p.c[0] * k; pCol[i * 3 + 1] = p.c[1] * k; pCol[i * 3 + 2] = p.c[2] * k;
+    pSize[i] = p.size;
+  }
+  pGeo.setDrawRange(0, j);
+  pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true; pGeo.attributes.size.needsUpdate = true;
+}
+// Glass shards: real little tetrahedra that tumble, bounce on the floor and fade.
+const SMAX = 420;
+const shardMesh = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.15, metalness: 0.2, emissive: 0xffffff, emissiveIntensity: 0.35, transparent: true, opacity: 0.9 }), SMAX);
+shardMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+shardMesh.setColorAt(0, new THREE.Color(1, 1, 1));
+shardMesh.count = 0;
+shardMesh.frustumCulled = false;
+scene.add(shardMesh);
+const shards = [];
+function shatter(x, z, color, n) {
+  const c = new THREE.Color(color);
+  for (let i = 0; i < n; i++) {
+    if (shards.length >= SMAX) shards.shift();
+    const a = Math.random() * TAU, sp = rand(1.5, 6.5);
+    shards.push({ x: x + rand(-0.8, 0.8), y: rand(0.15, 0.6), z: z + rand(-0.35, 0.35), vx: Math.cos(a) * sp, vy: rand(2, 7), vz: Math.sin(a) * sp * 0.7 + 1.2,
+      rx: rand(0, TAU), ry: rand(0, TAU), wx: rand(-14, 14), wy: rand(-14, 14), s: rand(0.5, 1.25), life: rand(1.4, 2.4), c });
+  }
+}
+const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e4 = new THREE.Euler(), v4 = new THREE.Vector3(), s4 = new THREE.Vector3();
+function updateShards(dt) {
+  let j = 0;
+  for (let i = 0; i < shards.length; i++) {
+    const s = shards[i];
+    s.life -= dt;
+    if (s.life <= 0) continue;
+    s.vy -= 20 * dt;
+    s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+    if (s.y < 0.08) { s.y = 0.08; s.vy *= -0.35; s.vx *= 0.6; s.vz *= 0.6; s.wx *= 0.6; s.wy *= 0.6; }
+    s.rx += s.wx * dt; s.ry += s.wy * dt;
+    shards[j++] = s;
+  }
+  shards.length = j;
+  for (let i = 0; i < j; i++) {
+    const s = shards[i], k = Math.min(1, s.life / 0.5) * s.s;
+    e4.set(s.rx, s.ry, 0); q4.setFromEuler(e4);
+    m4.compose(v4.set(s.x, s.y, s.z), q4, s4.set(k, k, k));
+    shardMesh.setMatrixAt(i, m4);
+    shardMesh.setColorAt(i, s.c);
+  }
+  shardMesh.count = j;
+  shardMesh.instanceMatrix.needsUpdate = true;
+  if (shardMesh.instanceColor) shardMesh.instanceColor.needsUpdate = true;
+}
+// ribbon trails (ball paths, beams)
+const TV = 9000;
+const tPos = new Float32Array(TV * 3), tCol = new Float32Array(TV * 3);
+const tGeo = new THREE.BufferGeometry();
+tGeo.setAttribute("position", new THREE.BufferAttribute(tPos, 3).setUsage(THREE.DynamicDrawUsage));
+tGeo.setAttribute("color", new THREE.BufferAttribute(tCol, 3).setUsage(THREE.DynamicDrawUsage));
+const trailMesh = new THREE.Mesh(tGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+trailMesh.frustumCulled = false;
+scene.add(trailMesh);
+let tv = 0;
+const camDir = new THREE.Vector3();
+function ribbon(tr, col, width, taper) {
+  const n = tr.length / 3;
+  if (n < 2) return;
+  for (let i = 1; i < n && tv + 6 <= TV; i++) {
+    const ax = tr[i * 3 - 3], ay = tr[i * 3 - 2], az = tr[i * 3 - 1], bx = tr[i * 3], by = tr[i * 3 + 1], bz = tr[i * 3 + 2];
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    camDir.set(camera.position.x - bx, camera.position.y - by, camera.position.z - bz).normalize();
+    const px = dy * camDir.z - dz * camDir.y, py = dz * camDir.x - dx * camDir.z, pz = dx * camDir.y - dy * camDir.x;
+    const pl = Math.hypot(px, py, pz) || 1;
+    const k0 = taper === false ? 1 : (i - 1) / (n - 1), k1 = taper === false ? 1 : i / (n - 1);
+    const w0 = width * k0 / pl, w1 = width * k1 / pl;
+    const v = [ax - px * w0, ay - py * w0, az - pz * w0, ax + px * w0, ay + py * w0, az + pz * w0, bx - px * w1, by - py * w1, bz - pz * w1, bx + px * w1, by + py * w1, bz + pz * w1];
+    for (const q of [0, 1, 2, 1, 3, 2]) {
+      tPos[tv * 3] = v[q * 3]; tPos[tv * 3 + 1] = v[q * 3 + 1]; tPos[tv * 3 + 2] = v[q * 3 + 2];
+      const k = q < 2 ? k0 : k1, kk = taper === false ? 1 : k * k;
+      tCol[tv * 3] = col[0] * kk; tCol[tv * 3 + 1] = col[1] * kk; tCol[tv * 3 + 2] = col[2] * kk;
+      tv++;
+    }
+  }
+}
+// floor ripples where things hit
+const RING = new THREE.RingGeometry(0.9, 1, 48).rotateX(-Math.PI / 2);
+const ripples = [];
+function ripple(x, z, color, size) {
+  const m = new THREE.Mesh(RING, new THREE.MeshBasicMaterial({ color: hdr(color, 2.2), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  m.position.set(x, 0.03, z);
+  scene.add(m);
+  ripples.push({ m, t: 0, size: size || 2 });
+}
+
+
+/* ---------------- state ---------------- */
+let score = 0, wave = 1, lives = 3, invadersLeft = 0;
+let player = { x: 0, vis: 0 }, aliens = [], pBullets = [], eBullets = [];
+let shields = [], comet = null, cometCd = 0, queen = null;
+let formX = 0, formZ = 0, marchDir = 1;
+let enemyFireCd = 0, fireCd = 0, overSent = false, banner = null, simT = 0;
+let respawnT = 0, invulnT = 0, waveClearT = 0, kills = 0, cometHits = 0;
+let ptrActive = false;
+let gun = 0, colours = 3, bestCluster = 0, clusters = 0, paints = 0, swapT = 0;
+let overload = 0, beamT = 0, beamX = 0, beamPaint = 0, beamId = 0, beamQueen = false;
+let diveCd = 0, diversDown = 0, queensDown = 0, escortCd = 0;
+let caps = [], bubbleOn = false, hurt = 0, muzzleT = 0, shownScore = 0;
+const timers = { spread: 0, rapid: 0 };
+const hud = document.getElementById("ss-hud");
+const powEl = document.getElementById("ss-pow");
+const overEl = document.getElementById("s-over");
+const overBar = overEl.querySelector(".bar i");
+
+function showBanner(text, sub, dur) { banner = { text, sub, t: 0, max: dur || 1.6 }; }
+let lastHud = "";
+function paintHud() {
+  PA.stat("s-score", Math.round(shownScore).toLocaleString());
+  PA.stat("s-wave", wave);
+  PA.stat("s-ships", invadersLeft);
+  PA.stat("s-lives", lives <= 0 ? "—" : lives <= 5 ? "♦".repeat(lives) : "♦×" + lives);
+  overBar.style.width = (overload / OVER_MAX * 100).toFixed(1) + "%";
+  overEl.classList.toggle("full", overload >= OVER_MAX);
+}
+let lastPow = "";
+function paintPowers() {
+  const on = [];
+  for (const k of ["spread", "rapid"]) if (timers[k] > 0) on.push([k, timers[k] / CAPS[k].dur]);
+  if (bubbleOn) on.push(["bubble", 1]);
+  const key = on.map(([k, f]) => k + Math.round(f * 20)).join(",");
+  if (key === lastPow) return;
+  lastPow = key;
+  powEl.innerHTML = on.map(([k, f]) => `<span>${CAPS[k].name}<i><b style="width:${Math.round(f * 100)}%;background:#${CAPS[k].c.toString(16).padStart(6, "0")}"></b></i></span>`).join("");
+}
+
+/* ---------------- barriers ---------------- */
+function makeShields() {
+  shields = [];
+  const span = (RIGHT - LEFT) / (SHIELD_COUNT + 1);
+  for (let i = 0; i < SHIELD_COUNT; i++) {
+    const cx = LEFT + span * (i + 1), blocks = [];
+    for (let r = -SR; r <= SR; r++) for (let c = -SR - 2; c <= SR + 2; c++) {
+      // a flat-topped hexagon: full width in the middle row, narrowing toward the front and back
+      const rx = (c + (r & 1 ? 0.5 : 0)) * CELL;
+      if (Math.abs(r) * 0.5 * CELL + Math.abs(rx) > (SR + 0.5) * CELL * 0.9 + 0.01) continue;
+      const hgt = 0.5 + Math.random() * 0.1 + (1 - Math.abs(r) / SR) * 0.25;
+      blocks.push({ rx, z: SHIELD_Z + r * CELL * 0.87, x: cx + rx, h: hgt, tint: 0.85 + Math.random() * 0.3, hit: 0 });
+    }
+    shields.push({ blocks, cx, baseX: cx, ph: i * 2.1, hw: (SR + 1) * CELL, hd: (SR + 1) * CELL });
+  }
+}
+function driftShields() {
+  const amp = (RIGHT - LEFT) / (SHIELD_COUNT + 1) * 0.22;
+  for (const sh of shields) {
+    sh.cx = sh.baseX + Math.sin(simT * 0.45 + sh.ph) * amp;
+    for (const bl of sh.blocks) bl.x = sh.cx + bl.rx;
+  }
+}
+function hitShield(x, z) {
+  for (const sh of shields) {
+    if (Math.abs(x - sh.cx) > sh.hw || Math.abs(z - SHIELD_Z) > sh.hd) continue;
+    for (let i = sh.blocks.length - 1; i >= 0; i--) {
+      const bl = sh.blocks[i];
+      if (Math.abs(x - bl.x) < CELL * 0.55 && Math.abs(z - bl.z) < CELL * 0.5) {
+        burst(bl.x, bl.z, { n: 6, colors: [0xc4a6ff, 0xffffff], speed: 3, life: 0.4, size: 0.12, y: bl.h * 0.6 });
+        shatter(bl.x, bl.z, 0xb8a4ff, 2);
+        sh.blocks.splice(i, 1);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/* ---------------- the swarm ---------------- */
+function alienKind(row) { return Math.min(4, Math.floor(row * 5 / ROWS)); }
+function hexNeighbours(r, c) {
+  const o = r & 1 ? 0 : -1;   // odd rows sit half a cell to the right
+  return [[r, c - 1], [r, c + 1], [r - 1, c + o], [r - 1, c + o + 1], [r + 1, c + o], [r + 1, c + o + 1]];
+}
+const inForm = (a) => a.alive && a.popT < 0 && !a.dive;
+function slotX(a) { return formX + a.lx; }
+function slotZ(a) { return formZ + a.lz; }
+function alienPos(a) { return a.dive ? { x: a.x, z: a.z } : { x: slotX(a), z: slotZ(a) }; }
+const isQueenWave = (w) => w % 4 === 0;
+
+function spawnWave() {
+  aliens = [];
+  const gridW = (COLS - 1) * DX + DX / 2;
+  formX = -gridW / 2;
+  formZ = -15.2;
+  marchDir = 1;
+  colours = wave >= 3 ? 4 : 3;
+  const grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid.push([]);
+    for (let c = 0; c < COLS; c++) {
+      // Colours clump a little so there are clusters to find, and stay patchy enough to paint.
+      const roll = Math.random();
+      let k = (Math.random() * colours) | 0;
+      if (c > 0 && roll < 0.2) k = grid[r][c - 1];
+      else if (r > 0 && roll < 0.3) k = grid[r - 1][Math.min(c, COLS - 1)];
+      grid[r].push(k);
+      aliens.push({
+        paint: k, flashT: 0, popT: -1, mult: 1, col: c, row: r,
+        lx: c * DX + (r & 1 ? DX / 2 : 0), lz: r * DZ,
+        kind: alienKind(r), alive: true, ph: Math.random(), dive: null, x: 0, z: 0, y: AY, beamed: -1, pop: 0
       });
     }
   }
+  invadersLeft = aliens.length;
+  queen = null;
+  if (isQueenWave(wave)) {
+    const hp = 10 + wave * 2;
+    queen = { lx: 4 * DX, lz: -DZ * 1.25, hp, max: hp, paint: (Math.random() * colours) | 0, swapT: 3.5, fireT: 2.5, hit: 0, ph: 0 };
+    escortCd = 3;
+  }
+  makeShields();
+  if (gun >= colours) gun = 0;
+  comet = null;
+  cometCd = rand(8, 16);
+  enemyFireCd = rand(0.8, 1.6);
+  diveCd = rand(5, 8);
+  pBullets = []; eBullets = []; caps = []; beamT = 0;
+  paintHud();
+}
 
-  // crystal barriers: hexagons of breakable cells that drift slowly from side to side
-  function makeShields() {
-    shields = [];
-    const cell = clamp(playW * 0.0105, 3.5 * S, 8.5 * S), R = 6;   // small enough that drifting barriers never touch
-    const y = floorY - R * 2 * cell - 30 * S;
-    for (let i = 0; i < SHIELD_COUNT; i++) {
-      const cx = playL + playW * (i + 1) / (SHIELD_COUNT + 1), blocks = [];
-      for (let r = -R; r <= R; r++) for (let c = -R - 2; c <= R + 2; c++) {
-        // a flat-topped hexagon: full width in the middle row, narrowing toward the top and bottom
-        const rx = (c + (r & 1 ? .5 : 0)) * cell;
-        if (Math.abs(r) * .5 * cell + Math.abs(rx) > (R + .5) * cell * .9 + 1) continue;
-        blocks.push({ rx: rx - cell / 2, x: cx + rx - cell / 2, y: y + (r + R) * cell * .87, w: cell - 1.2, h: cell * .87 - 1, hp: 1 });
-      }
-      shields.push({ blocks, cx, baseX: cx, ph: i * 2.1, y, cell });
+function reset() {
+  parts.length = 0; shards.length = 0; texts.clear();
+  score = 0; shownScore = 0; wave = 1; lives = 3; kills = 0; cometHits = 0;
+  gun = 0; bestCluster = 0; clusters = 0; paints = 0; swapT = 0;
+  overload = 0; beamT = 0; diversDown = 0; queensDown = 0;
+  overSent = false; banner = null; simT = 0; hurt = 0;
+  respawnT = 0; invulnT = 0; waveClearT = 0;
+  fireCd = 0; ptrActive = false; bubbleOn = false; timers.spread = timers.rapid = 0;
+  player.x = 0;
+  spawnWave();
+  showBanner("STAR SIEGE", "Match colours to chain-pop clusters", 2.4);
+  PA.music.intensity(0);
+  hud.classList.add("on");
+  lastHud = ""; paintHud();
+}
+PA.onStart(reset);
+
+/* ---------------- input ---------------- */
+function swapColour(dir) {
+  if (PA.state !== "play") return;
+  gun = (gun + (dir || 1) + colours) % colours;
+  swapT = 0.25;
+  PA.tone({ freq: 500 + gun * 120, to: 700 + gun * 140, type: "triangle", dur: 0.08, vol: 0.06 });
+  burst(player.x, CANNON_Z, { n: 12, colors: [PAINT[gun]], speed: 3, life: 0.35, size: 0.12, y: 1.2, up: 2 });
+}
+function fireOverload() {
+  if (PA.state !== "play" || overload < OVER_MAX || beamT > 0 || respawnT > 0 || waveClearT > 0) return;
+  overload = 0; beamT = BEAM_T; beamX = player.x; beamPaint = gun; beamId++; beamQueen = false;
+  PA.sfx("powerup", { pitch: 0.7 });
+  PA.tone({ freq: 140, to: 900, type: "sawtooth", dur: 0.5, vol: 0.07 });
+  PA.shake(0.5, 0.4);
+  PA.flash(PAINT_CSS[gun] + "33", 220);
+  texts.add(W / 2, H * 0.3, "OVERLOAD · SWEEP IT", { color: PAINT_CSS[gun], size: 18, life: 1.1, vy: -20 });
+  paintHud();
+}
+const SWAP_KEYS = [" ", "Space", "ArrowUp", "KeyW", "w", "W", "KeyC", "c", "C"];
+const BACK_KEYS = ["ArrowDown", "KeyS", "s", "S", "KeyZ", "z", "Z"];
+const OVER_KEYS = ["KeyX", "x", "X", "Shift", "ShiftLeft", "ShiftRight", "KeyE", "e", "E", "KeyF", "f", "F"];
+PA.onKey((e) => {
+  if (e.repeat) return;
+  const k = e.key, c = e.code;
+  if (SWAP_KEYS.includes(k) || SWAP_KEYS.includes(c)) { e.preventDefault && e.preventDefault(); swapColour(1); }
+  else if (BACK_KEYS.includes(k) || BACK_KEYS.includes(c)) swapColour(-1);
+  else if (OVER_KEYS.includes(k) || OVER_KEYS.includes(c)) { e.preventDefault && e.preventDefault(); fireOverload(); }
+  else if (k >= "1" && k <= "4" && +k <= colours) { gun = +k - 2; swapColour(1); }
+});
+PA.touchControls({ right: [{ key: "x", code: "KeyX", label: "⚡", aria: "Overload beam" }, { key: " ", code: "Space", label: "◐", aria: "Switch laser colour" }] });
+function uiTarget(e) { return e.target.closest && e.target.closest(".pa-tb,.pa-layer,#pa-gate,.pa-touch,button"); }
+addEventListener("pointerdown", (e) => {
+  if (uiTarget(e) || PA.state !== "play") return;
+  ptrActive = true;
+  const x = pointerToDeck(e.clientX, e.clientY);
+  if (x != null) aimPlayer(x);
+});
+addEventListener("pointermove", (e) => {
+  if (PA.state !== "play" || !ptrActive) return;
+  const x = pointerToDeck(e.clientX, e.clientY);
+  if (x != null) aimPlayer(x);
+});
+addEventListener("pointerup", () => { ptrActive = false; });
+addEventListener("pointercancel", () => { ptrActive = false; });
+function aimPlayer(x) {
+  if (respawnT > 0) return;
+  player.x = clamp(x, LEFT + PHW, RIGHT - PHW);
+}
+
+/* ---------------- shooting ---------------- */
+function firePlayer() {
+  if (fireCd > 0 || respawnT > 0 || waveClearT > 0 || beamT > 0) return;
+  const spread = timers.spread > 0, rapid = timers.rapid > 0;
+  const cap = (rapid ? 6 : 3) * (spread ? 3 : 1);
+  if (pBullets.length >= cap) return;
+  fireCd = rapid ? 0.17 : 0.34;
+  const angs = spread ? [-0.13, 0, 0.13] : [0];
+  for (const a of angs) pBullets.push({ x: player.x + Math.sin(a) * 0.3, z: CANNON_Z - 1.2, vx: Math.sin(a) * BULLET_V, vz: -Math.cos(a) * BULLET_V, paint: gun, trail: [] });
+  muzzleT = 0.07;
+  PA.tone({ freq: 520 + gun * 40, to: 760, type: "square", dur: 0.05, vol: 0.03 });
+}
+function enemyShot(x, z, vx, vz) {
+  if (eBullets.length >= EB_MAX) return;
+  eBullets.push({ x, z, vx: vx || 0, vz: vz || Math.min(16, 8 + wave * 0.65) });
+}
+function pickShooter() {
+  const cols = {};
+  for (const a of aliens) if (inForm(a) && (!cols[a.col] || a.row > cols[a.col].row)) cols[a.col] = a;
+  const bottom = Object.values(cols);
+  return bottom.length ? bottom[(Math.random() * bottom.length) | 0] : null;
+}
+function enemyShoot() {
+  const a = pickShooter();
+  if (!a) return;
+  enemyShot(slotX(a), slotZ(a) + AHD);
+  PA.tone({ freq: 180, to: 120, type: "square", dur: 0.07, vol: 0.03 });
+}
+
+/* ---------------- hits ---------------- */
+function addScore(n) { score += n; }
+function killAlien(a, mult, how) {
+  if (!a.alive) return;
+  const { x, z } = alienPos(a);
+  a.alive = false; a.dive = null;
+  invadersLeft--;
+  const pts = Math.round((ALIEN_SCORE[a.kind] + Math.floor(wave * 2)) * (mult || 1));
+  addScore(pts);
+  kills++;
+  overload = Math.min(OVER_MAX, overload + 1);
+  if (overload === OVER_MAX) PA.tone({ freq: 880, to: 1320, type: "sine", dur: 0.2, vol: 0.05 });
+  PA.sfx("hit", { pitch: 1 + (ROWS - a.row) * 0.04 });
+  PA.shake(0.18, 0.12);
+  burst(x, z, { n: 26, colors: [PAINT[a.paint], 0xffffff, PAINT[a.paint]], speed: 6, life: 0.6, size: 0.2, y: AY, up: 3 });
+  shatter(x, z, PAINT[a.paint], 5);
+  ripple(x, z, PAINT[a.paint], 1.6);
+  const s = toScreen(x, AY + 0.6, z);
+  texts.add(s.x, s.y, "+" + pts, { color: how === "dive" ? "#ffffff" : PAINT_CSS[a.paint], size: how === "dive" ? 16 : 13, life: 0.65, vy: -32 });
+  PA.music.intensity(clamp(1 - invadersLeft / aliens.length + wave * 0.08, 0, 1));
+  if (invadersLeft <= 0 && !queen) beginWaveClear();
+}
+function floodFrom(a) {
+  const byPos = {};
+  for (const o of aliens) if (inForm(o)) byPos[o.row + "," + o.col] = o;
+  const seen = new Set([a]), queue = [[a, 0]], group = [];
+  while (queue.length) {
+    const [cur, d] = queue.shift();
+    group.push([cur, d]);
+    for (const [nr, nc] of hexNeighbours(cur.row, cur.col)) {
+      const n = byPos[nr + "," + nc];
+      if (n && !seen.has(n) && n.paint === a.paint) { seen.add(n); queue.push([n, d + 1]); }
     }
   }
-  function driftShields(dt) {
-    const amp = playW / (SHIELD_COUNT + 1) * .22;
-    for (const sh of shields) {
-      sh.cx = sh.baseX + Math.sin(simT * .45 + sh.ph) * amp;
-      for (const bl of sh.blocks) bl.x = sh.cx + bl.rx;
-    }
+  return group;
+}
+const queenAdj = (o) => queen && o.row === 0 && Math.abs(o.lx - queen.lx) < DX * 1.2;
+function paintAlien(a, paint) {
+  a.paint = paint; a.flashT = 0.3; paints++;
+  addScore(5);
+}
+function hitAlien(a, paint) {
+  const { x, z } = alienPos(a);
+  if (a.paint !== paint) {
+    // Wrong colour: the shot paints it instead of killing it.
+    paintAlien(a, paint);
+    PA.tone({ freq: 760 + paint * 90, to: 520, type: "triangle", dur: 0.07, vol: 0.06 });
+    burst(x, z, { n: 10, colors: [PAINT[paint]], speed: 3.5, life: 0.35, size: 0.14, y: AY });
+    return;
   }
-
-  function alienKind(row) {
-    return Math.min(4, Math.floor(row * 5 / ALIEN_ROWS));
+  // Matching colour: flood out through touching aliens of the same colour.
+  const group = floodFrom(a), size = group.length;
+  // Each alien in a cluster of n scores (n + 1) / 2 times its value.
+  for (const [o, d] of group) { o.popT = d * 0.055; o.mult = (size + 1) / 2; }
+  if (size > 1) {
+    clusters++;
+    if (size > bestCluster) bestCluster = size;
+    const s = toScreen(x, AY + 1.2, z);
+    texts.add(s.x, s.y, "CLUSTER ×" + size, { color: "#fff", size: 16 + Math.min(size, 12) * 1.5, life: 1.1, vy: -30 });
+    PA.sfx("combo", { pitch: 0.9 + Math.min(size, 12) * 0.04 });
+    popLight(x, z, PAINT[a.paint], 1 + Math.min(size, 10) * 0.25);
+    if (size >= 6) { PA.flash(PAINT_CSS[a.paint] + "22", 180); PA.shake(0.5, 0.3); }
+    if (size >= 9) PA.hitstop(60);
   }
-  function hexNeighbours(r, c) {
-    const o = r & 1 ? 0 : -1;   // odd rows sit half a cell to the right
-    return [[r, c - 1], [r, c + 1], [r - 1, c + o], [r - 1, c + o + 1], [r + 1, c + o], [r + 1, c + o + 1]];
+  // A cluster that pops right beside the queen tears into her shell.
+  if (queen && group.some(([o]) => queenAdj(o))) damageQueen(size, "cluster");
+  // big clusters drop a power capsule
+  if (size >= 5 || (size >= 3 && Math.random() < 0.25)) dropCapsule(x, z);
+}
+function damageQueen(n, how) {
+  if (!queen) return;
+  queen.hp -= n; queen.hit = 1;
+  const qx = formX + queen.lx, qz = formZ + queen.lz;
+  const s = toScreen(qx, AY + 2.2, qz);
+  texts.add(s.x, s.y, (how === "cluster" ? "HIVE BREACH −" : "−") + n, { color: PAINT_CSS[queen.paint], size: how === "cluster" ? 18 : 14, life: 0.9, vy: -26 });
+  burst(qx, qz, { n: 10 + n * 3, colors: [PAINT[queen.paint], 0xffd27a, 0xffffff], speed: 5, life: 0.6, size: 0.18, y: AY + 0.4 });
+  PA.sfx("hit", { pitch: 0.6 });
+  if (queen.hp <= 0) killQueen();
+}
+function killQueen() {
+  const qx = formX + queen.lx, qz = formZ + queen.lz;
+  const bonus = 800 + wave * 100;
+  addScore(bonus);
+  queensDown++;
+  queen = null;
+  PA.sfx("explode", { vol: 0.8 });
+  PA.sfx("levelup");
+  PA.flash("#ffd27a40", 400);
+  PA.shake(1.1, 0.6);
+  PA.hitstop(120);
+  burst(qx, qz, { n: 120, colors: [0xffd27a, 0xffffff, 0xff4fa3, 0x3fe3ff], speed: 10, life: 1.1, size: 0.26, y: AY + 0.5, up: 5 });
+  shatter(qx, qz, 0xffd27a, 24);
+  ripple(qx, qz, 0xffd27a, 6);
+  popLight(qx, qz, 0xffd27a, 3);
+  const s = toScreen(qx, AY + 2, qz);
+  texts.add(s.x, s.y, "QUEEN DOWN +" + bonus, { color: "#ffd27a", size: 24, life: 1.6, vy: -30 });
+  // the hive collapses: every drone left pops in a ripple out from her
+  let any = false;
+  for (const a of aliens) {
+    if (!a.alive || a.popT >= 0) continue;
+    const p = alienPos(a);
+    a.popT = 0.25 + Math.hypot(p.x - qx, p.z - qz) * 0.035; a.mult = 1.5; any = true;
   }
-
-  function spawnWave() {
-    aliens = [];
-    const aw = Math.min(playW * 0.052, H * 0.07);
-    const ah = aw * 0.74;
-    const gapX = aw * 0.3;
-    const gapY = ah * 0.22;
-    const gridW = ALIEN_COLS * aw + (ALIEN_COLS - 1) * gapX + (aw + gapX) / 2;
-    formX = playL + (playW - gridW) / 2;
-    formY = W < 600 ? Math.max(H * 0.1, 112) : H * 0.1;   // clear of the two-row HUD on narrow screens
-    marchDir = 1;
-    marchTimer = 0.4;
-    marchDelay = clamp(0.78 - wave * 0.04, 0.28, 0.78);
-    colours = wave >= 3 ? 4 : 3;
-    const grid = [];
-    for (let r = 0; r < ALIEN_ROWS; r++) {
-      grid.push([]);
-      for (let c = 0; c < ALIEN_COLS; c++) {
-        // Colours clump a little so there are clusters to find, and stay patchy enough to paint.
-        const roll = Math.random();
-        let k = randInt(0, colours - 1);
-        if (c > 0 && roll < 0.2) k = grid[r][c - 1];
-        else if (r > 0 && roll < 0.3) k = grid[r - 1][Math.min(c, ALIEN_COLS - 1)];
-        grid[r].push(k);
-        aliens.push({
-          paint: k, flashT: 0, popT: -1,
-          col: c, row: r,
-          lx: c * (aw + gapX) + (r & 1 ? (aw + gapX) / 2 : 0),
-          ly: r * (ah + gapY),
-          w: aw, h: ah,
-          kind: alienKind(r),
-          alive: true,
-          anim: randInt(0, 1),
-          animT: rand(0, 0.5)
-        });
-      }
-    }
-    invadersLeft = aliens.length;
-    makeShields();
-    if (gun >= colours) gun = 0;
-    mothership = null;
-    mothershipCd = rand(8, 16);
-    enemyFireCd = rand(0.8, 1.6);
-    paintHud();
+  if (!any) beginWaveClear();
+}
+function queenEscorts() {
+  // with the swarm gone the queen calls in escorts round her
+  const free = aliens.filter((a) => !a.alive && a.row <= 1 && a.col >= 2 && a.col <= 6);
+  const k1 = (Math.random() * colours) | 0, k2 = (k1 + 1 + ((Math.random() * (colours - 1)) | 0)) % colours;
+  let n = 0;
+  for (const a of free) {
+    if (n >= 7) break;
+    Object.assign(a, { alive: true, popT: -1, dive: null, flashT: 0.4, paint: Math.random() < 0.6 ? k1 : k2, pop: 0 });
+    invadersLeft++; n++;
+    burst(slotX(a), slotZ(a), { n: 10, colors: [PAINT[a.paint], 0xffffff], speed: 3, life: 0.4, size: 0.14, y: AY });
   }
+  if (n) PA.tone({ freq: 300, to: 600, type: "triangle", dur: 0.3, vol: 0.05 });
+}
+function dropCapsule(x, z) {
+  if (caps.length >= 3) return;
+  const pool = ["spread", "rapid"];
+  if (!bubbleOn) pool.push("bubble");
+  caps.push({ x, z, type: pool[(Math.random() * pool.length) | 0], t: 0 });
+}
+function takeCapsule(c) {
+  const k = c.type;
+  if (k === "bubble") bubbleOn = true; else timers[k] = CAPS[k].dur;
+  PA.sfx("powerup");
+  burst(c.x, CANNON_Z, { n: 30, colors: [CAPS[k].c, 0xffffff], speed: 5, life: 0.6, size: 0.16, y: 0.8 });
+  const s = toScreen(player.x, 2, CANNON_Z);
+  texts.add(s.x, s.y - 20, CAPS[k].name.toUpperCase(), { color: "#" + CAPS[k].c.toString(16).padStart(6, "0"), size: 16, life: 0.9, vy: -30 });
+}
 
-  function resetPlayer() {
-    player = {
-      x: W / 2,
-      y: floorY - 22 * S,
-      w: playW * 0.11,
-      h: 16 * S,
-      vx: 0
-    };
-    clampPlayer();
+function beginWaveClear() {
+  if (waveClearT > 0) return;
+  waveClearT = 1.6;
+  addScore(200 + wave * 50);
+  PA.sfx("levelup");
+  PA.flash("#3fe3ff33", 280);
+  showBanner("WAVE " + wave + " CLEARED", "Crystals reform · a new swarm gathers", 1.6);
+  pBullets = []; eBullets = [];
+}
+function nextWave() {
+  wave++;
+  waveClearT = 0;
+  spawnWave();
+  showBanner("WAVE " + wave, isQueenWave(wave) ? "A hive queen leads this swarm" : wave === 2 ? "Divers break from the swarm" : wave === 3 ? "A fourth colour joins" : "The swarm grows restless", 1.8);
+  invulnT = 1.2;
+}
+function killComet() {
+  if (!comet) return;
+  const m = comet;
+  addScore(m.bonus);
+  cometHits++;
+  comet = null;
+  PA.sfx("coin", { pitch: 1.2 });
+  PA.flash("#ffd27a33", 260);
+  burst(m.x, m.z, { n: 50, colors: [0xffe6a0, 0xffffff, 0x8ee9ff], speed: 8, life: 0.8, size: 0.2, y: 1.8, up: 4 });
+  const s = toScreen(m.x, 2.4, m.z);
+  texts.add(s.x, s.y, "+" + m.bonus, { color: "#ffd27a", size: 22, life: 0.9, vy: -40 });
+  overload = Math.min(OVER_MAX, overload + 6);
+}
+function playerHit(force) {
+  if (respawnT > 0) return;
+  if (!force && invulnT > 0) return;
+  if (!force && bubbleOn) {
+    bubbleOn = false; invulnT = 1;
+    PA.sfx("hit", { pitch: 0.5 });
+    PA.flash("#c4a6ff33", 200);
+    burst(player.x, CANNON_Z, { n: 40, colors: [0xc4a6ff, 0xffffff], speed: 7, life: 0.6, size: 0.16, y: 0.8 });
+    return;
   }
-
-  function reset() {
-    fx.clear(); texts.clear();
-    score = 0; wave = 1; lives = 3; kills = 0; mothershipHits = 0;
-    gun = 0; bestCluster = 0; clusters = 0; paints = 0; swapT = 0;
-    overSent = false; banner = null; simT = 0;
-    pBullets = []; eBullets = [];
-    respawnT = 0; invulnT = 0; waveClearT = 0;
-    fireCd = 0; ptrX = null;
-    resetPlayer();
-    spawnWave();
-    showBanner("STAR SIEGE", "Match colours to chain-pop clusters", 2.4);
-    PA.music.intensity(0);
-    hud.classList.add("on");
-    paintHud();
-  }
-
-  PA.onStart(reset);
-
-  function showBanner(text, sub, dur) { banner = { text, sub, t: 0, max: dur || 1.6 }; }
-
-  function paintHud() {
-    PA.stat("s-score", score.toLocaleString());
-    PA.stat("s-wave", wave);
-    PA.stat("s-ships", invadersLeft);
-    PA.stat("s-lives", lives <= 0 ? "—" : lives <= 5 ? "♦".repeat(lives) : "♦×" + lives);
-    PA.stat("s-cluster", bestCluster > 1 ? bestCluster : "—");
-  }
-
-  function clampPlayer() {
-    if (!player) return;
-    player.x = clamp(player.x, playL + player.w / 2, playR - player.w / 2);
-    player.y = floorY - player.h;
-  }
-
-  function aimPlayer(x) {
-    if (!player || respawnT > 0) return;
-    player.x = x;
-    clampPlayer();
-  }
-
-  canvas.addEventListener("pointerdown", (e) => {
-    if (e.target.closest && e.target.closest(".pa-tb,.pa-layer,#pa-gate,.pa-touch")) return;
-    if (PA.state !== "play") return;
-    const p = view.toLocal(e.clientX, e.clientY);
-    ptrX = p.x;
-    aimPlayer(p.x);
-    try { canvas.setPointerCapture(e.pointerId); } catch (x) {}
-    e.preventDefault();
+  lives--;
+  hurt = 1;
+  PA.sfx("explode", { vol: 0.7 });
+  PA.shake(1.2, 0.45);
+  PA.flash("#ff4fa355", 320);
+  burst(player.x, CANNON_Z, { n: 70, colors: [0x8ee9ff, PAINT[gun], 0xffffff], speed: 9, life: 0.9, size: 0.22, y: 0.6, up: 5 });
+  shatter(player.x, CANNON_Z, 0x9aa6d8, 18);
+  pBullets = []; eBullets = []; beamT = 0;
+  if (lives <= 0) endGame();
+  else { respawnT = 1.1; invulnT = 2.2; }
+}
+function endGame() {
+  if (overSent) return;
+  overSent = true;
+  hud.classList.remove("on");
+  powEl.innerHTML = ""; lastPow = "";
+  PA.sfx("gameover");
+  shownScore = score; paintHud();
+  PA.gameOver(score, {
+    title: "Siege broken",
+    stats: [["Wave", wave], ["Invaders", kills], ["Best cluster", bestCluster > 1 ? bestCluster : "—"], ["Painted", paints], ["Divers", diversDown], ["Queens", queensDown], ["Comets", cometHits]]
   });
-  canvas.addEventListener("pointermove", (e) => {
-    if (PA.state !== "play" || ptrX == null) return;
-    const p = view.toLocal(e.clientX, e.clientY);
-    aimPlayer(p.x);
-  });
-  function endPtr() { ptrX = null; }
-  canvas.addEventListener("pointerup", endPtr);
-  canvas.addEventListener("pointercancel", endPtr);
+}
 
-  function swapColour(dir) {
-    if (PA.state !== "play") return;
-    gun = (gun + (dir || 1) + colours) % colours;
-    swapT = 0.25;
-    PA.tone({ freq: 500 + gun * 120, to: 700 + gun * 140, type: "triangle", dur: 0.08, vol: 0.06 });
-    if (player) fx.burst(player.x, player.y - player.h * 0.4, { n: 10, color: PAINT[gun], speed: 90, life: 0.3, size: 2 });
+/* ---------------- update ---------------- */
+function glide(dt) {
+  let minX = Infinity, maxX = -Infinity, maxZ = -Infinity, n = 0;
+  for (const a of aliens) {
+    if (!a.alive || a.dive) continue;
+    n++;
+    const x = slotX(a);
+    minX = Math.min(minX, x - AHW); maxX = Math.max(maxX, x + AHW); maxZ = Math.max(maxZ, slotZ(a) + AHD);
   }
-  PA.onKey((e) => {
-    if (e.repeat) return;
-    const k = e.key, c = e.code;
-    if (k === " " || c === "Space" || k === "ArrowUp" || c === "KeyW" || k === "w" || c === "KeyC" || k === "c") { e.preventDefault && e.preventDefault(); swapColour(1); }
-    else if (k === "ArrowDown" || c === "KeyS" || k === "s" || c === "KeyZ" || k === "z") swapColour(-1);
-    else if (k >= "1" && k <= "4" && +k <= colours) { gun = +k - 2; swapColour(1); }
-  });
-  PA.touchControls({ right: [{ key: " ", code: "Space", label: "◐", aria: "Switch laser colour" }] });
-
-  function firePlayer() {
-    if (fireCd > 0 || respawnT > 0 || invulnT > 0 || waveClearT > 0) return;
-    if (pBullets.length >= 3) return;
-    fireCd = 0.34;
-    const bx = player.x;
-    const by = player.y - player.h * 0.5;
-    pBullets.push({ x: bx, y: by, vy: -620 * S, w: 3 * S, h: 12 * S, paint: gun });
-    PA.tone({ freq: 520, to: 720, type: "square", dur: 0.05, vol: 0.035 });
-    fx.burst(bx, by, { n: 4, color: COL.bulletP, speed: 40, life: 0.2, size: 1.6 });
+  if (queen) { const qx = formX + queen.lx; minX = Math.min(minX, qx - 1.6); maxX = Math.max(maxX, qx + 1.6); n++; }
+  if (!n) return;
+  const live = aliens.filter((a) => a.alive).length;
+  const rush = 1 + (1 - live / aliens.length) * 1.4;
+  const vx = (1.5 + wave * 0.22) * rush, margin = 0.4;
+  formX += marchDir * vx * dt;
+  if (minX < LEFT + margin) { marchDir = 1; formX += LEFT + margin - minX; }
+  else if (maxX > RIGHT - margin) { marchDir = -1; formX -= maxX - (RIGHT - margin); }
+  formZ += (0.11 + wave * 0.025) * rush * dt;
+  if (maxZ >= CANNON_Z - 1.0) {
+    // the swarm reached the cannon: lose a life and it backs off a little
+    formZ -= 2.6;
+    playerHit(true);
   }
-
-  function alienWorld(a) {
-    return { x: formX + a.lx + a.w / 2, y: formY + a.ly + a.h / 2, w: a.w, h: a.h };
-  }
-
-  function livingAliens() {
-    return aliens.filter((a) => a.alive && a.popT < 0);
-  }
-
-  // the swarm glides side to side and sinks steadily, faster as it thins out
-  function glide(dt) {
-    const live = livingAliens();
-    if (!live.length) return;
-    let minX = Infinity, maxX = -Infinity, maxY = 0;
-    for (const a of live) {
-      const wx = formX + a.lx;
-      minX = Math.min(minX, wx);
-      maxX = Math.max(maxX, wx + a.w);
-      maxY = Math.max(maxY, formY + a.ly + a.h);
+}
+function startDive() {
+  const pool = aliens.filter(inForm);
+  if (!pool.length) return;
+  // prefer the lower rows, they have the clearest run
+  pool.sort((a, b) => b.row - a.row + rand(-2, 2));
+  const a = pool[0];
+  const side = slotX(a) < player.x ? 1 : -1;
+  a.dive = { t: 0, T: Math.max(1.8, 2.7 - wave * 0.06), x0: slotX(a), z0: slotZ(a), tx: clamp(player.x + rand(-2.5, 2.5), LEFT + 1, RIGHT - 1), side, shot: false, back: false };
+  a.x = a.dive.x0; a.z = a.dive.z0;
+  PA.tone({ freq: 900, to: 300, type: "sine", dur: 0.5, vol: 0.05 });
+}
+const bez = (a, b, c, d, t) => { const u = 1 - t; return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d; };
+function updateDive(a, dt) {
+  const d = a.dive;
+  d.t += dt;
+  if (!d.back) {
+    const k = d.t / d.T;
+    if (k >= 1) { d.back = true; d.t = 0; return; }
+    const px = a.x, pz = a.z;
+    a.x = bez(d.x0, d.x0 + d.side * 5, d.tx - d.side * 4, d.tx, k);
+    a.z = bez(d.z0, d.z0 + 3, CANNON_Z - 5, CANNON_Z + 5, k);
+    a.heading = Math.atan2(a.x - px, a.z - pz);
+    a.y = AY + Math.sin(k * Math.PI) * 0.3;
+    if (!d.shot && k > 0.38) { d.shot = true; const dx = player.x - a.x, dz = CANNON_Z - a.z; const l = Math.hypot(dx, dz) || 1; const v = Math.min(16, 9 + wave * 0.5); enemyShot(a.x, a.z, dx / l * v, dz / l * v); }
+    if (respawnT <= 0 && Math.abs(a.x - player.x) < PHW + 0.5 && Math.abs(a.z - CANNON_Z) < 0.8) {
+      killAlien(a, 1, "dive");
+      playerHit(false);
     }
-    const rush = 1 + (1 - live.length / aliens.length) * 1.4;
-    const vx = (42 + wave * 6) * S * rush, margin = 12 * S;
-    formX += marchDir * vx * dt;
-    if (minX < playL + margin) { marchDir = 1; formX += playL + margin - minX; }
-    else if (maxX > playR - margin) { marchDir = -1; formX -= maxX - (playR - margin); }
-    formY += (3 + wave * 0.7) * S * rush * dt;
-    if (maxY >= player.y - 8 * S) {
-      // the swarm reached the cannon: lose a life and it backs off a little
-      formY -= 70 * S;
-      playerHit(true);
-    }
+  } else {
+    // loop round and drop back into its slot from the far side
+    const k = Math.min(1, d.t / 1.5);
+    a.x = slotX(a); a.z = lerp(TOP_Z - 4, slotZ(a), PA.ease.outCubic(k)); a.y = AY + (1 - k) * 1.5; a.heading = 0;
+    if (k >= 1) a.dive = null;
   }
-
-  function pickShooter() {
-    const live = livingAliens();
-    if (!live.length) return null;
-    const cols = {};
-    for (const a of live) {
-      if (!cols[a.col] || a.row > cols[a.col].row) cols[a.col] = a;
-    }
-    const bottom = Object.values(cols);
-    return bottom[randInt(0, bottom.length - 1)];
-  }
-
-  function enemyShoot() {
-    const a = pickShooter();
-    if (!a) return;
-    const w = alienWorld(a);
-    eBullets.push({
-      x: w.x, y: w.y + a.h * 0.3,
-      vy: (220 + wave * 18) * S,
-      w: 3 * S, h: 10 * S
-    });
-    PA.tone({ freq: 180, to: 120, type: "square", dur: 0.07, vol: 0.03 });
-  }
-
-  function spawnMothership() {
-    if (mothership) return;
-    // a comet arcs across the top of the sky: hit it for a bonus
-    const fromLeft = Math.random() < 0.5;
-    mothership = {
-      x: fromLeft ? playL - 40 * S : playR + 40 * S,
-      y: H * 0.05, y0: H * 0.05, k: 0,
-      w: 30 * S,
-      h: 30 * S,
-      vx: (fromLeft ? 1 : -1) * (170 + wave * 8) * S,
-      bonus: 150 + wave * 50
-    };
-    PA.tone({ freq: 1400, to: 500, type: "sine", dur: 0.6, vol: 0.06 });
-    texts.add(W / 2, H * 0.14, "COMET", { color: COL.mothership, size: 16, life: 1.1, vy: -18 });
-  }
-
-  function rectHit(ax, ay, aw, ah, bx, by, bw, bh) {
-    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
-  }
-
-  function hitShield(b) {
-    for (const sh of shields) {
-      for (let i = sh.blocks.length - 1; i >= 0; i--) {
-        const bl = sh.blocks[i];
-        if (rectHit(b.x - b.w / 2, b.y - b.h, b.w, b.h, bl.x, bl.y, bl.w, bl.h)) {
-          fx.burst(bl.x + bl.w / 2, bl.y + bl.h / 2, { n: 5, color: COL.shield, speed: 70, life: 0.35, size: 1.8 });
-          sh.blocks.splice(i, 1);
-          return true;
-        }
+}
+function bulletVsTargets(b) {
+  if (hitShield(b.x, b.z)) return true;
+  if (comet && Math.hypot(b.x - comet.x, b.z - comet.z) < 0.95) { killComet(); return true; }
+  if (queen) {
+    const qx = formX + queen.lx, qz = formZ + queen.lz;
+    if (Math.abs(b.x - qx) < 1.45 && Math.abs(b.z - qz) < 1.0) {
+      if (b.paint === queen.paint) damageQueen(1, "shot");
+      else {
+        queen.hit = 0.4;
+        burst(b.x, qz + 0.9, { n: 8, colors: [PAINT[b.paint], 0xffffff], speed: 4, life: 0.3, size: 0.1, y: AY });
+        PA.tone({ freq: 1200, to: 900, type: "triangle", dur: 0.05, vol: 0.04 });
       }
-    }
-    return false;
-  }
-
-  function killAlien(a, wx, wy, mult) {
-    a.alive = false;
-    invadersLeft--;
-    const pts = Math.round((ALIEN_SCORE[a.kind] + Math.floor(wave * 2)) * (mult || 1));
-    score += pts;
-    kills++;
-    PA.sfx("hit", { pitch: 1 + (ALIEN_ROWS - a.row) * 0.04 });
-    PA.shake(5 * S, 0.12);
-    fx.burst(wx, wy, { n: 18, colors: [PAINT[a.paint], "#fff", PAINT[a.paint]], speed: 160, life: 0.55, size: 2.4, shape: "spark" });
-    texts.add(wx, wy - 8 * S, "+" + pts, { color: PAINT[a.paint], size: 14, life: 0.65, vy: -32 });
-    paintHud();
-    PA.music.intensity(clamp(1 - invadersLeft / aliens.length + wave * 0.08, 0, 1));
-    if (invadersLeft <= 0) beginWaveClear();
-  }
-
-  function hitAlien(a, b, w) {
-    if (a.paint !== b.paint) {
-      // Wrong colour: the shot paints it instead of killing it.
-      a.paint = b.paint; a.flashT = 0.3; paints++;
-      score += 5; paintHud();
-      PA.tone({ freq: 760 + b.paint * 90, to: 520, type: "triangle", dur: 0.07, vol: 0.06 });
-      fx.burst(w.x, w.y, { n: 8, color: PAINT[b.paint], speed: 90, life: 0.3, size: 2 });
-      return;
-    }
-    // Matching colour: flood out through touching aliens of the same colour.
-    const byPos = {};
-    for (const o of aliens) if (o.alive && o.popT < 0) byPos[o.row + "," + o.col] = o;
-    const seen = new Set([a]), queue = [[a, 0]], group = [];
-    while (queue.length) {
-      const [cur, d] = queue.shift();
-      group.push([cur, d]);
-      for (const [nr, nc] of hexNeighbours(cur.row, cur.col)) {
-        const n = byPos[nr + "," + nc];
-        if (n && !seen.has(n) && n.paint === a.paint) { seen.add(n); queue.push([n, d + 1]); }
-      }
-    }
-    const size = group.length;
-    // Each alien in a cluster of n scores (n + 1) / 2 times its value.
-    for (const [o, d] of group) { o.popT = d * 0.055; o.mult = (size + 1) / 2; }
-    if (size > 1) {
-      clusters++;
-      if (size > bestCluster) bestCluster = size;
-      texts.add(w.x, w.y - 26 * S, "CLUSTER ×" + size, { color: "#fff", size: 16 + Math.min(size, 12) * 1.5, life: 1.1, vy: -30 });
-      PA.sfx("combo", { pitch: 0.9 + Math.min(size, 12) * 0.04 });
-      if (size >= 6) { PA.flash("rgba(255,255,255,.12)", 180); PA.shake(9 * S, 0.3); }
-      paintHud();
+      return true;
     }
   }
-
-  function beginWaveClear() {
-    waveClearT = 1.4;
-    score += 200 + wave * 50;
-    paintHud();
-    PA.sfx("levelup");
-    PA.flash("rgba(142,233,255,.2)", 280);
-    showBanner("WAVE " + wave + " CLEARED", "Crystals reform · a new swarm gathers", 1.6);
-    pBullets = []; eBullets = [];
-  }
-
-  function nextWave() {
-    wave++;
-    waveClearT = 0;
-    spawnWave();
-    showBanner("WAVE " + wave, "The swarm grows restless", 1.5);
-    resetPlayer();
-    invulnT = 1.2;
-  }
-
-  function killMothership() {
-    if (!mothership) return;
-    const m = mothership;
-    score += m.bonus;
-    mothershipHits++;
-    mothership = null;
-    PA.sfx("coin", { pitch: 1.2 });
-    PA.flash("rgba(255,210,122,.22)", 260);
-    fx.burst(m.x, m.y, { n: 32, colors: [COL.mothership, "#fff", COL.player], speed: 200, life: 0.7, size: 3, shape: "spark" });
-    texts.add(m.x, m.y, "+" + m.bonus, { color: COL.mothership, size: 22, life: 0.9, vy: -40 });
-    paintHud();
-  }
-
-  function playerHit(force) {
-    if (invulnT > 0 && !force) return;
-    lives--;
-    PA.sfx("explode", { vol: 0.7 });
-    PA.shake(14 * S, 0.45);
-    PA.flash("rgba(255,126,182,.35)", 320);
-    fx.burst(player.x, player.y, { n: 40, colors: [COL.player, COL.playerCore, "#fff"], speed: 240, life: 0.75, size: 3, shape: "spark" });
-    pBullets = []; eBullets = [];
-    paintHud();
-    if (lives <= 0) endGame();
-    else {
-      respawnT = 1.1;
-      invulnT = 2;
+  for (const a of aliens) {
+    if (!a.alive || a.popT >= 0) continue;
+    const p = alienPos(a);
+    if (Math.abs(b.x - p.x) < AHW + 0.1 && Math.abs(b.z - p.z) < AHD + 0.12) {
+      if (a.dive) { diversDown++; killAlien(a, 2, "dive"); const s = toScreen(p.x, AY + 1.3, p.z); texts.add(s.x, s.y - 16, "DIVER ×2", { color: "#fff", size: 14, life: 0.8, vy: -30 }); }
+      else hitAlien(a, b.paint);
+      return true;
     }
   }
+  return false;
+}
+function update(dt) {
+  simT += dt;
+  texts.update(dt);
+  updateParts(dt); updateShards(dt);
+  for (let i = ripples.length - 1; i >= 0; i--) { const r = ripples[i]; r.t += dt; if (r.t > 0.7) { scene.remove(r.m); r.m.material.dispose(); ripples.splice(i, 1); } }
+  hurt = Math.max(0, hurt - dt * 1.6);
+  if (banner) { banner.t += dt; if (banner.t > banner.max) banner = null; }
+  if (muzzleT > 0) muzzleT -= dt;
+  if (PA.state !== "play") return;
 
-  function endGame() {
-    if (overSent) return;
-    overSent = true;
-    hud.classList.remove("on");
-    PA.sfx("gameover");
-    PA.gameOver(score, {
-      title: "Siege broken",
-      stats: [
-        ["Wave", wave],
-        ["Invaders", kills],
-        ["Best cluster", bestCluster > 1 ? bestCluster : "—"],
-        ["Painted", paints],
-        ["Comets", mothershipHits],
-        ["Lives left", Math.max(0, lives)]
-      ]
-    });
+  if (waveClearT > 0) {
+    waveClearT -= dt;
+    // let the last pops finish before the next swarm
+    for (const a of aliens) if (a.alive && a.popT >= 0) { a.popT -= dt; if (a.popT < 0) { a.popT = -1; killAlien(a, a.mult); } }
+    if (waveClearT <= 0) nextWave();
+    return;
   }
+  if (respawnT > 0) {
+    respawnT -= dt;
+    if (respawnT <= 0) player.x = clamp(player.x, LEFT + PHW, RIGHT - PHW);
+  }
+  if (invulnT > 0) invulnT -= dt;
+  if (fireCd > 0) fireCd -= dt;
+  if (swapT > 0) swapT -= dt;
+  for (const k in timers) if (timers[k] > 0) timers[k] = Math.max(0, timers[k] - dt);
 
-  function update(dt, t) {
-    simT += dt;
-    fx.update(dt); texts.update(dt);
-    if (banner) { banner.t += dt; if (banner.t > banner.max) banner = null; }
-    if (PA.state !== "play") return;
-
-    if (waveClearT > 0) {
-      waveClearT -= dt;
-      if (waveClearT <= 0) nextWave();
-      return;
-    }
-
-    if (respawnT > 0) {
-      respawnT -= dt;
-      if (respawnT <= 0) resetPlayer();
-      return;
-    }
-
-    if (invulnT > 0) invulnT -= dt;
-    if (fireCd > 0) fireCd -= dt;
-    if (swapT > 0) swapT -= dt;
-
+  if (respawnT <= 0) {
     const move = (PA.down("ArrowRight", "KeyD", "d") ? 1 : 0) - (PA.down("ArrowLeft", "KeyA", "a") ? 1 : 0);
-    if (move && player) {
-      player.x += move * 420 * S * dt;
-      clampPlayer();
-    }
-
+    if (move) player.x = clamp(player.x + move * PLAYER_V * dt, LEFT + PHW, RIGHT - PHW);
     firePlayer();
+  }
+  glide(dt);
+  driftShields();
 
-    glide(dt);
-    driftShields(dt);
+  for (const a of aliens) {
+    if (!a.alive) continue;
+    if (a.flashT > 0) a.flashT -= dt;
+    if (a.popT >= 0) {
+      a.popT -= dt;
+      if (a.popT < 0) { a.popT = -1; killAlien(a, a.mult); }
+      continue;
+    }
+    if (a.dive) updateDive(a, dt);
+  }
+  if (PA.state !== "play" || waveClearT > 0) return;
 
+  // the overload beam: it follows the cannon and paints every drone it sweeps
+  if (beamT > 0) {
+    beamT -= dt;
+    beamX = player.x;
     for (const a of aliens) {
-      if (!a.alive) continue;
-      if (a.flashT > 0) a.flashT -= dt;
-      if (a.popT >= 0) {
-        a.popT -= dt;
-        if (a.popT < 0) { a.popT = -1; const w = alienWorld(a); killAlien(a, w.x, w.y, a.mult); }
-        continue;
-      }
-      a.animT += dt;
-      if (a.animT > 0.45) { a.anim = 1 - a.anim; a.animT = 0; }
-    }
-
-    enemyFireCd -= dt;
-    if (enemyFireCd <= 0 && livingAliens().length) {
-      enemyShoot();
-      const live = livingAliens().length;
-      enemyFireCd = clamp(1.35 - live * 0.012 - wave * 0.04, 0.35, 1.35);
-    }
-
-    mothershipCd -= dt;
-    if (mothershipCd <= 0 && !mothership && livingAliens().length) {
-      spawnMothership();
-      mothershipCd = rand(14, 26);
-    }
-    if (mothership) {
-      const m = mothership;
-      m.x += m.vx * dt;
-      m.k = clamp((m.vx > 0 ? m.x - playL : playR - m.x) / playW, 0, 1);
-      m.y = m.y0 + Math.sin(m.k * Math.PI) * H * 0.07;
-      if (mothership.x < playL - 80 * S || mothership.x > playR + 80 * S) mothership = null;
-    }
-
-    for (let i = pBullets.length - 1; i >= 0; i--) {
-      const b = pBullets[i];
-      b.y += b.vy * dt;
-      if (b.y < H * 0.04) { pBullets.splice(i, 1); continue; }
-      if (hitShield(b)) { pBullets.splice(i, 1); continue; }
-      if (mothership && rectHit(b.x - b.w / 2, b.y - b.h, b.w, b.h, mothership.x - mothership.w / 2, mothership.y - mothership.h / 2, mothership.w, mothership.h)) {
-        killMothership();
-        pBullets.splice(i, 1);
-        continue;
-      }
-      let hit = false;
-      for (const a of aliens) {
-        if (!a.alive || a.popT >= 0) continue;
-        const w = alienWorld(a);
-        if (rectHit(b.x - b.w / 2, b.y - b.h, b.w, b.h, w.x - a.w / 2, w.y - a.h / 2, a.w, a.h)) {
-          hitAlien(a, b, w);
-          hit = true;
-          break;
-        }
-      }
-      if (hit) pBullets.splice(i, 1);
-    }
-
-    for (let i = eBullets.length - 1; i >= 0; i--) {
-      const b = eBullets[i];
-      b.y += b.vy * dt;
-      if (b.y > H + 20) { eBullets.splice(i, 1); continue; }
-      if (hitShield(b)) { eBullets.splice(i, 1); continue; }
-      if (player && invulnT <= 0 && rectHit(
-        b.x - b.w / 2, b.y, b.w, b.h,
-        player.x - player.w / 2, player.y - player.h, player.w, player.h
-      )) {
-        eBullets.splice(i, 1);
-        playerHit(false);
+      if (!a.alive || a.popT >= 0 || a.beamed === beamId) continue;
+      const p = alienPos(a);
+      if (Math.abs(p.x - beamX) < BEAM_HW + AHW * 0.5) {
+        a.beamed = beamId;
+        if (a.dive) { diversDown++; killAlien(a, 2, "dive"); }
+        else if (a.paint !== beamPaint) { paintAlien(a, beamPaint); burst(p.x, p.z, { n: 6, colors: [PAINT[beamPaint]], speed: 3, life: 0.3, size: 0.12, y: AY }); }
       }
     }
+    if (queen && !beamQueen && Math.abs(formX + queen.lx - beamX) < BEAM_HW + 1.2) { beamQueen = true; damageQueen(4, "beam"); }
+    if (comet && Math.abs(comet.x - beamX) < BEAM_HW + 0.5) killComet();
+    eBullets = eBullets.filter((b) => Math.abs(b.x - beamX) > BEAM_HW);
   }
 
-  function drawStars(t) {
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    for (const s of stars) {
-      const sp = [16, 34, 62][s.z] * S;
-      const a = 0.22 + 0.5 * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph));
-      ctx.globalAlpha = a;
-      ctx.fillStyle = s.z === 2 ? "#fff" : "#8ee9ff";
-      ctx.fillRect(s.x, s.y, s.z === 0 ? 1 : 2, s.z === 0 ? 1 : 2);
+  enemyFireCd -= dt;
+  const formN = aliens.reduce((n, a) => n + (inForm(a) ? 1 : 0), 0);
+  if (enemyFireCd <= 0 && formN) {
+    enemyShoot();
+    enemyFireCd = clamp(1.35 - formN * 0.012 - wave * 0.04, 0.35, 1.35);
+  }
+  if (wave >= 2) {
+    diveCd -= dt;
+    const diving = aliens.filter((a) => a.alive && a.dive).length;
+    if (diveCd <= 0 && formN > 3 && diving < (wave >= 5 ? 2 : 1)) { startDive(); diveCd = Math.max(2.5, rand(5, 9) - wave * 0.3); }
+  }
+  if (queen) {
+    queen.hit = Math.max(0, queen.hit - dt * 3);
+    queen.swapT -= dt;
+    if (queen.swapT <= 0) { queen.swapT = 3.5; queen.paint = (queen.paint + 1) % colours; PA.tone({ freq: 420, to: 640, type: "triangle", dur: 0.15, vol: 0.04 }); }
+    queen.fireT -= dt;
+    if (queen.fireT <= 0) {
+      queen.fireT = Math.max(1.4, 2.6 - wave * 0.05);
+      const qx = formX + queen.lx, qz = formZ + queen.lz + 1;
+      for (const s of [-1, 0, 1]) { const v = Math.min(14, 8 + wave * 0.4); enemyShot(qx, qz, s * 2.2, v); }
+      PA.tone({ freq: 160, to: 90, type: "sawtooth", dur: 0.18, vol: 0.05 });
     }
-    ctx.restore();
+    if (invadersLeft <= 0) { escortCd -= dt; if (escortCd <= 0) { escortCd = 3; queenEscorts(); } }
   }
 
-  function drawGrid() {
-    ctx.strokeStyle = "rgba(142,233,255,.06)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(playL - 2, H * 0.05, playW + 4, floorY - H * 0.05 + 4);
-    ctx.strokeStyle = "rgba(196,166,255,.35)";
-    ctx.setLineDash([10 * S, 14 * S]);
-    ctx.beginPath();
-    ctx.moveTo(playL, floorY + 2);
-    ctx.lineTo(playR, floorY + 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
+  cometCd -= dt;
+  if (cometCd <= 0 && !comet && formN) {
+    const fromLeft = Math.random() < 0.5;
+    comet = { x: fromLeft ? LEFT - 3 : RIGHT + 3, z: -16, vx: (fromLeft ? 1 : -1) * (6 + wave * 0.3), bonus: 150 + wave * 50, trail: [] };
+    cometCd = rand(14, 26);
+    PA.tone({ freq: 1400, to: 500, type: "sine", dur: 0.6, vol: 0.06 });
+    texts.add(W / 2, H * 0.16, "COMET", { color: "#ffd27a", size: 16, life: 1.1, vy: -18 });
+  }
+  if (comet) {
+    comet.x += comet.vx * dt;
+    const k = clamp((comet.vx > 0 ? comet.x - LEFT : RIGHT - comet.x) / (RIGHT - LEFT), 0, 1);
+    comet.z = -16.5 + Math.sin(k * Math.PI) * 1.8;
+    comet.y = 1.8 + Math.sin(k * Math.PI) * 0.8;
+    if (comet.x < LEFT - 4 || comet.x > RIGHT + 4) comet = null;
   }
 
-  function drawAlien(a, t) {
-    const w = alienWorld(a);
-    const col = a.flashT > 0 && Math.sin(a.flashT * 60) > 0 ? "#ffffff" : PAINT[a.paint];
-    const popping = a.popT >= 0;
-    const bob = Math.sin(t * 6 + a.col * 0.4 + a.row) * 1.5 * S;
-    const sc = (1 + a.anim * 0.06) * (popping ? 1.15 + Math.sin(simT * 50) * 0.08 : 1);
-    ctx.save();
-    ctx.translate(w.x, w.y + bob);
-    ctx.scale(sc, sc);
-    ctx.shadowColor = col;
-    ctx.shadowBlur = 14 * S;
-    ctx.fillStyle = col;
-    ctx.strokeStyle = "rgba(255,255,255,.45)";
-    ctx.lineWidth = 1.2;
-    if (a.kind === 0) {
-      ctx.beginPath();
-      ctx.ellipse(0, 0, a.w * 0.42, a.h * 0.38, 0, 0, TAU);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "#0a1220";
-      ctx.fillRect(-a.w * 0.18, -a.h * 0.08, a.w * 0.12, a.h * 0.12);
-      ctx.fillRect(a.w * 0.06, -a.h * 0.08, a.w * 0.12, a.h * 0.12);
-      ctx.strokeStyle = col;
-      ctx.beginPath();
-      ctx.moveTo(-a.w * 0.35, a.h * 0.15);
-      ctx.lineTo(-a.w * 0.55, a.h * 0.35 + a.anim * 4 * S);
-      ctx.moveTo(a.w * 0.35, a.h * 0.15);
-      ctx.lineTo(a.w * 0.55, a.h * 0.35 - a.anim * 4 * S);
-      ctx.stroke();
-    } else if (a.kind === 1 || a.kind === 2) {
-      roundRect(-a.w * 0.45, -a.h * 0.35, a.w * 0.9, a.h * 0.7, 4 * S);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(-a.w * 0.22, -a.h * 0.12, a.w * 0.14, a.h * 0.14);
-      ctx.fillRect(a.w * 0.08, -a.h * 0.12, a.w * 0.14, a.h * 0.14);
-      ctx.fillStyle = col;
-      const leg = a.anim ? 5 * S : -3 * S;
-      ctx.fillRect(-a.w * 0.4, a.h * 0.2, a.w * 0.18, a.h * 0.18);
-      ctx.fillRect(a.w * 0.22, a.h * 0.2, a.w * 0.18, a.h * 0.18);
-      ctx.fillRect(-a.w * 0.08, a.h * 0.25 + leg, a.w * 0.16, a.h * 0.12);
-    } else {
-      roundRect(-a.w * 0.48, -a.h * 0.32, a.w * 0.96, a.h * 0.64, 5 * S);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "rgba(255,255,255,.7)";
-      for (let i = -1; i <= 1; i++) ctx.fillRect(i * a.w * 0.18 - 3, -a.h * 0.1, 6, 6);
-      ctx.fillStyle = col;
-      ctx.fillRect(-a.w * 0.5, a.h * 0.05 + a.anim * 3 * S, a.w * 0.22, a.h * 0.2);
-      ctx.fillRect(a.w * 0.28, a.h * 0.05 - a.anim * 3 * S, a.w * 0.22, a.h * 0.2);
+  for (let i = pBullets.length - 1; i >= 0; i--) {
+    const b = pBullets[i];
+    if (!b) continue;   // a wave clear empties the list mid-loop
+    const steps = Math.max(1, Math.ceil(BULLET_V * dt / 0.18));
+    let dead = false;
+    for (let s = 0; s < steps && !dead; s++) {
+      b.x += b.vx * dt / steps; b.z += b.vz * dt / steps;
+      if (b.z < TOP_Z || b.x < LEFT - 1 || b.x > RIGHT + 1) dead = true;
+      else if (bulletVsTargets(b)) { dead = true; }
     }
-    ctx.restore();
+    if (dead) { burst(b.x, b.z, { n: 5, colors: [PAINT[b.paint], 0xffffff], speed: 2.5, life: 0.25, size: 0.1, y: AY }); const j = pBullets.indexOf(b); if (j >= 0) pBullets.splice(j, 1); }
   }
-
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  function drawShields() {
-    for (const sh of shields) {
-      for (const bl of sh.blocks) {
-        ctx.fillStyle = COL.shield;
-        ctx.shadowColor = COL.shield;
-        ctx.shadowBlur = 6;
-        ctx.fillRect(bl.x, bl.y, bl.w, bl.h);
-      }
+  for (let i = eBullets.length - 1; i >= 0; i--) {
+    const b = eBullets[i];
+    if (!b) continue;   // a hit empties the list mid-loop
+    b.x += b.vx * dt; b.z += b.vz * dt;
+    if (b.z > CANNON_Z + 3 || b.x < LEFT - 2 || b.x > RIGHT + 2) { eBullets.splice(i, 1); continue; }
+    if (hitShield(b.x, b.z)) { eBullets.splice(i, 1); continue; }
+    if (respawnT <= 0 && Math.abs(b.x - player.x) < PHW && Math.abs(b.z - CANNON_Z) < 0.65) {
+      eBullets.splice(i, 1);
+      playerHit(false);
     }
+  }
+  for (let i = caps.length - 1; i >= 0; i--) {
+    const c = caps[i];
+    c.t += dt; c.z += 4.2 * dt;
+    if (respawnT <= 0 && Math.abs(c.x - player.x) < 1.4 && Math.abs(c.z - CANNON_Z) < 0.9) { takeCapsule(c); caps.splice(i, 1); }
+    else if (c.z > CANNON_Z + 2.5) caps.splice(i, 1);
+  }
+}
+
+/* ---------------- render ---------------- */
+const m4b = new THREE.Matrix4(), qb = new THREE.Quaternion(), eb = new THREE.Euler(), vb = new THREE.Vector3(), sb = new THREE.Vector3();
+const cTmp = new THREE.Color(), cW = new THREE.Color(1, 1, 1);
+const PAINT_C = PAINT.map((c) => new THREE.Color(c));
+const HIDE = new THREE.Matrix4().makeScale(0, 0, 0);
+let aimTarget = null, aimGroup = [];
+function computeAim() {
+  aimTarget = null; aimGroup = [];
+  if (PA.state !== "play" || respawnT > 0 || beamT > 0 || waveClearT > 0) return;
+  let best = null, bz = -Infinity;
+  for (const a of aliens) {
+    if (!inForm(a)) continue;
+    const x = slotX(a), z = slotZ(a);
+    if (Math.abs(x - player.x) < AHW && z > bz) { bz = z; best = a; }
+  }
+  if (!best) return;
+  aimTarget = best;
+  aimGroup = best.paint === gun ? floodFrom(best).map(([o]) => o) : [best];
+}
+function render(t) {
+  const sh = PA.shakeOffset();
+  placeCamera(camDist, player.x * 0.08 + sh.x * 0.03);
+  camera.position.y += sh.y * 0.03;
+  camera.updateMatrixWorld();
+  const dtR = 1 / 60;
+  planetMat.uniforms.time.value = t;
+  planet.rotation.y = t * 0.0035;
+  planet.rotation.x = 0.2;
+  moteMat.uniforms.time.value = t;
+  alienMat.uniforms.time.value = t; finMat.uniforms.time.value = t; bubbleMat.uniforms.time.value = t;
+  computeAim();
+  const playing = PA.state === "play";
+
+  // swarm
+  const lean = -marchDir * 0.1;
+  for (let i = 0; i < aliens.length; i++) {
+    const a = aliens[i];
+    if (!a.alive) {
+      a.pop = 0;
+      aliensMesh.setMatrixAt(i, HIDE); haloMesh.setMatrixAt(i, HIDE);
+      continue;
+    }
+    const p = alienPos(a);
+    const bob = Math.sin(t * 2.2 + a.ph * TAU) * 0.08;
+    const y = (a.dive ? a.y : AY) + bob;
+    const primed = a.popT >= 0;
+    a.pop = primed ? Math.min(1, a.pop + dtR * 8) : Math.max(0, a.pop - dtR * 4);
+    eb.set(a.dive ? 0.25 : 0.05, a.dive ? a.heading || 0 : 0, a.dive ? 0 : lean + Math.sin(t * 1.7 + a.ph * 9) * 0.06);
+    qb.setFromEuler(eb);
+    const sc = (1 + a.pop * 0.12) * (a.dive && a.dive.back ? 0.6 + 0.4 * Math.min(1, a.dive.t / 1.5) : 1);
+    m4b.compose(vb.set(p.x, y, p.z), qb, sb.set(sc, sc, sc));
+    aliensMesh.setMatrixAt(i, m4b);
+    cTmp.copy(PAINT_C[a.paint]);
+    aliensMesh.setColorAt(i, cTmp);
+    aFx[i * 4] = Math.max(0, a.flashT / 0.3);
+    aFx[i * 4 + 1] = playing && a.paint === gun && !a.dive ? 0.35 : 0;
+    aFx[i * 4 + 2] = a.pop;
+    aFx[i * 4 + 3] = a.ph;
+    m4b.compose(vb.set(p.x, 0.04, p.z), qb.identity(), sb.set(1, 1, 1));
+    haloMesh.setMatrixAt(i, m4b);
+    haloMesh.setColorAt(i, cTmp.copy(PAINT_C[a.paint]).multiplyScalar(a.dive ? 0.5 : 0.7));
+  }
+  // queen, in the last slot
+  const qi = NA;
+  queenG.visible = !!queen;
+  queenL.intensity = queen ? 20 + queen.hit * 40 : 0;
+  if (queen) {
+    const qx = formX + queen.lx, qz = formZ + queen.lz, qy = AY + 0.4 + Math.sin(t * 1.4) * 0.12;
+    eb.set(0.08, Math.sin(t * 0.6) * 0.2, lean * 0.5); qb.setFromEuler(eb);
+    m4b.compose(vb.set(qx, qy, qz), qb, sb.setScalar(2.3 + queen.hit * 0.15));
+    aliensMesh.setMatrixAt(qi, m4b);
+    aliensMesh.setColorAt(qi, PAINT_C[queen.paint]);
+    aFx[qi * 4] = queen.hit * 0.6; aFx[qi * 4 + 1] = queen.paint === gun ? 0.6 : 0; aFx[qi * 4 + 2] = 0; aFx[qi * 4 + 3] = 0.5;
+    m4b.compose(vb.set(qx, 0.04, qz), qb.identity(), sb.setScalar(2.6));
+    haloMesh.setMatrixAt(qi, m4b); haloMesh.setColorAt(qi, PAINT_C[queen.paint]);
+    queenG.position.set(qx, qy, qz);
+    queenG.rotation.y = t * 0.3;
+    queenRing.rotation.z = Math.sin(t) * 0.1;
+    queenRing2.rotation.set(t * 0.8, t * 0.5, 0);
+    queenRing.material.color.copy(PAINT_C[queen.paint]).multiplyScalar(2.5 + queen.hit * 3);
+    queenL.position.set(qx, qy + 1.5, qz + 1); queenL.color.copy(PAINT_C[queen.paint]);
+  } else { aliensMesh.setMatrixAt(qi, HIDE); haloMesh.setMatrixAt(qi, HIDE); }
+  for (let i = aliens.length; i < NA; i++) { aliensMesh.setMatrixAt(i, HIDE); haloMesh.setMatrixAt(i, HIDE); }
+  aliensMesh.instanceMatrix.needsUpdate = true; aliensMesh.instanceColor.needsUpdate = true;
+  bodyGeo.attributes.aFx.needsUpdate = true;
+  haloMesh.instanceMatrix.needsUpdate = true; haloMesh.instanceColor.needsUpdate = true;
+  // aim rings
+  let ai = 0;
+  if (aimTarget) {
+    const match = aimTarget.paint === gun;
+    for (const a of aimGroup) {
+      const k = match ? 1 + Math.sin(t * 10) * 0.08 : 1.15 + Math.sin(t * 10) * 0.05;
+      m4b.compose(vb.set(slotX(a), AY - 0.55, slotZ(a)), qb.identity(), sb.set(k, 1, k));
+      aimMesh.setMatrixAt(ai, m4b);
+      aimMesh.setColorAt(ai, cTmp.copy(PAINT_C[gun]).multiplyScalar(match ? 2.6 : 1.2));
+      ai++;
+    }
+  }
+  aimMesh.count = ai;
+  aimMesh.instanceMatrix.needsUpdate = true;
+  if (aimMesh.instanceColor) aimMesh.instanceColor.needsUpdate = true;
+
+  // barriers
+  let si = 0;
+  for (const s of shields) for (const b of s.blocks) {
+    if (si >= SH_MAX) break;
+    m4b.compose(vb.set(b.x, b.h / 2, b.z), qb.identity(), sb.set(1, b.h, 1));
+    shieldMesh.setMatrixAt(si, m4b);
+    shieldMesh.setColorAt(si, cTmp.setRGB(0.72 * b.tint, 0.62 * b.tint, 1.0 * b.tint));
+    si++;
+  }
+  shieldMesh.count = si;
+  shieldMesh.instanceMatrix.needsUpdate = true;
+  if (shieldMesh.instanceColor) shieldMesh.instanceColor.needsUpdate = true;
+
+  // cannon
+  const gc = PAINT_C[gun];
+  player.vis += (player.x - player.vis) * 0.5;
+  const alive = respawnT <= 0 && PA.state !== "over";
+  cannon.visible = alive && !(invulnT > 0 && Math.floor(t * 14) % 2 === 0 && playing);
+  cannon.position.set(player.vis, Math.sin(t * 2.5) * 0.05, CANNON_Z);
+  cannon.rotation.z = clamp((player.x - player.vis) * -0.25, -0.25, 0.25);
+  gunGlow.color.copy(gc).multiplyScalar(3 + (swapT > 0 ? swapT * 12 : 0));
+  gem.rotation.set(t * 1.3, t * 2, 0);
+  gem.scale.setScalar(1 + (swapT > 0 ? swapT * 2 : 0));
+  for (let i = 0; i < 4; i++) {
+    const g = gemSlots[i], a = i / 4 * TAU + t * 0.6;
+    g.visible = i < colours;
+    g.position.set(Math.cos(a) * 0.55, 0.95, Math.sin(a) * 0.45);
+    g.material.color.copy(PAINT_C[i]).multiplyScalar(i === gun ? 4 : 0.6);
+    g.scale.setScalar(i === gun ? 1.6 : 1);
+  }
+  bubble.visible = bubbleOn;
+  bubbleMat.uniforms.k.value = 0.8 + Math.sin(t * 5) * 0.2;
+  cannonL.intensity = cannon.visible ? 14 : 0;
+  cannonL.color.copy(gc);
+  cannonL.position.set(player.vis, 1.6, CANNON_Z - 0.6);
+  muzzle.visible = muzzleT > 0 && cannon.visible;
+  if (muzzle.visible) { muzzle.position.set(player.vis, 0.8, CANNON_Z - 1.3); muzzle.material.color.copy(gc).multiplyScalar(2.5); }
+
+  // trails: player bolts, the beam, the comet tail, a faint aim line
+  tv = 0;
+  let li = 0;
+  for (const b of pBullets) {
+    const c = PAINT_C[b.paint];
+    ribbon([b.x - b.vx * 0.05, AY, b.z - b.vz * 0.05, b.x, AY, b.z], [c.r * 5, c.g * 5, c.b * 5], 0.14, false);
+    ribbon([b.x - b.vx * 0.04, AY, b.z - b.vz * 0.04, b.x, AY, b.z], [4, 4, 4], 0.05, false);
+    if (li < 2) { boltL[li].position.set(b.x, AY + 0.4, b.z); boltL[li].color.copy(c); boltL[li].intensity = 8; li++; }
+  }
+  for (; li < 2; li++) boltL[li].intensity = 0;
+  if (beamT > 0 && playing) {
+    const c = PAINT_C[beamPaint], k = Math.min(1, beamT / 0.25) * (0.85 + Math.sin(t * 40) * 0.15);
+    const pts = [beamX, AY, CANNON_Z - 1.2, beamX, AY, (CANNON_Z + TOP_Z) / 2, beamX, AY, TOP_Z];
+    ribbon(pts, [c.r * 1.5 * k, c.g * 1.5 * k, c.b * 1.5 * k], BEAM_HW, false);
+    ribbon(pts, [c.r * 2 + 1.5 * k, c.g * 2 + 1.5 * k, c.b * 2 + 1.5 * k], 0.2, false);
+    beamL.position.set(beamX, AY + 1, 0); beamL.color.copy(c); beamL.intensity = 20 * k;
+    if (Math.random() < 0.8) burst(beamX + rand(-BEAM_HW, BEAM_HW), rand(TOP_Z, CANNON_Z - 1), { n: 2, colors: [PAINT[beamPaint], 0xffffff], speed: 2, life: 0.4, size: 0.12, y: AY, up: 2, g: 0 });
+  } else beamL.intensity = 0;
+  if (aimTarget && playing) {
+    const z1 = slotZ(aimTarget) + AHD;
+    ribbon([player.vis, AY, CANNON_Z - 1.3, player.vis, AY, z1], [gc.r * 0.35, gc.g * 0.35, gc.b * 0.35], 0.03, false);
+  }
+  cometG.visible = !!comet;
+  cometL.intensity = comet ? 18 : 0;
+  if (comet) {
+    cometG.position.set(comet.x, comet.y, comet.z);
+    cometG.userData.rock.rotation.set(t * 2, t * 1.3, 0);
+    cometL.position.set(comet.x, comet.y + 0.5, comet.z);
+    comet.trail.push(comet.x, comet.y, comet.z);
+    if (comet.trail.length > 3 * 28) comet.trail.splice(0, 3);
+    ribbon(comet.trail, [1.6, 1.4, 0.9], 0.55);
+    ribbon(comet.trail, [0.5, 1.2, 2.2], 0.9);
+  }
+  tGeo.setDrawRange(0, tv);
+  tGeo.attributes.position.needsUpdate = true; tGeo.attributes.color.needsUpdate = true;
+
+  // enemy shots
+  let ei = 0;
+  for (const b of eBullets) {
+    m4b.compose(vb.set(b.x, AY, b.z), qb.identity(), sb.setScalar(1 + Math.sin(t * 30 + ei) * 0.15));
+    eShotMesh.setMatrixAt(ei, m4b);
+    m4b.compose(vb.set(b.x, AY - 0.3, b.z), qb.identity(), sb.setScalar(1));
+    eGlowMesh.setMatrixAt(ei, m4b);
+    ei++;
+  }
+  eShotMesh.count = eGlowMesh.count = ei;
+  eShotMesh.instanceMatrix.needsUpdate = true; eGlowMesh.instanceMatrix.needsUpdate = true;
+  // capsules
+  for (let i = 0; i < capPool.length; i++) {
+    const p = capPool[i], c = caps[i];
+    p.g.visible = !!c && playing;
+    if (!c) continue;
+    const col = CAPS[c.type].c;
+    p.g.position.set(c.x, AY + Math.sin(t * 4 + i) * 0.12, c.z);
+    p.shell.rotation.x = t * 3;
+    p.shell.material.color.setHex(col); p.shell.material.emissive.setHex(col);
+    p.lab.material.map = letterTex[c.type];
+    p.gl.material.color.setHex(col);
+  }
+  // lights from pops fade out
+  for (let i = 0; i < 2; i++) { popLs[i] = Math.max(0, popLs[i] - dtR * 2.5); popL[i].intensity = popLs[i] * 30; }
+  for (const r of ripples) { const k = r.t / 0.7; r.m.scale.setScalar(0.3 + PA.ease.outCubic(k) * r.size); r.m.material.opacity = 1 - k; }
+
+  deckMat.uniforms.time.value = t;
+  deckMat.uniforms.px.value = player.vis;
+  deckMat.uniforms.beam.value = beamT > 0 && playing ? Math.min(1, beamT / 0.25) : 0;
+  deckMat.uniforms.beamX.value = beamX;
+  deckMat.uniforms.beamC.value.copy(PAINT_C[beamPaint]);
+  deckMat.uniforms.hurt.value = hurt;
+  post.comp.uniforms.hurt.value = hurt * 0.5;
+  post.comp.uniforms.chroma.value = 0.1 + hurt * 2 + (beamT > 0 ? 0.25 : 0);
+  post.render(scene, camera, t);
+  drawOverlay(t);
+  if (playing) {
+    shownScore += (score - shownScore) * 0.25;
+    if (Math.abs(score - shownScore) < 1) shownScore = score;
+    const key = Math.round(shownScore) + "|" + lives + "|" + wave + "|" + invadersLeft + "|" + overload;
+    if (key !== lastHud) { lastHud = key; paintHud(); }
+    paintPowers();
+  }
+}
+function drawOverlay(t) {
+  ctx.setTransform(overlay.dpr, 0, 0, overlay.dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  texts.draw(ctx);
+  if (PA.state !== "play") return;
+  const small = W < 560;
+  if (aimTarget && aimGroup.length > 1 && aimTarget.paint === gun) {
+    const p = toScreen(slotX(aimTarget), AY + 1.1, slotZ(aimTarget));
+    ctx.font = `800 ${small ? 12 : 14}px 'JetBrains Mono', monospace`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = PAINT_CSS[gun];
+    ctx.shadowColor = PAINT_CSS[gun]; ctx.shadowBlur = 10;
+    ctx.fillText("×" + aimGroup.length, p.x, p.y);
     ctx.shadowBlur = 0;
   }
-
-  function drawPlayer(t) {
-    if (!player || respawnT > 0) return;
-    if (invulnT > 0 && Math.sin(t * 28) > 0) return;
-    const { x, y, w, h } = player;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.shadowColor = COL.playerCore;
-    ctx.shadowBlur = 20 * S;
-    const grd = ctx.createLinearGradient(0, -h, 0, 0);
-    grd.addColorStop(0, "#fff");
-    grd.addColorStop(0.35, COL.playerCore);
-    grd.addColorStop(1, COL.player);
-    ctx.fillStyle = grd;
-    ctx.beginPath();
-    ctx.moveTo(0, -h * 0.95);
-    ctx.lineTo(w * 0.55, h * 0.15);
-    ctx.lineTo(w * 0.22, h * 0.05);
-    ctx.lineTo(0, h * 0.35);
-    ctx.lineTo(-w * 0.22, h * 0.05);
-    ctx.lineTo(-w * 0.55, h * 0.15);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,.55)";
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-    // The barrel glows in the laser's colour, with the colour wheel underneath.
-    const pc = PAINT[gun], pop = 1 + Math.max(0, swapT) * 2;
-    ctx.fillStyle = pc; ctx.shadowColor = pc; ctx.shadowBlur = 18 * S;
-    ctx.beginPath(); ctx.arc(0, -h * 0.2, h * 0.32 * pop, 0, TAU); ctx.fill();
-    ctx.shadowBlur = 0;
-    for (let i = 0; i < colours; i++) {
-      const dx = (i - (colours - 1) / 2) * 12 * S;
-      ctx.globalAlpha = i === gun ? 1 : 0.35;
-      ctx.fillStyle = PAINT[i];
-      ctx.beginPath(); ctx.arc(dx, h * 0.95, (i === gun ? 4 : 3) * S, 0, TAU); ctx.fill();
-    }
+  if (overload >= OVER_MAX && beamT <= 0 && respawnT <= 0) {
+    const p = toScreen(player.vis, 0, CANNON_Z + 1.6);
+    ctx.font = `700 ${small ? 11 : 13}px 'JetBrains Mono', monospace`;
+    ctx.textAlign = "center";
+    ctx.globalAlpha = 0.65 + Math.sin(t * 8) * 0.35;
+    ctx.fillStyle = "#fff";
+    ctx.fillText(PA.isTouch ? "⚡ OVERLOAD READY" : "OVERLOAD READY · X", p.x, Math.min(H - 14, p.y + 10));
     ctx.globalAlpha = 1;
-    ctx.restore();
   }
-
-  function drawMothership(t) {
-    if (!mothership) return;
-    const m = mothership, dir = Math.sign(m.vx);
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    // the tail streams out behind the head
-    for (let i = 10; i >= 1; i--) {
-      const k = i / 10, tx = m.x - dir * i * 9 * S, ty = m.y - Math.cos(m.k * Math.PI) * i * 2.2 * S;
-      ctx.globalAlpha = (1 - k) * .5; ctx.fillStyle = i % 2 ? COL.mothership : "#8ee9ff";
-      ctx.beginPath(); ctx.arc(tx, ty, (1 - k * .7) * 9 * S, 0, TAU); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, 16 * S);
-    g.addColorStop(0, "#fff"); g.addColorStop(.4, COL.mothership); g.addColorStop(1, "rgba(255,210,122,0)");
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(m.x, m.y, 16 * S * (0.9 + 0.1 * Math.sin(t * 9)), 0, TAU); ctx.fill();
-    ctx.restore();
+  if (queen) {
+    const bw = Math.min(320, W * 0.55), bx = (W - bw) / 2, by = small ? 116 : 70;
+    ctx.fillStyle = "rgba(12,6,20,.7)"; ctx.fillRect(bx - 2, by - 2, bw + 4, 11);
+    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0); g.addColorStop(0, "#ffb347"); g.addColorStop(1, PAINT_CSS[queen.paint]);
+    ctx.fillStyle = g; ctx.fillRect(bx, by, bw * Math.max(0, queen.hp / queen.max), 7);
+    ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "#ffe2b0";
+    ctx.fillText("HIVE QUEEN · HIT HER IN " + PAINT_NAME[queen.paint].toUpperCase() + " OR POP A CLUSTER BESIDE HER", W / 2, by + 22);
   }
-
-  function drawBullets() {
-    for (const b of pBullets) {
-      ctx.fillStyle = PAINT[b.paint];
-      ctx.shadowColor = PAINT[b.paint];
-      ctx.shadowBlur = 10;
-      ctx.fillRect(b.x - b.w / 2, b.y - b.h, b.w, b.h);
-    }
-    for (const b of eBullets) {
-      ctx.fillStyle = COL.bulletE;
-      ctx.shadowColor = COL.bulletE;
-      ctx.shadowBlur = 10;
-      ctx.fillRect(b.x - b.w / 2, b.y, b.w, b.h);
-    }
-    ctx.shadowBlur = 0;
-  }
-
-  function drawBanner() {
-    if (!banner) return;
+  if (banner) {
     const b = banner, k = b.t / b.max;
     const a = k < 0.15 ? k / 0.15 : k > 0.75 ? (1 - k) / 0.25 : 1;
-    const fs = Math.round(clamp(Math.min(W, H) * 0.08, 26, 52));
+    const sc = 1 + (1 - PA.ease.outCubic(Math.min(1, k / 0.2))) * 0.2;
+    const fs = Math.round(clamp(Math.min(W, H) * 0.075, 26, 54) * sc);
     ctx.save();
     ctx.globalAlpha = Math.max(0, a);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "600 " + fs + "px Manrope, system-ui, sans-serif";
-    ctx.shadowColor = "#c4a6ff";
-    ctx.shadowBlur = 20;
-    const grd = ctx.createLinearGradient(W / 2 - fs * 2, 0, W / 2 + fs * 2, 0);
-    grd.addColorStop(0, "#fff");
-    grd.addColorStop(0.5, "#8ee9ff");
-    grd.addColorStop(1, "#c4a6ff");
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "700 " + fs + "px Manrope, system-ui, sans-serif";
+    ctx.shadowColor = "#ff4fa3"; ctx.shadowBlur = 22;
+    const grd = ctx.createLinearGradient(W / 2 - fs * 3, 0, W / 2 + fs * 3, 0);
+    grd.addColorStop(0, "#ffcf4a"); grd.addColorStop(0.5, "#ff4fa3"); grd.addColorStop(1, "#3fe3ff");
     ctx.fillStyle = grd;
-    ctx.fillText(b.text, W / 2, H * 0.36);
+    ctx.fillText(b.text, W / 2, H * 0.42);
     ctx.shadowBlur = 0;
-    ctx.font = "500 " + Math.round(fs * 0.26) + "px 'JetBrains Mono', monospace";
-    ctx.fillStyle = "#8ee9ff";
-    ctx.fillText(b.sub.toUpperCase().split("").join(" "), W / 2, H * 0.36 + fs * 0.62);
+    ctx.font = "500 " + Math.round(Math.max(11, fs * 0.3)) + "px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "#c4e8ff";
+    ctx.fillText(b.sub.toUpperCase(), W / 2, H * 0.42 + fs * 0.75);
     ctx.restore();
   }
+}
 
-  function drawHint(t) {
-    if (PA.state !== "play" || overSent || banner || simT > 8) return;
-    const a = 0.5 + 0.35 * Math.sin(t * 3);
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.textAlign = "center";
-    ctx.font = "500 " + Math.round(14 * S) + "px Manrope, system-ui, sans-serif";
-    ctx.fillStyle = "#8ee9ff";
-    ctx.fillText(PA.isTouch ? "Drag to move · ◐ switches colour · hit a match to chain-pop" : "Space switches colour · hit a match to chain-pop the cluster", W / 2, H * 0.56);
-    ctx.restore();
-  }
-
-  function render(t) {
-    const sh = PA.shakeOffset();
-    ctx.setTransform(DPR, 0, 0, DPR, DPR * sh.x, DPR * sh.y);
-    if (bgGrad) ctx.drawImage(bgGrad, 0, 0, W, H);
-    drawStars(t);
-    drawGrid();
-    drawShields();
-    for (const a of aliens) if (a.alive) drawAlien(a, t);
-    drawMothership(t);
-    drawBullets();
-    drawPlayer(t);
-    fx.draw(ctx);
-    texts.draw(ctx);
-    drawBanner();
-    drawHint(t);
-  }
-
-  window.__ssiege = () => ({
-    score, wave, lives, invadersLeft, kills, mothershipHits, gun, bestCluster, paints,
-    formX, formY, marchDir, marchDelay,
-    player: player ? { x: player.x, y: player.y } : null,
-    pBullets: pBullets.length, eBullets: eBullets.length,
-    mothership: mothership ? { x: mothership.x, bonus: mothership.bonus } : null,
-    shieldBlocks: shields.reduce((n, sh) => n + sh.blocks.length, 0),
-    alive: lives > 0 && !overSent,
-    overSent, respawnT, invulnT, waveClearT, simT
-  });
-
-  PA.loop(update, render);
+/* ---------------- boot ---------------- */
+addEventListener("resize", resize);
+resize();
+spawnWave();
+PA.loop(update, render);
+window.__ssiege = () => ({
+  score, wave, lives, invadersLeft, gun, colours, bestCluster, clusters, paints, kills, overload, beamT,
+  queen: queen ? queen.hp : 0, queensDown, diversDown, divers: aliens.filter((a) => a.alive && a.dive).length,
+  caps: caps.length, bubbleOn, timers: Object.assign({}, timers), overSent, simT, shields: shields.reduce((n, s) => n + s.blocks.length, 0)
+});
+window.__ss = {
+  sim: (sec, bot) => {
+    for (let i = 0; i < sec * 60; i++) {
+      if (bot && PA.state === "play") {
+        // stand under the nearest drone and match its colour
+        let best = null, bz = -Infinity;
+        for (const a of aliens) if (inForm(a) && slotZ(a) > bz) { bz = slotZ(a); best = a; }
+        if (best) { player.x = clamp(slotX(best), LEFT + PHW, RIGHT - PHW); gun = best.paint; }
+        if (overload >= OVER_MAX) fireOverload();
+      }
+      update(1 / 60);
+    }
+  },
+  wave: (n) => { wave = n; spawnWave(); },
+  charge: () => { overload = OVER_MAX; },
+  power: (k) => takeCapsule({ type: k, x: player.x, z: CANNON_Z }),
+  dive: () => startDive(),
+  get player() { return player; }
+};
 })();
 </script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"a350f886e6974df098681db56e5946d2","r":1,"spa":2}' crossorigin="anonymous"></script>
 </body></html>
