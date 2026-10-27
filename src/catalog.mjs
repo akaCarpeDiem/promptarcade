@@ -154,7 +154,7 @@ export const GAMES = [
     ]
   },
   {
-    slug: "skystack", title: "Skystack 3D", added: "2026-10-11", featured: 8,
+    slug: "skystack", title: "Skystack", added: "2026-10-11", featured: 8,
     genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#ffb347", accent2: "#6ec8ff",
     unit: "floors",
     classic: "Tower stacker", twist: "You're building a real skyscraper: a crane lowers each floor, the tower climbs from brick walk-ups to a glass spire as day turns to night, and from the fifth floor up the wind makes the whole thing sway.",
@@ -384,7 +384,7 @@ export const QUESTS = [
   { game: "block-bloom", stat: "score", min: 600, text: "Score 600 in Block Bloom" },
   { game: "gridstorm", stat: "score", min: 25000, text: "Score 25,000 in Gridstorm" },
   { game: "deepdelve", stat: "depth", min: 4, text: "Reach depth 4 in Deepdelve" },
-  { game: "skystack", stat: "score", min: 20, text: "Stack 20 floors in Skystack 3D" },
+  { game: "skystack", stat: "score", min: 20, text: "Stack 20 floors in Skystack" },
   { game: "wordglow", stat: "won", min: 1, text: "Solve today's Wordglow" },
   { game: "neon-outrun", stat: "score", min: 5000, text: "Score 5,000 in Neon Nightdrive" },
   { game: "fusion-2048", stat: "score", min: 3000, text: "Score 3,000 in Fusion 2048" },
