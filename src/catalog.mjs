@@ -69,15 +69,17 @@ export const GAMES = [
     genre: "Puzzle", tags: ["puzzle", "physics", "merge"], difficulty: "Simple", accent: "#b48cff", accent2: "#5ef2ff",
     unit: "points",
     classic: "Merge and drop", twist: "There's no jar: you launch from the rim of a round gravity well and everything falls toward a star in the middle, so the pile grows outward in every direction.",
-    tagline: "Launch bodies into a gravity well. Two of a kind fuse into something bigger.",
-    about: "Stardust becomes pebbles, pebbles become moons, moons become worlds, all the way up to a black hole. Instead of dropping into a jar you aim from anywhere round the rim and everything falls toward the star at the centre, so the pile builds outward like a little planet. Chain reactions are worth the most. If the pile reaches the danger ring and stays there, the run is over.",
+    tagline: "Launch worlds into a 3D gravity well. Two of a kind fuse into something bigger.",
+    about: "Stardust becomes pebbles, pebbles become moons, moons become worlds, all the way up to a black hole. Instead of dropping into a jar you aim from anywhere round the rim and everything falls toward the star at the centre, so the pile builds outward like a little planet, every body a real lit sphere with its night side in shadow. Swap with the next body when it suits you, charge a gravity pulse to shake the pile loose, feed things to the wormholes that come up the queue, and ride out the meteor showers. If the pile reaches the danger ring and stays there, the run is over.",
     credit: CLAUDE_NEW,
-    brief: "A merge-and-drop physics puzzle with a space theme: two matching bodies fuse into the next tier, eleven tiers ending in a black hole.",
+    brief: "A merge-and-drop physics puzzle with a space theme: two matching bodies fuse into the next tier, eleven tiers ending in a black hole. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
     tech: [
+      "Every body is a sphere lit by the core star, with its own surface, rings or accretion disk",
       "Radial gravity toward a central star, with a circular rim and a danger ring instead of a jar",
       "Custom circle physics: 8 substeps, positional correction, impulses with friction and spin",
-      "Every planet sprite is painted procedurally — craters, bands, rings, coronas",
-      "Combo multiplier for merge chains, shockwaves and screen shake that scale with tier"
+      "Swaps, gravity pulses, wormholes and meteor showers",
+      "HDR bloom, and combo shockwaves that scale with tier"
     ]
   },
   {
@@ -85,14 +87,16 @@ export const GAMES = [
     genre: "Daily", tags: ["daily", "word", "puzzle"], difficulty: "Simple", accent: "#2ee6c5", accent2: "#b48cff",
     unit: "streak points", daily: true,
     classic: "Five-letter word", twist: "Each day is a chain of three words, and each word starts with the last letter of the one before. Twelve guesses cover the whole chain, so the guesses you save on one word carry over to the next.",
-    tagline: "Three linked words a day. Twelve guesses. Keep your streak glowing.",
-    about: "Every day brings a chain of three five-letter words, the same chain for everyone. Solve the first word and its last letter becomes the locked first letter of the next. You get twelve guesses for the whole chain, and no more than six on any one word, so a quick solve buys time for a harder one later. Share your glowing grid, keep a streak going, and play unlimited practice chains once the daily is done.",
+    tagline: "Three linked words a day on glowing glass tiles. Twelve guesses.",
+    about: "Every day brings a chain of three five-letter words, the same chain for everyone, on glass tiles that flip and glow under an aurora. Solve the first word and its last letter becomes the locked first letter of the next. You get twelve guesses for the whole chain, and no more than six on any one word, so a quick solve buys time for a harder one later. Stuck? Spend a guess on a spark to light one letter. Share your glowing grid, keep a streak going, and play unlimited practice chains once the daily is done.",
     credit: CLAUDE_NEW,
-    brief: "A daily five-letter word game with streaks, stats, hard mode, practice mode and a shareable result grid.",
+    brief: "A daily five-letter word game with streaks, stats, hard mode, practice mode and a shareable result grid. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
     tech: [
-      "Each day's three-word chain is picked by a seeded walk through the answer list, and it steers away from letters few words start with",
+      "The board is drawn as 3D glass tiles with flips, bursts and a win wave, over an aurora with HDR bloom",
+      "Each day's three-word chain is picked by a seeded walk through the answer list",
       "1,800+ answers picked from open word-frequency data with names, places and slang filtered out",
-      "Duplicate-letter-correct scoring and an enforced hard mode",
+      "Sparks light one letter for one guess, once per word",
       "Progress, streaks and stats saved locally; the daily rolls over at your local midnight"
     ]
   },
@@ -118,15 +122,17 @@ export const GAMES = [
     genre: "Shooter", tags: ["shooter", "twin-stick", "arcade"], difficulty: "Advanced", accent: "#5ef2ff", accent2: "#ffe68a",
     unit: "points",
     classic: "Twin-stick arena", twist: "Fight inside a thunderstorm: every kill sends out a shockwave that blows up whatever it reaches, so packed swarms go off in chain reactions, while thunderheads call lightning down on where you're heading.",
-    tagline: "A twin-stick shooter inside a thunderstorm, where every kill sets off a chain-reaction shockwave.",
-    about: "Fly a little storm-chaser drone over a honeycomb of charge cells floating in a thunderstorm. Move with one hand, aim with the other, and survive the storm's creatures: jellies of static that drift on the breeze, darts that take aim and lunge, shellbacks whose shield always faces you, seeders that circle and sow mines, eels that zigzag at right angles, and thunderheads that call lightning down where you're about to be. Every kill sends out a shockwave, and anything the ring reaches explodes and sends out its own. Let them bunch up, then set off the whole pack. Collect charge motes to climb the multiplier, and save a Surge for when it all goes wrong.",
+    tagline: "A twin-stick shooter on a 3D honeycomb floating in a thunderstorm.",
+    about: "Fly a little storm-chaser drone over a honeycomb of charge cells floating above a lightning-lit storm. Move with one hand, aim with the other, and survive the storm's creatures: jellies of static, darts that take aim and lunge, shellbacks whose shield always faces you, seeders that sow mines, eels that zigzag at right angles, and thunderheads that call lightning down where you're about to be. Every kill sends out a shockwave that sets off anything it reaches, and the cells it crosses rise and glow. Stand on lit cells to overcharge your guns, dash through trouble and charge the floor as you go, and when a supercell rolls in, chain shockwaves into it to bring it down.",
     credit: CLAUDE_NEW,
-    brief: "A twin-stick arena shooter set inside a thunderstorm, with its own cast of storm creatures, a honeycomb floor that lights up with every blast, chain-reaction shockwaves, surges and a score multiplier.",
+    brief: "A twin-stick arena shooter set inside a thunderstorm, with its own cast of storm creatures, a honeycomb floor that lights up with every blast, chain-reaction shockwaves, surges and a score multiplier. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
     tech: [
-      "Over a thousand honeycomb cells hold charge: blasts, shockwaves and lightning light them up and it bleeds away",
+      "Over a thousand instanced hex cells that rise and glow with their charge, in one shader",
       "Darts telegraph their lunge, shellbacks block shots from the front, and lightning lands where you're heading after a warning ring",
       "Kill shockwaves chain from enemy to enemy, with points that scale with chain depth",
-      "The cloud floor is painted once offscreen, and lit cells are grouped by brightness so each group is drawn as one path"
+      "A dash, overcharge from lit cells, and a supercell boss",
+      "Rain, forked lightning, boiling storm clouds and a storm sea below, with HDR bloom"
     ]
   },
   {
@@ -134,15 +140,17 @@ export const GAMES = [
     genre: "Roguelike", tags: ["roguelike", "daily", "strategy"], difficulty: "Mid", accent: "#ffcf70", accent2: "#ff7a2a",
     unit: "points", daily: true,
     classic: "Dungeon crawl", twist: "One seeded Daily Delve for every player, and a dragon waiting on every fifth floor.",
-    tagline: "A turn-based dungeon crawler with a new dungeon every day.",
-    about: "Descend through procedurally generated floors, fight monsters turn by turn, find potions, bombs and better gear, and face a dragon every fifth floor. Death is permanent. The Daily Delve gives everyone the same dungeon each day.",
+    tagline: "A turn-based dungeon crawl in a torch-lit 3D dungeon, new every day.",
+    about: "Descend through procedurally generated floors of a torch-lit 3D dungeon, fight modelled monsters turn by turn, find potions, bombs and better gear, and face a dragon every fifth floor. Open chests (some of them bite), watch for hidden spike traps, pray at shrines, and trade blows to charge a fury spin that hits everything around you. Death is permanent, and the Daily Delve gives everyone the same dungeon each day.",
     credit: CLAUDE_NEW,
-    brief: "A classic turn-based roguelike: procedural rooms and corridors, field of view, monsters with different behaviours, items, levelling and a daily seeded dungeon.",
+    brief: "A classic turn-based roguelike: procedural rooms and corridors, field of view, monsters with different behaviours, items, levelling and a daily seeded dungeon. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
     tech: [
+      "Stone floors and brick walls lit by your torch and wall sconces, with fog of war from a small visibility texture",
       "Recursive shadowcasting field of view with remembered tiles",
-      "Seeded generator — the Daily Delve is identical for every player",
-      "Monsters path with a Dijkstra map; wraiths drift through walls, bats flutter, slimes split",
-      "Tap-to-travel pathfinding that stops when something new comes into view"
+      "Seeded generator: the Daily Delve is identical for every player",
+      "Monsters path with a Dijkstra map; wraiths drift through walls, bats flutter, slimes split, mimics wait",
+      "Chests, spike traps, shrines and a fury spin"
     ]
   },
   {
@@ -150,15 +158,17 @@ export const GAMES = [
     genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#ffb347", accent2: "#6ec8ff",
     unit: "floors",
     classic: "Tower stacker", twist: "You're building a real skyscraper: a crane lowers each floor, the tower climbs from brick walk-ups to a glass spire as day turns to night, and from the fifth floor up the wind makes the whole thing sway.",
-    tagline: "Build a skyscraper floor by floor off a crane, through five districts and into the night.",
-    about: "A crane swings each new floor in over the tower, first from one side and then the other. Lower it at the right moment: whatever hangs over the floor below is sheared off and falls to the street, so every miss makes the building thinner. Climb from brick row through concrete, glass and art deco to a glass spire, while the sun sets and the city lights come on below. From the fifth floor the wind makes the tower sway, the top most of all, so you're timing the crane and the sway at once. Three flush drops in a row brace the tower against the wind for four floors, and every tenth floor is a sky lobby that comes in wider and can overhang.",
+    tagline: "Build a skyscraper floor by floor off a tower crane, into the night.",
+    about: "A tower crane swings each new floor in over the tower, first from one side and then the other, and climbs with the building as it grows. Lower the floor at the right moment: whatever hangs over the floor below is sheared off and falls to the street, so every miss makes the building thinner. Climb from brick row through concrete, glass and art deco to a glass spire, while the sun sets, the traffic lights stream through the streets below and the windows light up. From the fifth floor the wind makes the tower sway. Three flush drops in a row brace it, a hot streak of flush drops grows the floor back a little, and every tenth floor is a sky lobby that comes in wider.",
     credit: CLAUDE_NEW,
-    brief: "A one-button 3D skyscraper builder in three.js: a crane lowers each floor, overhangs shear off, the facade changes district every ten floors, the day turns to night with height, wind sway, braces for flush drops and wide sky lobbies.",
+    brief: "A one-button 3D skyscraper builder in three.js: a crane lowers each floor, overhangs shear off, the facade changes district every ten floors, the day turns to night with height, wind sway, braces for flush drops and wide sky lobbies. Then upgrade it with better graphics, and make it more immersive and more interactive.",
+    process: "In late October 2026 Claude upgraded it in an agentic session, adding the tower crane, the living city, the sky dome, bloom and the regrow streak, and play-tested it in a headless browser at desktop and phone sizes.",
     tech: [
       "Facades are painted on canvases at load, one per district, with a second map of the windows that light up at night",
-      "Each floor's facade repeats to match its width, so sheared floors keep their windows the right size",
+      "A lattice tower crane that climbs with the building and slews its jib to follow the load",
       "Wind sway bends the tower more toward the top and grows with height, while the stack is stored in straight, unswayed positions",
-      "Sky, fog, sunlight and window glow follow the building's height, over an instanced city with twinkling lights"
+      "A city of streets, flowing traffic lights and lit windows, under a sky dome with a setting sun and stars",
+      "HDR bloom, birds by day and a searchlight helicopter at night"
     ]
   },
   {
@@ -166,15 +176,16 @@ export const GAMES = [
     genre: "Arcade", tags: ["arcade", "endless", "crossing"], difficulty: "Mid", accent: "#5ef2ff", accent2: "#ffd36b",
     unit: "points",
     classic: "Road and river crosser", twist: "Get hit and time rewinds to your last safe spot, but rewinds run out, and a wall of static creeps up behind you.",
-    tagline: "Hop across an endless night city. Get hit and time rewinds.",
-    about: "Hop a little courier bot across an endless night city: busy roads full of cars, vans, buses and trucks, rivers of cargo barges and float pads that power down and sink, and rail crossings where the night train comes through with almost no warning. Get flattened or fall in and the whole street rewinds to the last moment you stood somewhere safe, so you can try that hop again. Rewinds run out, though, and clocks on the grass are the only way to win them back. Don't dawdle: a wall of static follows you up the street.",
+    tagline: "Hop across an endless 3D night city. Get hit and time rewinds.",
+    about: "Hop a little courier bot across an endless night city in real 3D: rain-slick roads full of cars, vans, buses and trucks with their headlights on, canals of cargo barges and float pads that power down and sink, and rail crossings where the night train comes through with almost no warning. Get flattened or fall in and the whole street rewinds to the last moment you stood somewhere safe. Rewinds run out, and a wall of static follows you up the street. Fill the stasis meter with close calls and slow the whole street down, grab parcels and deliver them to the beacon up the road before the timer runs out, and keep moving for a streak bonus.",
     credit: CLAUDE_NEW,
-    brief: "Remake the road-and-river crossing classic as an endless night city with cars, trucks, cargo barges, sinking float pads and trains, and make getting hit rewind time instead of ending the run.",
+    brief: "Remake the road-and-river crossing classic as an endless night city with cars, trucks, cargo barges, sinking float pads and trains, and make getting hit rewind time instead of ending the run. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
     tech: [
-      "Every lane is a pure function of the world clock, so running the clock backwards replays the street in reverse",
+      "Every lane is a pure function of the world clock, so running the clock backwards replays the street in reverse, and slowing it slows everything",
       "The player is snapshotted every frame; a rewind scrubs back to the newest snapshot on solid ground",
-      "Endless lanes are generated in groups with gap rules that keep every crossing possible",
-      "Headlight beams and lamp pools are drawn additively before the cars so they light the road",
+      "Rows are built in 3D as they come into view: modelled vehicles, barges, sinking pads, trains with signals, lamps and parks",
+      "Stasis, parcel deliveries and streak scoring on top of the original rules",
       "Swipes hop the moment they cross a threshold, so touch play feels as quick as the keys"
     ]
   },
@@ -200,15 +211,16 @@ export const GAMES = [
     genre: "Shooter", tags: ["shooter", "arcade", "defense"], difficulty: "Mid", accent: "#8ee9ff", accent2: "#ff5c7a",
     unit: "points",
     classic: "City missile defence", twist: "The cities sit around a small turning planet, so warheads come from every side, and every blast can set off another for a growing multiplier.",
-    tagline: "Defend a tiny planet from warheads raining in from every side.",
-    about: "Six cities and three batteries ring a small blue planet, and it's under attack from every direction at once. Tap or click ahead of the incoming warheads to burst an interceptor in their path. Catch one in a blast and it explodes too, and every link in that chain multiplies the points. Later waves bring warheads that split in three, warheads that weave, and orbiting bombers that keep dropping more until you take them down. The planet keeps turning the whole time.",
+    tagline: "Defend an orbital ring round a living planet, in real 3D.",
+    about: "Six habitats and three interceptor batteries ride a ring round a living planet, and the ring keeps turning while warheads come in from every side. Tap or click ahead of them to burst an interceptor in their path. Catch one in a blast and it bursts too, and every link in that chain multiplies the points. Later waves bring warheads that split in three, warheads that weave, orbiting bombers and armoured dreadnoughts. Between waves you pick a refit for the ring, from wider blasts and hot rockets to a dome shield or a rebuilt habitat, and kills charge an ion pulse that sweeps the space round the ring clean.",
     credit: CLAUDE_NEW,
-    brief: "Remake the city missile-defence classic around a small rotating planet with three batteries, chain-reaction blasts, splitting and weaving warheads, and orbiting bombers.",
+    brief: "Remake the city missile-defence classic around a small rotating planet with three batteries, chain-reaction blasts, splitting and weaving warheads, and orbiting bombers. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
     tech: [
-      "Interceptors fly curved arcs by easing angle and radius from the launch site, so no shot passes through the planet",
-      "Blasts that catch a warhead spawn a smaller blast of their own, and the chain depth is the multiplier",
-      "The nearest battery with ammo fires, measured by angle round the planet as it turns",
-      "Warheads home on their site as it rotates; a weaving one can still miss and hit open ground",
+      "Real-time 3D with HDR bloom: a lit planet with clouds and city lights, the ring, its shuttles and tethers",
+      "Interceptors arc up off the ring's plane and burst back on it, so the rules still play on a flat orbit",
+      "Blasts that catch a warhead spawn a blast of their own, and the chain depth is the multiplier",
+      "Between-wave refits from a deck of ten cards, and an ion pulse charged by kills",
       "Aim with the mouse, touch, or the arrow keys and Space"
     ]
   },
@@ -246,56 +258,84 @@ export const GAMES = [
     slug: "circuit-hop", title: "Circuit Hop", added: "2026-09-20",
     genre: "Platformer", tags: ["platformer"], difficulty: "Advanced", accent: "#7dffb0", accent2: "#5ef2ff", unit: "points",
     original: true,
-    tagline: "A tight neon platformer through circuit-board levels.",
-    about: "A tight neon platformer through six handcrafted circuit-board sectors. Wall-jump up shafts, stomp patrol bots, time the laser gates, hop the spike beds and grab every data chip on the way to the exit portal.",
+    tagline: "A tight platformer through a 3D circuit-board world, with a little robot hero.",
+    about: "Guide a little robot through eight circuit-board sectors built as a 3D diorama, from Relay Lane to the Mainframe. Wall-jump up shafts, air-dash through bots to smash them, bounce off boost pads, dodge hover drones, time the laser gates and hop the spike beds, grabbing data chips for combos on the way to the exit portal. Every sector gives you a rank for how well you ran it.",
     credit: CLAUDE_CURSOR,
-    brief: "A tile-based platformer with coyote time, jump buffering, wall jumps, hazards, enemies, checkpoints and handcrafted levels.",
-    process: "Built by an AI coding agent from a multi-step brief: movement feel first, then the level set, hazards and enemies, then camera, effects and touch buttons.",
-    tech: ["Coyote time, jump buffering and hold-to-jump-higher", "Wall slides, wall jumps and a checkpoint in every sector", "Six handcrafted sectors, each checked by a reachability test so every chip and exit can be reached"]
+    brief: "A tile-based platformer with coyote time, jump buffering, wall jumps, hazards, enemies, checkpoints and handcrafted levels. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "Built by an AI coding agent from a multi-step brief: movement feel first, then the level set, hazards and enemies, then camera, effects and touch buttons. In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
+    tech: [
+      "The original tile physics, drawn one tile to one world unit, so every collision rule and the reachability test still hold",
+      "Coyote time, jump buffering, hold-to-jump-higher, wall jumps and an air dash",
+      "Eight sectors with boost pads, hover drones, chip combos, stomp chains and ranks",
+      "Circuit-board shaders with copper traces and data pulses, under HDR bloom"
+    ]
   },
   {
     slug: "void-rocks", title: "Void Rocks", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#c49bff", accent2: "#5ef2ff", unit: "points",
     classic: "Rock-field shooter", twist: "A tractor tether: grab a rock, whirl it round your tug as a wrecking ball, then fling it through the field for chain multipliers. Scrapper drones fly in to cut up the big rocks.",
-    tagline: "A rock-field shooter where the rocks are your best weapon.",
-    about: "Pilot a little salvage tug through a drifting field of cratered rock. Split the big rocks with your gun, then grab a small one and it whirls round your tug as a wrecking ball, smashing whatever it touches and soaking up drone fire. Let go and it flies the way you're facing, ploughing through the field: every rock it hits raises the chain multiplier. Scrapper drones fly in, latch onto the biggest rocks and cut them apart, showering you with pieces, so swat them with a tethered rock for a big bonus. Thrust, drift and blink a short way ahead when you're boxed in.",
+    tagline: "A 3D rock-field shooter where the rocks are your best weapon.",
+    about: "Pilot a little salvage tug through a drifting field of faceted, veined rock in real 3D. Split the big rocks with your gun, then grab a small one with the tether and it whirls round your tug as a wrecking ball. Let go and it flies the way you're facing, ploughing through the field: every rock it hits raises the chain multiplier. Scrapper drones fly in to cut up the biggest rocks, so swat them with a tethered rock for a big bonus. Fly through gold salvage to refit the tug with twin guns, a heavy tether and spread guns, and when a rift tears open and starts dragging everything in, fling a rock into it to seal it.",
     credit: CLAUDE_CURSOR,
-    brief: "A rock-field shooter with inertia, screen wrap, splitting rocks, a tractor tether, scrapper drones that cut up rocks, a short-range blink and waves.",
-    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, enemies and waves, then glow rendering, audio and touch clusters. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, and later gave it solid cratered rocks, a salvage tug, rock-cutting drones and a blink jump so it stands further from the original.",
-    tech: ["Inertia and screen wrap", "Tether that winds up as it whirls; throws aim along the ship's nose", "Thrown rocks pierce the field and count a chain multiplier", "Drones pick the nearest big rock, orbit it while they cut, then split it", "Rocks are painted once per shape as shaded, cratered stone"]
+    brief: "A rock-field shooter with inertia, screen wrap, splitting rocks, a tractor tether, scrapper drones that cut up rocks, a short-range blink and waves. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, enemies and waves, then glow rendering, audio and touch clusters. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, and later gave it solid cratered rocks, a salvage tug, rock-cutting drones and a blink jump so it stands further from the original. In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
+    tech: [
+      "Real-time 3D with HDR bloom: faceted rocks with craters and glowing veins, parallax stars and a nebula",
+      "The original wrapping arena in screen pixels, drawn under a straight-down camera, so things show on both sides of an edge",
+      "Tether that winds up as it whirls; thrown rocks pierce the field and count a chain multiplier",
+      "Salvage refits in four marks, and rifts with a lensing shader that you seal with a flung rock"
+    ]
   },
   {
     slug: "star-siege", title: "Star Siege", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#ff7eb6", accent2: "#7dffb0", unit: "points",
     classic: "Alien invasion", twist: "Colour lasers against a honeycomb swarm: a hit on the wrong colour paints the alien yours, and a hit on a match chain-pops every touching alien of that colour.",
-    tagline: "Paint the swarm, then pop it in chains.",
-    about: "A honeycomb swarm of aliens in four colours glides from side to side and sinks toward you, and your laser carries one of the colours. Hit an alien of a different colour and you paint it yours. Hit one that matches and every touching alien of that colour detonates in a chain, and in a honeycomb each alien touches up to six others. Switch colours to find the big clusters, paint bridges to join them, and pop them before the swarm reaches your cannon. Hide behind the drifting crystal barriers, and catch the comet when it arcs overhead.",
+    tagline: "Paint a 3D alien swarm in low orbit, then pop it in chains.",
+    about: "A honeycomb swarm of aliens in four colours glides over a turning planet and sinks toward your cannon, and your laser carries one of the colours. Hit an alien of a different colour and you paint it yours. Hit one that matches and every touching alien of that colour detonates in a chain. Divers peel off and swoop at you, big clusters drop power capsules (spread, rapid and a bubble shield), and a charged overload beam paints whole columns at once. Every fourth wave a hive queen arrives who can only be hurt by a matching hit or a cluster popped right beside her.",
     credit: CLAUDE_CURSOR,
-    brief: "A fixed shooter against a gliding honeycomb swarm: colour lasers that paint or chain-pop, drifting crystal barriers, a bonus comet and faster waves.",
-    process: "Built by an AI coding agent from a multi-step brief: the formation and shooting first, then barriers and waves, then sprites, audio and touch controls. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, then reshaped the swarm into a gliding honeycomb with drifting crystal barriers and a comet so it stands further from the original.",
-    tech: ["Flood fill through the six honeycomb neighbours of each alien, popped in a ripple", "The swarm glides and sinks smoothly, speeding up as it thins out", "Hexagonal crystal barriers that erode cell by cell and drift side to side", "Touch drag with auto fire"]
+    brief: "A fixed shooter against a gliding honeycomb swarm: colour lasers that paint or chain-pop, drifting crystal barriers, a bonus comet and faster waves. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "Built by an AI coding agent from a multi-step brief: the formation and shooting first, then barriers and waves, then sprites, audio and touch controls. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, then reshaped the swarm into a gliding honeycomb with drifting crystal barriers and a comet so it stands further from the original. In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
+    tech: [
+      "Real-time 3D deck over a turning planet with HDR bloom; aliens beat their fins in the vertex shader",
+      "Flood fill through the six honeycomb neighbours of each alien, popped in a ripple",
+      "Divers on curved paths, an overload beam, power capsules and a hive queen",
+      "An aim preview shows how big a chain your next shot will set off",
+      "Touch drag with auto fire"
+    ]
   },
   {
     slug: "prism-breaker", title: "Prism Breaker", added: "2026-09-20",
     genre: "Arcade", tags: ["arcade", "paddle"], difficulty: "Mid", accent: "#6ec8ff", accent2: "#c49bff", unit: "points",
     classic: "Brick breaker", twist: "Spin: the paddle's motion at contact puts spin on the ball, so shots curve in flight round steel guards, and bent breaks score double.",
-    tagline: "A neon brick-breaker where the ball curves.",
-    about: "A glassy neon brick-breaker with spin. Move the paddle as the ball touches it and the ball leaves spinning, bending in flight the way you swept. Curve shots round the steel guards that wall off each layout, and any brick broken on a bend scores double. Chain combos without touching the paddle, catch multiball, lasers and a wider paddle, and the six layouts loop faster each time round.",
+    tagline: "A brick breaker in a 3D crystal hall, where the ball curves.",
+    about: "Bounce light through a crystal hall in real 3D. Move the emitter as the ball touches it and the ball leaves spinning, bending in flight the way you swept, so you can curve shots round the steel guards, and any brick broken on a bend scores double. Prism bricks split the light into beams, charge bricks blow out their neighbours, whole rows slide from side to side, and two halls end in a guardian with a core to crack. Catch multiball, lasers, a wider emitter, slow-motion, a barrier and more.",
     credit: CLAUDE_CURSOR,
-    brief: "A brick-breaker with handcrafted layouts, multi-hit and steel bricks, power-ups, combos and a speed ramp.",
-    process: "Built by an AI coding agent from a multi-step brief: physics and paddle control first, then layouts and power-ups, then effects, audio and touch drag. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
-    tech: ["Spin from the paddle's measured speed; the ball's velocity turns a little every frame", "Six layouts with steel guards, looping faster", "Multiball, lasers and wide paddle"]
+    brief: "A brick-breaker with handcrafted layouts, multi-hit and steel bricks, power-ups, combos and a speed ramp. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "Built by an AI coding agent from a multi-step brief: physics and paddle control first, then layouts and power-ups, then effects, audio and touch drag. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser. In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
+    tech: [
+      "Real-time 3D crystal hall with HDR bloom, glass bricks and light trails",
+      "Spin from the emitter's measured speed; the ball's velocity turns a little every frame",
+      "Prism bricks fire beams, charge bricks blow out their neighbours, and rows slide",
+      "Guardian halls with a core to crack",
+      "The rules stay flat on the floor plane, so the feel of the original is unchanged"
+    ]
   },
   {
     slug: "fusion-2048", title: "Fusion 2048", added: "2026-09-20",
     genre: "Puzzle", tags: ["puzzle"], difficulty: "Simple", accent: "#5ef2ff", accent2: "#ff7eb6", unit: "points",
     classic: "Sliding tiles", twist: "Chain reactions: a fused tile that lands next to its twin fuses again for a multiplier, while lead blocks drop in and wall off lines.",
-    tagline: "Slide, fuse and set off chain reactions past 2048.",
-    about: "Slide glowing tiles and fuse equal numbers into bigger ones, but a freshly fused tile that lands touching its twin fuses again on its own, and again, each link worth more. Set up cascades for big chains. Every few moves a lead block drops onto the board: tiles can't pass it, so it splits its row and column in two until it crumbles.",
+    tagline: "Fuse glowing cells in a 3D fusion reactor and set off chain reactions.",
+    about: "Slide glowing glass cells round a steel tray at the heart of a fusion reactor, and fuse equal numbers into bigger ones. A freshly fused cell that lands touching its twin fuses again on its own, and again, each link worth more. Lead blocks drop in and wall off rows and columns until they decay. Chains charge vents that blow a cell clean out of the tray, bigger cells earn rewinds, and the reactor heats up round you from Cold through Critical and Stellar to Nova.",
     credit: CLAUDE_CURSOR,
-    brief: "A 2048 sliding-tile game (the original is open source under MIT) with tweened slides, merge particles and escalating sound.",
-    process: "Built by an AI coding agent from a short multi-step brief: board rules first, then animation and juice, then swipe input. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser.",
-    tech: ["Chain reactions resolved as their own animated steps", "Lead cells split each line into runs that slide separately", "Tweened slides and merges", "Swipe input"]
+    brief: "A 2048 sliding-tile game (the original is open source under MIT) with tweened slides, merge particles and escalating sound. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
+    process: "Built by an AI coding agent from a short multi-step brief: board rules first, then animation and juice, then swipe input. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser. In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
+    tech: [
+      "Real-time 3D reactor with HDR bloom: glass cubes in a steel tray over a plasma well",
+      "Chain reactions resolved as their own animated steps",
+      "Lead cells split each line into runs that slide separately",
+      "Vents and rewinds earned by play, and reactor stages that follow your best cell",
+      "Swipe, keys or tap to play"
+    ]
   },
   {
     slug: "neon-flap", title: "Ptero Flap", added: "2026-09-20",
@@ -323,6 +363,7 @@ export const RETIRED = {
 
 /* What's-new feed (newest first). */
 export const NEWS = [
+  { date: "2026-10-27", title: "Twelve games rebuilt in 3D", body: "Every game that wasn't already a big build has been rebuilt in real 3D with new mechanics. Ringfall defends an orbital ring with refits and an ion pulse. Prism Breaker is a crystal hall with prism beams, charge bricks and guardians. Fusion 2048 runs in a fusion reactor with vents and rewinds. Nebula Drop has lit worlds, swaps, gravity pulses and wormholes. Circuit Hop is a circuit-board diorama with an air dash, boost pads, drones, ranks and eight sectors. Deepdelve is a torch-lit dungeon with chests, mimics, traps and shrines. Wordglow is glass tiles in an aurora with sparks. Star Siege adds divers, an overload beam, capsules and a hive queen. Void Rocks adds refits and rifts. Crosstime adds stasis, parcels and streaks. Gridstorm adds a dash, overcharge and supercells. And Skystack gets a tower crane and a living city." },
   { date: "2026-10-23", title: "Echo Maze is now a bat in the dark", body: "Echo Maze has been rebuilt from scratch. You're a young bat lost in a pitch-black cave who sees by sonar: every ping lights the tunnels, but the spiders, stone lurkers and owls hunt by sound. Find every crystal, then fly out into the moonlight." },
   { date: "2026-10-23", title: "Five classics get a look of their own", body: "Gridstorm now takes place inside a thunderstorm, with a new cast of storm creatures and thunderheads that call down lightning. Skystack is a real skyscraper lowered floor by floor off a crane, climbing from brick walk-ups to a glass spire as day turns to night. Void Rocks has solid cratered rocks and drones that cut them up, Star Siege faces a gliding honeycomb swarm, and Crosstime's rivers carry cargo barges and float pads. Block Bloom now fits on any screen and adds Full Bloom cascades and dew drops." },
   { date: "2026-10-22", title: "Ptero Flap goes moonlit", body: "Ptero Flap has a new look: a brand-new wide-eyed clay pterodactyl flying over a moonlit island, with a glowing moon, a lagoon, palm trees, a dome hut with a warm window and fireflies. The brontosauruses are gone; now you thread a night forest of trees, rock spires, hanging moss, vines and spider webs, some strung between bamboo stalks. The split-sky twin-flyer mode is gone too, so it is one pterodactyl and one flap button again. Moving gaps, amber and close-call combos stay." },
