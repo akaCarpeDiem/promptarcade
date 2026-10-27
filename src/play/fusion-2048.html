@@ -3,650 +3,980 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
 <title>Fusion 2048 — PromptArcade</title>
 <style>
-html,body{margin:0;height:100%;background:#05070f;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
-canvas{display:block;position:fixed;inset:0}
+html,body{margin:0;height:100%;background:#04050c;color:#f4f1ff;overflow:hidden;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+#game{position:fixed;inset:0;z-index:1}
+#game canvas{display:block;width:100%;height:100%}
+#fx{position:fixed;inset:0;z-index:2;pointer-events:none}
+#fu-hud{opacity:0;transition:opacity .45s ease}
+#fu-hud.on{opacity:1}
+#s-tile b{color:#ffd27a}
+#s-chain b{color:#ff9ec4}
+#fu-tools{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:31;display:flex;gap:10px;opacity:0;transition:opacity .4s}
+#fu-tools.on{opacity:1}
+#fu-tools button{display:flex;align-items:center;gap:.5rem;padding:.55rem .95rem;border-radius:999px;border:1px solid rgba(142,233,255,.35);background:rgba(10,14,34,.7);color:#e9f6ff;font:600 .82rem Manrope,system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:transform .12s,border-color .15s,box-shadow .15s,opacity .15s}
+#fu-tools button:hover:not(:disabled){border-color:#8ee9ff;box-shadow:0 0 18px rgba(142,233,255,.3)}
+#fu-tools button:active:not(:disabled){transform:scale(.95)}
+#fu-tools button:disabled{opacity:.38;cursor:default}
+#fu-tools button.armed{border-color:#ff9ec4;box-shadow:0 0 22px rgba(255,126,182,.5);color:#fff}
+#fu-tools b{font:700 .7rem 'JetBrains Mono',ui-monospace,monospace;padding:.1rem .4rem;border-radius:6px;background:rgba(142,233,255,.16)}
+#fu-tools kbd{font:600 .62rem 'JetBrains Mono',ui-monospace,monospace;opacity:.55}
+@media (max-width:520px){#fu-hud{right:136px}#fu-tools kbd{display:none}}
 </style></head><body>
-<canvas id="c" aria-label="Fusion 2048 board"></canvas>
+<div id="game" aria-label="Fusion 2048 reactor board"></div>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="pa-hud" id="fu-hud">
+  <div class="pa-stat" id="s-score"><small>Score</small><b>0</b></div>
+  <div class="pa-stat" id="s-tile"><small>Best tile</small><b>2</b></div>
+  <div class="pa-stat" id="s-chain"><small>Best chain</small><b>—</b></div>
+  <div class="pa-stat" id="s-stage"><small>Reactor</small><b>Cold</b></div>
+</div>
+<div id="fu-tools">
+  <button type="button" id="t-undo" aria-label="Rewind one move">↶ Rewind <b id="n-undo">2</b><kbd>Z</kbd></button>
+  <button type="button" id="t-vent" aria-label="Vent a tile">⚡ Vent <b id="n-vent">0</b><kbd>X</kbd></button>
+</div>
 <script>
 window.paConfig = {
   slug: "fusion-2048", title: "Fusion 2048", native: true, music: "lofi", unit: "points",
-  controls: [["← → ↑ ↓ / WASD", "Slide tiles"], ["Touch / mouse", "Swipe to slide"], ["Twins touching", "Chain-fuse on their own"]]
+  controls: [["← → ↑ ↓ / WASD", "Slide the cells"], ["Touch / mouse", "Swipe to slide"], ["Twins touching", "Chain-fuse on their own"], ["Z / X", "Rewind a move · vent a tile"]]
 };
 </script>
-<script src="/games/play/pa-score.js?v=e650da0b4c"></script>
-<script src="/games/play/pa-gate.js?v=e650da0b4c"></script>
-<script src="/games/play/pa-kit.js?v=e650da0b4c"></script>
-<script>
+<script src="/games/play/pa-score.js"></script>
+<script src="/games/play/pa-gate.js"></script>
+<script src="/games/play/pa-kit.js"></script>
+<script type="module">
+import * as THREE from "/vendor/three/three.module.min.js";
+
 (() => {
-  const SIZE = 4;
-  const ANIM = 0.11;
-  // The twist: chain reactions and lead. A freshly fused tile that lands touching its twin fuses again
-  // on its own, for a growing multiplier. Lead blocks drop in, wall off rows and columns, then decay.
-  const REACT_ANIM = 0.16, LEAD_EVERY = 11, LEAD_LIFE = 9, LEAD_MAX = 2;
-  const { clamp, ease, choice } = PA;
+"use strict";
+// The sliding-tile classic, set in a fusion reactor and rendered in real 3D. Cells are glowing glass
+// cubes in a steel tray; twins that slide together fuse, and the twist is the chain reaction: a freshly
+// fused cell that lands touching its own twin fuses again by itself, for a growing multiplier. Lead
+// blocks drop in, wall off rows and columns, then decay. Chains charge Vents (blow a cell out of the
+// tray); bigger cells earn Rewinds. The reactor around the board heats up with the best cell.
+const PA = window.PA;
+const TAU = Math.PI * 2;
+const { clamp, ease, choice, rand } = PA;
+const SIZE = 4, ANIM = 0.12, REACT_ANIM = 0.17, LEAD_EVERY = 11, LEAD_LIFE = 9, LEAD_MAX = 2;
+const CELL = 1, GAP = 0.12, PITCH = CELL + GAP, TILE_H = 0.42;
+const cellPos = (r, c) => ({ x: (c - (SIZE - 1) / 2) * PITCH, z: (r - (SIZE - 1) / 2) * PITCH });
 
-  const TILE = {
-    2: { fill: "#142038", edge: "#8ee9ff", text: "#8ee9ff", glow: "#8ee9ff" },
-    4: { fill: "#1c1848", edge: "#c4a6ff", text: "#e8dcff", glow: "#c4a6ff" },
-    8: { fill: "#2a1840", edge: "#ff9ec4", text: "#fff", glow: "#ff7eb6" },
-    16: { fill: "#321828", edge: "#ff7eb6", text: "#fff", glow: "#ff7eb6" },
-    32: { fill: "#3a1820", edge: "#ffb07a", text: "#fff", glow: "#ffb07a" },
-    64: { fill: "#422010", edge: "#ffd27a", text: "#2a1800", glow: "#ffd27a" },
-    128: { fill: "#3a2810", edge: "#ffe08a", text: "#fff", glow: "#ffd27a" },
-    256: { fill: "#283818", edge: "#7ee7a8", text: "#fff", glow: "#7ee7a8" },
-    512: { fill: "#183830", edge: "#5ef2ff", text: "#fff", glow: "#5ef2ff" },
-    1024: { fill: "#102838", edge: "#8ee9ff", text: "#fff", glow: "#8ee9ff" },
-    2048: { fill: "#201040", edge: "#ffd27a", text: "#fff", glow: "#ffd27a" }
-  };
+const TIERS = {
+  2: 0x5fe6ff, 4: 0xa98cff, 8: 0xff8ac4, 16: 0xff5f8f, 32: 0xff9b4a, 64: 0xffc93d,
+  128: 0xfff07a, 256: 0x6cf0a0, 512: 0x3fe6d2, 1024: 0x5aa0ff, 2048: 0xffe4a8
+};
+const tierCol = (v) => TIERS[v] != null ? TIERS[v] : new THREE.Color().setHSL((Math.log2(v) * 0.11) % 1, 0.9, 0.62).getHex();
+const STAGES = [[2, "Cold"], [64, "Warm"], [256, "Hot"], [512, "Critical"], [1024, "Stellar"], [2048, "Fusion"], [4096, "Nova"]];
 
-  let L = {};
-  let grid, score, bestTile, overSent;
-  let animating, animT, pendingGrid, slideAnims, mergePop;
-  let spawnPop = null;
-  let reached2048 = false;
-  let lead, moves = 0, chainDepth = 0, bestChain = 0, chains = 0, leadsCleared = 0, animLen = ANIM;
+/* ---------------- renderer + post ---------------- */
+const mount = document.getElementById("game");
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+const dprCap = () => Math.min(PA.isTouch ? 1.75 : 2, devicePixelRatio || 1);
+renderer.setPixelRatio(dprCap());
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+mount.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x04050c);
+const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 0.1, 200);
+const hdr = (c, k) => new THREE.Color(c).multiplyScalar(k);
 
-  const view = PA.canvas(document.getElementById("c"), { onResize: layout });
-  const ctx = view.ctx;
-  const fx = new PA.Particles(900), texts = new PA.Texts();
-
-  function emptyGrid() { return Array.from({ length: SIZE }, () => Array(SIZE).fill(0)); }
-
-  function tileStyle(v) {
-    if (TILE[v]) return TILE[v];
-    const log = Math.min(16, Math.log2(v));
-    const t = (log - 11) / 5;
-    return {
-      fill: "#" + [32, 16 + t * 20, 48 + t * 10].map(n => Math.round(n).toString(16).padStart(2, "0")).join(""),
-      edge: "#ffd27a", text: "#fff", glow: log >= 13 ? "#ff7eb6" : "#ffd27a"
-    };
+function makePost() {
+  const ext = renderer.extensions;
+  const fullFloat = ext.has("EXT_color_buffer_float"), hdrOk = fullFloat || ext.has("EXT_color_buffer_half_float");
+  const type = hdrOk ? THREE.HalfFloatType : THREE.UnsignedByteType;
+  const main = new THREE.WebGLRenderTarget(1, 1, { type, samples: hdrOk && !fullFloat ? 0 : 4 });
+  const LV = 5, lv = [], tmp = [];
+  for (let i = 0; i < LV; i++) {
+    lv.push(new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false }));
+    tmp.push(new THREE.WebGLRenderTarget(1, 1, { type, depthBuffer: false }));
   }
-
-  function layout(v) {
-    const touch = PA.isTouch;
-    const bottom = touch ? 28 : 0;
-    const w = v.w, h = v.h - bottom;
-    const portrait = w < h * 0.82;
-    const side = portrait ? 0 : clamp(Math.min(220, w * 0.26), 188, 220);
-    const top = portrait ? 88 : 72;
-    const boardCap = Math.min(w - (portrait ? 36 : side + 52), h - top - (portrait ? 120 : 48));
-    const gap = clamp(Math.floor(boardCap * 0.028), 8, 14);
-    const cell = Math.max(14, Math.floor((boardCap - gap * (SIZE + 1)) / SIZE));
-    const bw = cell * SIZE + gap * (SIZE + 1);
-    const bx = Math.round((w - bw - (portrait ? 0 : side + 20)) / 2);
-    const by = Math.round(top + (h - top - (portrait ? 108 : 24) - bw) / 2);
-    L = { w: v.w, h: v.h, cell, gap, bx, by, bw, side, portrait, top };
-  }
-
-  function roundRect(g, x, y, w, h, r) {
-    g.beginPath(); g.moveTo(x + r, y);
-    g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
-    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
-  }
-
-  function cellXY(r, c) {
-    const { bx, by, cell, gap } = L;
-    return [bx + gap + c * (cell + gap), by + gap + r * (cell + gap)];
-  }
-
-  function lineSlots(dr, dc, i) {
-    const slots = [];
-    if (dc !== 0) {
-      const r = i;
-      const cols = dc < 0 ? [0, 1, 2, 3] : [3, 2, 1, 0];
-      cols.forEach(c => slots.push({ r, c }));
-    } else {
-      const c = i;
-      const rows = dr < 0 ? [0, 1, 2, 3] : [3, 2, 1, 0];
-      rows.forEach(r => slots.push({ r, c }));
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+  quad.frustumCulled = false;
+  const pscene = new THREE.Scene();
+  pscene.add(quad);
+  const vs = "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }";
+  const mk = (fs, uniforms) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
+  const box4 = "vec3 c = 0.25 * (texture2D(tex, vUv + px * vec2(-0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, -0.5)).rgb + texture2D(tex, vUv + px * vec2(-0.5, 0.5)).rgb + texture2D(tex, vUv + px * vec2(0.5, 0.5)).rgb);";
+  const bright = mk([
+    "uniform sampler2D tex; uniform vec2 px; uniform float thr; varying vec2 vUv;",
+    "void main(){", box4,
+    "  float l = max(c.r, max(c.g, c.b));",
+    "  float knee = thr * 0.5, soft = clamp(l - thr + knee, 0.0, 2.0 * knee);",
+    "  soft = soft * soft / (4.0 * knee + 1e-4);",
+    "  gl_FragColor = vec4(min(c * max(soft, l - thr) / max(l, 1e-4), vec3(30.0)), 1.0);",
+    "}"].join("\n"), { tex: { value: null }, px: { value: new THREE.Vector2() }, thr: { value: hdrOk ? 1.0 : 0.72 } });
+  const down = mk("uniform sampler2D tex; uniform vec2 px; varying vec2 vUv; void main(){ " + box4 + " gl_FragColor = vec4(c, 1.0); }",
+    { tex: { value: null }, px: { value: new THREE.Vector2() } });
+  const blur = mk([
+    "uniform sampler2D tex; uniform vec2 dir; varying vec2 vUv;",
+    "void main(){",
+    "  vec3 c = texture2D(tex, vUv).rgb * 0.2270270270;",
+    "  c += (texture2D(tex, vUv + dir * 1.3846153846).rgb + texture2D(tex, vUv - dir * 1.3846153846).rgb) * 0.3162162162;",
+    "  c += (texture2D(tex, vUv + dir * 3.2307692308).rgb + texture2D(tex, vUv - dir * 3.2307692308).rgb) * 0.0702702703;",
+    "  gl_FragColor = vec4(c, 1.0);",
+    "}"].join("\n"), { tex: { value: null }, dir: { value: new THREE.Vector2() } });
+  const comp = mk([
+    "uniform sampler2D tScene, b0, b1, b2, b3, b4; uniform float strength, grain, time; varying vec2 vUv;",
+    "void main(){",
+    "  vec3 c = texture2D(tScene, vUv).rgb;",
+    "  vec3 b = texture2D(b0, vUv).rgb * 0.5 + texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.75 + texture2D(b3, vUv).rgb * 0.85 + texture2D(b4, vUv).rgb * 0.95;",
+    "  c += b * strength;",
+    "  vec2 q = vUv - 0.5;",
+    "  c *= 1.0 - dot(q, q) * 0.8;",
+    "  gl_FragColor = vec4(c, 1.0);",
+    "  #include <tonemapping_fragment>",
+    "  #include <colorspace_fragment>",
+    "  float n = fract(sin(dot(gl_FragCoord.xy + fract(time) * 97.0, vec2(12.9898, 78.233))) * 43758.5453);",
+    "  gl_FragColor.rgb += (n - 0.5) * grain;",
+    "}"].join("\n"), {
+    tScene: { value: main.texture }, b0: { value: lv[0].texture }, b1: { value: lv[1].texture }, b2: { value: lv[2].texture },
+    b3: { value: lv[3].texture }, b4: { value: lv[4].texture }, strength: { value: 0.5 }, grain: { value: 0.018 }, time: { value: 0 }
+  });
+  const pass = (m, target) => { quad.material = m; renderer.setRenderTarget(target); renderer.render(pscene, cam); };
+  return {
+    comp,
+    setSize(w, h) {
+      main.setSize(w, h);
+      for (let i = 0; i < LV; i++) {
+        const lw = Math.max(1, w >> (i + 1)), lh = Math.max(1, h >> (i + 1));
+        lv[i].setSize(lw, lh); tmp[i].setSize(lw, lh);
+      }
+    },
+    render(sc, cm, t) {
+      renderer.setRenderTarget(main);
+      renderer.render(sc, cm);
+      bright.uniforms.tex.value = main.texture;
+      bright.uniforms.px.value.set(1 / main.width, 1 / main.height);
+      pass(bright, lv[0]);
+      for (let i = 0; i < LV; i++) {
+        if (i) {
+          down.uniforms.tex.value = lv[i - 1].texture;
+          down.uniforms.px.value.set(1 / lv[i - 1].width, 1 / lv[i - 1].height);
+          pass(down, lv[i]);
+        }
+        blur.uniforms.tex.value = lv[i].texture; blur.uniforms.dir.value.set(1 / lv[i].width, 0);
+        pass(blur, tmp[i]);
+        blur.uniforms.tex.value = tmp[i].texture; blur.uniforms.dir.value.set(0, 1 / lv[i].height);
+        pass(blur, lv[i]);
+      }
+      comp.uniforms.time.value = t;
+      pass(comp, null);
     }
-    return slots;
+  };
+}
+const post = makePost();
+
+let W = innerWidth, H = innerHeight;
+const overlay = PA.canvas(document.getElementById("fx"), { onResize: (o) => { W = o.w; H = o.h; } });
+const ctx = overlay.ctx;
+const texts = new PA.Texts();
+const bufSize = new THREE.Vector2(), tmpV = new THREE.Vector3();
+let camDist = 9;
+const ELEV = 1.16;
+function placeCamera(d, ox, oz) {
+  camera.position.set(ox || 0, Math.sin(ELEV) * d, Math.cos(ELEV) * d + 0.25 + (oz || 0));
+  camera.lookAt(0, 0, 0.25);
+}
+function fitCamera() {
+  // keep the tray (plus a margin) on screen, leaving room for the HUD above and the tools below
+  const half = (SIZE * PITCH) / 2 + 0.5;
+  let d = 4;
+  for (; d < 60; d += 0.1) {
+    placeCamera(d); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
+    let ok = true;
+    for (const [x, z] of [[-half, -half], [half, -half], [-half, half], [half, half]]) {
+      tmpV.set(x, 0.3, z).project(camera);
+      if (Math.abs(tmpV.x) > 0.94 || tmpV.y > 0.72 || tmpV.y < -0.74) { ok = false; break; }
+    }
+    if (ok) break;
   }
+  camDist = d;
+}
+function resize() {
+  renderer.setPixelRatio(dprCap());
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.getDrawingBufferSize(bufSize);
+  post.setSize(bufSize.x, bufSize.y);
+  fitCamera();
+  pointsMat.uniforms.scale.value = bufSize.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+}
+function toScreen(x, y, z) {
+  tmpV.set(x, y, z).project(camera);
+  return { x: (tmpV.x + 1) / 2 * W, y: (1 - tmpV.y) / 2 * H };
+}
 
-  function simulate(dr, dc) {
-    const newGrid = emptyGrid();
-    let moved = false;
-    let gain = 0;
-    const anims = [];
+/* ---------------- textures ---------------- */
+function canvasTex(w, h, paint) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  paint(cv.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+{
+  const env = canvasTex(512, 256, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, "#241a40"); gr.addColorStop(0.48, "#5a4a8a"); gr.addColorStop(0.52, "#1a1430"); gr.addColorStop(1, "#06050c");
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 6; i++) { g.fillStyle = i % 2 ? "#ffd27a" : "#8ee9ff"; g.fillRect(i * 86 + 20, 50, 40, 12); }
+    g.fillStyle = "#fff"; g.fillRect(220, 6, 80, 18);
+  });
+  env.mapping = THREE.EquirectangularReflectionMapping;
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromEquirectangular(env).texture;
+  env.dispose(); pm.dispose();
+}
+const glowTex = canvasTex(128, 128, (g, w) => {
+  const gr = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+  gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(.25, "rgba(255,255,255,.45)"); gr.addColorStop(.6, "rgba(255,255,255,.08)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, w, w);
+});
+const numTex = new Map();
+function numberTex(v) {
+  if (numTex.has(v)) return numTex.get(v);
+  const t = canvasTex(256, 256, (g, w) => {
+    g.clearRect(0, 0, w, w);
+    const s = String(v);
+    const fs = s.length > 4 ? 64 : s.length > 3 ? 78 : s.length > 2 ? 98 : 124;
+    g.font = `800 ${fs}px Manrope, system-ui, sans-serif`;
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.lineWidth = fs * 0.14; g.strokeStyle = "rgba(4,6,16,.55)"; g.lineJoin = "round";
+    g.strokeText(s, w / 2, w / 2 + 6);
+    g.fillStyle = "#fff";
+    g.fillText(s, w / 2, w / 2 + 6);
+  });
+  numTex.set(v, t);
+  return t;
+}
+const leadTexCache = new Map();
+function leadTex(n) {
+  if (leadTexCache.has(n)) return leadTexCache.get(n);
+  const t = canvasTex(256, 256, (g, w) => {
+    g.clearRect(0, 0, w, w);
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = "#cfd5ea"; g.font = "800 52px 'JetBrains Mono', ui-monospace, monospace";
+    g.fillText("LEAD", w / 2, w * 0.4);
+    g.fillStyle = n <= 2 ? "#ff9ec4" : "#9aa3c0"; g.font = "700 40px 'JetBrains Mono', ui-monospace, monospace";
+    g.fillText(n + (n === 1 ? " move" : " moves"), w / 2, w * 0.66);
+  });
+  leadTexCache.set(n, t);
+  return t;
+}
 
-    for (let i = 0; i < SIZE; i++) {
-      const all = lineSlots(dr, dc, i);
-      // Lead cells split the line: each run between them slides on its own.
-      const runs = [[]];
-      all.forEach(s => { if (lead[s.r][s.c]) runs.push([]); else runs[runs.length - 1].push(s); });
-      for (const slots of runs) {
+/* ---------------- reactor chamber ---------------- */
+scene.add(new THREE.HemisphereLight(0x8a90ff, 0x100818, 0.55));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.6);
+keyLight.position.set(-3, 9, 4);
+scene.add(keyLight);
+const coreLight = new THREE.PointLight(0xffc070, 18, 14, 2);
+coreLight.position.set(0, -1.4, 0);
+scene.add(coreLight);
+const roomFloor = new THREE.Mesh(new THREE.CircleGeometry(30, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x0c0b18, roughness: 0.4, metalness: 0.6 }));
+roomFloor.position.y = -2.2;
+scene.add(roomFloor);
+// plasma well under the tray: the reactor's heart, brighter as the stage rises
+const coreMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { time: { value: 0 }, heat: { value: 0 }, col: { value: new THREE.Color(0xffb35a) } },
+  vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `
+    uniform float time, heat; uniform vec3 col; varying vec2 vUv;
+    void main(){
+      vec2 p = vUv * 2.0 - 1.0; float r = length(p), a = atan(p.y, p.x);
+      float swirl = sin(a * 5.0 + r * 9.0 - time * 1.6) * 0.5 + 0.5;
+      float rings = sin(r * 26.0 - time * 3.0) * 0.5 + 0.5;
+      float k = smoothstep(1.0, 0.0, r) * (0.35 + 0.65 * swirl) + smoothstep(1.0, 0.6, r) * rings * 0.25;
+      k *= smoothstep(1.0, 0.85, r);
+      gl_FragColor = vec4(col * k * (0.5 + heat * 1.6), 1.0);
+    }`
+});
+const coreDisk = new THREE.Mesh(new THREE.CircleGeometry(4.6, 64).rotateX(-Math.PI / 2), coreMat);
+coreDisk.position.y = -2.15;
+scene.add(coreDisk);
+// containment rings around the tray
+const rings = [];
+for (let i = 0; i < 3; i++) {
+  const g = new THREE.Group();
+  const r = 4.0 + i * 0.9;
+  const band = new THREE.Mesh(new THREE.TorusGeometry(r, 0.06 + i * 0.015, 8, 120), new THREE.MeshStandardMaterial({ color: 0x8a92c0, metalness: 0.9, roughness: 0.25 }));
+  band.rotation.x = Math.PI / 2;
+  g.add(band);
+  const marks = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.05, 0.08), new THREE.MeshBasicMaterial({ color: hdr(i === 1 ? 0xffd27a : 0x8ee9ff, 1.6) }), 24);
+  const m4 = new THREE.Matrix4();
+  for (let k = 0; k < 24; k++) {
+    const a = k / 24 * TAU;
+    m4.makeRotationY(-a).setPosition(Math.cos(a) * r, 0.07, Math.sin(a) * r);
+    marks.setMatrixAt(k, m4);
+  }
+  g.add(marks);
+  g.position.y = -0.6 - i * 0.55;
+  g.rotation.set(i === 1 ? 0.06 : -0.04, 0, i === 2 ? 0.05 : 0);
+  scene.add(g);
+  rings.push(g);
+}
+// pillars round the chamber
+for (let i = 0; i < 8; i++) {
+  const a = i / 8 * TAU + 0.2, r = 8.5;
+  const p = new THREE.Mesh(new THREE.BoxGeometry(0.6, 9, 0.6), new THREE.MeshStandardMaterial({ color: 0x1a1a30, metalness: 0.8, roughness: 0.35 }));
+  p.position.set(Math.cos(a) * r, 2, Math.sin(a) * r);
+  p.rotation.y = -a;
+  scene.add(p);
+  const s = new THREE.Mesh(new THREE.BoxGeometry(0.08, 8, 0.08), new THREE.MeshBasicMaterial({ color: hdr(0x8ee9ff, 1.4) }));
+  s.position.set(Math.cos(a) * (r - 0.32), 2, Math.sin(a) * (r - 0.32));
+  scene.add(s);
+}
+
+/* ---------------- the tray ---------------- */
+function roundedShape(w, d, r) {
+  const s = new THREE.Shape();
+  s.moveTo(-w / 2 + r, -d / 2);
+  s.lineTo(w / 2 - r, -d / 2); s.quadraticCurveTo(w / 2, -d / 2, w / 2, -d / 2 + r);
+  s.lineTo(w / 2, d / 2 - r); s.quadraticCurveTo(w / 2, d / 2, w / 2 - r, d / 2);
+  s.lineTo(-w / 2 + r, d / 2); s.quadraticCurveTo(-w / 2, d / 2, -w / 2, d / 2 - r);
+  s.lineTo(-w / 2, -d / 2 + r); s.quadraticCurveTo(-w / 2, -d / 2, -w / 2 + r, -d / 2);
+  return s;
+}
+function slab(w, d, h, r, bevel) {
+  const g = new THREE.ExtrudeGeometry(roundedShape(w - bevel * 2, d - bevel * 2, r), { depth: h - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 6 });
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, bevel, 0);
+  return g;
+}
+const traySize = SIZE * PITCH + 0.5;
+const tray = new THREE.Mesh(slab(traySize, traySize, 0.5, 0.3, 0.08), new THREE.MeshStandardMaterial({ color: 0x3a3f60, metalness: 0.85, roughness: 0.28 }));
+tray.position.y = -0.5;
+scene.add(tray);
+const trayRim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.03, 6, 4, TAU), new THREE.MeshBasicMaterial({ color: hdr(0xffd27a, 2.6) }));
+trayRim.rotation.set(Math.PI / 2, 0, Math.PI / 4);
+trayRim.scale.set(traySize * 0.71, traySize * 0.71, 1);
+trayRim.position.y = 0.01;
+scene.add(trayRim);
+const socketMat = new THREE.MeshStandardMaterial({ color: 0x0c0d1c, metalness: 0.4, roughness: 0.25, emissive: 0x2a3070, emissiveIntensity: 0.4 });
+const sockets = [];
+for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+  const p = cellPos(r, c);
+  const s = new THREE.Mesh(slab(CELL, CELL, 0.06, 0.14, 0.02), socketMat.clone());
+  s.position.set(p.x, -0.04, p.z);
+  scene.add(s);
+  sockets.push(s);
+}
+
+/* ---------------- particles, ribbons, rings ---------------- */
+const PMAX = 2500;
+const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3), pSize = new Float32Array(PMAX);
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute("color", new THREE.BufferAttribute(pCol, 3).setUsage(THREE.DynamicDrawUsage));
+pGeo.setAttribute("size", new THREE.BufferAttribute(pSize, 1).setUsage(THREE.DynamicDrawUsage));
+const pointsMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { scale: { value: 600 } },
+  vertexShader: "uniform float scale; attribute float size; attribute vec3 color; varying vec3 vC; void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = max(1.0, size * scale / -mv.z); gl_Position = projectionMatrix * mv; }",
+  fragmentShader: "varying vec3 vC; void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.05, d); gl_FragColor = vec4(vC * a * a, 1.0); }"
+});
+const ptsMesh = new THREE.Points(pGeo, pointsMat);
+ptsMesh.frustumCulled = false;
+scene.add(ptsMesh);
+const parts = [];
+const C3 = (hex, k) => { const c = new THREE.Color(hex); return [c.r * k, c.g * k, c.b * k]; };
+function burst(x, y, z, o) {
+  o = o || {};
+  const n = o.n || 16, cols = o.colors || [0xffffff];
+  for (let i = 0; i < n && parts.length < PMAX; i++) {
+    const a = Math.random() * TAU, sp = (o.speed || 3) * rand(0.3, 1), life = (o.life || 0.6) * rand(0.5, 1.1);
+    parts.push({ x, y, z, vx: Math.cos(a) * sp, vy: rand(0.4, 1) * (o.up == null ? 3 : o.up), vz: Math.sin(a) * sp, g: o.g == null ? 7 : o.g,
+      life, max: life, size: (o.size || 0.07) * rand(0.6, 1.4), c: C3(cols[(Math.random() * cols.length) | 0], o.bright || 2.6) });
+  }
+}
+function updateParts(dt) {
+  let j = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    p.life -= dt;
+    if (p.life <= 0) continue;
+    p.vy -= p.g * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    parts[j++] = p;
+  }
+  parts.length = j;
+  for (let i = 0; i < j; i++) {
+    const p = parts[i], k = p.life / p.max;
+    pPos[i * 3] = p.x; pPos[i * 3 + 1] = p.y; pPos[i * 3 + 2] = p.z;
+    pCol[i * 3] = p.c[0] * k; pCol[i * 3 + 1] = p.c[1] * k; pCol[i * 3 + 2] = p.c[2] * k;
+    pSize[i] = p.size;
+  }
+  pGeo.setDrawRange(0, j);
+  pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true; pGeo.attributes.size.needsUpdate = true;
+}
+// rising embers from the core, always on
+const embers = Array.from({ length: 70 }, () => ({ x: rand(-6, 6), y: rand(-2, 5), z: rand(-6, 3), v: rand(0.2, 0.7), s: rand(0.04, 0.1) }));
+const RING = new THREE.RingGeometry(0.9, 1, 48).rotateX(-Math.PI / 2);
+const waves = [];
+function shock(x, z, color, size, y) {
+  const m = new THREE.Mesh(RING, new THREE.MeshBasicMaterial({ color: hdr(color, 1.3), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  m.position.set(x, y == null ? 0.05 : y, z);
+  scene.add(m);
+  waves.push({ m, t: 0, size });
+}
+const TV = 6000;
+const tPos = new Float32Array(TV * 3), tCol = new Float32Array(TV * 3);
+const tGeo = new THREE.BufferGeometry();
+tGeo.setAttribute("position", new THREE.BufferAttribute(tPos, 3).setUsage(THREE.DynamicDrawUsage));
+tGeo.setAttribute("color", new THREE.BufferAttribute(tCol, 3).setUsage(THREE.DynamicDrawUsage));
+const arcMesh = new THREE.Mesh(tGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+arcMesh.frustumCulled = false;
+scene.add(arcMesh);
+let tv = 0;
+const camDir = new THREE.Vector3();
+function ribbon(tr, col, width) {
+  const n = tr.length / 3;
+  for (let i = 1; i < n && tv + 6 <= TV; i++) {
+    const ax = tr[i * 3 - 3], ay = tr[i * 3 - 2], az = tr[i * 3 - 1], bx = tr[i * 3], by = tr[i * 3 + 1], bz = tr[i * 3 + 2];
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    camDir.set(camera.position.x - bx, camera.position.y - by, camera.position.z - bz).normalize();
+    const px = dy * camDir.z - dz * camDir.y, py = dz * camDir.x - dx * camDir.z, pz = dx * camDir.y - dy * camDir.x;
+    const pl = Math.hypot(px, py, pz) || 1, w = width / pl;
+    const v = [ax - px * w, ay - py * w, az - pz * w, ax + px * w, ay + py * w, az + pz * w, bx - px * w, by - py * w, bz - pz * w, bx + px * w, by + py * w, bz + pz * w];
+    for (const q of [0, 1, 2, 1, 3, 2]) {
+      tPos[tv * 3] = v[q * 3]; tPos[tv * 3 + 1] = v[q * 3 + 1]; tPos[tv * 3 + 2] = v[q * 3 + 2];
+      tCol[tv * 3] = col[0]; tCol[tv * 3 + 1] = col[1]; tCol[tv * 3 + 2] = col[2];
+      tv++;
+    }
+  }
+}
+const arcs = [];
+
+/* ---------------- cell meshes ---------------- */
+const TILE_GEO = slab(CELL, CELL, TILE_H, 0.16, 0.06);
+const LABEL_GEO = new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92).rotateX(-Math.PI / 2);
+const cellVS = `
+  varying vec3 vN; varying vec3 vV; varying vec3 vL;
+  void main(){
+    vL = position;
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vN = normalize(mat3(modelMatrix) * normal);
+    vV = normalize(cameraPosition - wp.xyz);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }`;
+const cellFS = `
+  uniform vec3 col; uniform float glow, flash, time, vent;
+  varying vec3 vN; varying vec3 vV; varying vec3 vL;
+  void main(){
+    vec3 n = normalize(vN), v = normalize(vV);
+    float f = pow(1.0 - abs(dot(n, v)), 2.0);
+    float up = clamp(vL.y / ${TILE_H.toFixed(2)}, 0.0, 1.0);
+    float ex = 0.5 - abs(vL.x), ez = 0.5 - abs(vL.z);
+    float edge = 1.0 - smoothstep(0.0, 0.16, min(ex, ez));
+    float inner = smoothstep(0.42, 0.0, length(vL.xz));
+    vec3 c = col * (0.12 + 0.3 * up) + col * edge * up * 0.9 + col * inner * up * glow * 0.9;
+    c += col * f * 1.1 + vec3(1.0) * pow(f, 8.0) * 0.3;
+    c += vec3(1.0) * smoothstep(0.97, 1.0, sin((vL.x - vL.z) * 4.0 + time * 1.8)) * 0.25 * up;
+    c += vec3(1.0) * flash * 2.2;
+    c += vec3(1.0, 0.45, 0.7) * vent * (0.5 + 0.5 * sin(time * 9.0)) * 0.9;
+    gl_FragColor = vec4(c, 1.0);
+  }`;
+const leadMat = new THREE.MeshStandardMaterial({ color: 0x5c6278, metalness: 0.75, roughness: 0.45 });
+let tiles = [];     // {v, r, c, fr, fc, g, body, label, pop, vanish, spawn, lead}
+let cells = [];     // cells[r][c] -> tile
+function tileMesh(v) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(TILE_GEO, new THREE.ShaderMaterial({
+    vertexShader: cellVS, fragmentShader: cellFS,
+    uniforms: { col: { value: new THREE.Color(tierCol(v)) }, glow: { value: Math.min(1.6, 0.3 + Math.log2(v) * 0.11) }, flash: { value: 0 }, time: { value: 0 }, vent: { value: 0 } }
+  }));
+  g.add(body);
+  const label = new THREE.Mesh(LABEL_GEO, new THREE.MeshBasicMaterial({ map: numberTex(v), transparent: true, depthWrite: false, color: hdr(0xffffff, 1.4) }));
+  label.position.y = TILE_H + 0.012;
+  g.add(label);
+  scene.add(g);
+  return { g, body, label };
+}
+function setTileValue(t, v) {
+  t.v = v;
+  t.body.material.uniforms.col.value.setHex(tierCol(v));
+  t.body.material.uniforms.glow.value = Math.min(1.6, 0.3 + Math.log2(v) * 0.11);
+  t.label.material.map = numberTex(v);
+  t.label.material.needsUpdate = true;
+  // big cells grow a halo
+  if (v >= 256 && !t.halo) { t.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: hdr(tierCol(v), 0.8), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); t.halo.scale.setScalar(2.2); t.halo.position.y = 0.3; t.g.add(t.halo); }
+  if (t.halo) t.halo.material.color.copy(hdr(tierCol(v), v >= 2048 ? 1.4 : 0.8));
+}
+function newTile(v, r, c, spawn) {
+  const m = tileMesh(v);
+  const t = { v, r, c, fr: r, fc: c, ...m, pop: 0, spawn: spawn ? 0 : 1, lead: 0 };
+  setTileValue(t, v);
+  tiles.push(t);
+  return t;
+}
+function newLead(r, c, n) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(TILE_GEO, leadMat);
+  body.scale.y = 1.15;
+  g.add(body);
+  for (const [a, b] of [[-0.36, -0.36], [0.36, -0.36], [-0.36, 0.36], [0.36, 0.36]]) {
+    const rv = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 8), new THREE.MeshStandardMaterial({ color: 0xc8cede, metalness: 0.9, roughness: 0.3 }));
+    rv.position.set(a, TILE_H * 1.15 + 0.01, b);
+    g.add(rv);
+  }
+  const label = new THREE.Mesh(LABEL_GEO, new THREE.MeshBasicMaterial({ map: leadTex(n), transparent: true, depthWrite: false }));
+  label.position.y = TILE_H * 1.15 + 0.02;
+  g.add(label);
+  scene.add(g);
+  const t = { v: 0, r, c, fr: r, fc: c, g, body, label, pop: 0, spawn: 0, lead: n, drop: 0 };
+  return t;
+}
+function disposeTile(t) {
+  scene.remove(t.g);
+  if (t.body.material !== leadMat) t.body.material.dispose();
+  t.label.material.dispose();
+  if (t.halo) t.halo.material.dispose();
+}
+
+/* ---------------- game state ---------------- */
+let grid, lead, leads = [], score = 0, shownScore = 0, bestTile = 2, overSent = false;
+let animating = false, animT = 0, animLen = ANIM, pendingGrid = null, slideAnims = [], mergePop = [];
+let moves = 0, chainDepth = 0, bestChain = 0, chains = 0, leadsCleared = 0;
+let undo = 2, vent = 0, venting = false, history = [], stage = 0, heat = 0, shakeT = 0;
+const emptyGrid = () => Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+
+function lineSlots(dr, dc, i) {
+  const slots = [];
+  if (dc !== 0) { const cols = dc < 0 ? [0, 1, 2, 3] : [3, 2, 1, 0]; cols.forEach((c) => slots.push({ r: i, c })); }
+  else { const rows = dr < 0 ? [0, 1, 2, 3] : [3, 2, 1, 0]; rows.forEach((r) => slots.push({ r, c: i })); }
+  return slots;
+}
+function simulate(dr, dc) {
+  const newGrid = emptyGrid();
+  let moved = false, gain = 0;
+  const anims = [];
+  for (let i = 0; i < SIZE; i++) {
+    const all = lineSlots(dr, dc, i);
+    // lead cells split the line: each run between them slides on its own
+    const runs = [[]];
+    all.forEach((s) => { if (lead[s.r][s.c]) runs.push([]); else runs[runs.length - 1].push(s); });
+    for (const slots of runs) {
       if (!slots.length) continue;
-      const filled = slots.map(s => ({ ...s, v: grid[s.r][s.c] })).filter(e => e.v);
+      const filled = slots.map((s) => ({ ...s, v: grid[s.r][s.c] })).filter((e) => e.v);
       const out = new Array(slots.length).fill(0);
-      let oi = 0;
-      let fi = 0;
+      let oi = 0, fi = 0;
       while (fi < filled.length) {
-        const a = filled[fi];
+        const a = filled[fi], tgt = slots[oi];
         if (fi + 1 < filled.length && a.v === filled[fi + 1].v) {
           const nv = a.v * 2;
-          const tgt = slots[oi];
-          gain += nv;
-          out[oi] = nv;
+          gain += nv; out[oi] = nv;
           anims.push({ r: a.r, c: a.c, tr: tgt.r, tc: tgt.c, v: a.v, nv, merge: true });
           anims.push({ r: filled[fi + 1].r, c: filled[fi + 1].c, tr: tgt.r, tc: tgt.c, v: filled[fi + 1].v, nv, merge: true, vanish: true });
-          if (a.r !== tgt.r || a.c !== tgt.c) moved = true;
+          moved = true;
           fi += 2;
-          oi++;
         } else {
-          const tgt = slots[oi];
           out[oi] = a.v;
-          if (a.r !== tgt.r || a.c !== tgt.c) {
-            moved = true;
-            anims.push({ r: a.r, c: a.c, tr: tgt.r, tc: tgt.c, v: a.v });
-          }
+          if (a.r !== tgt.r || a.c !== tgt.c) { moved = true; anims.push({ r: a.r, c: a.c, tr: tgt.r, tc: tgt.c, v: a.v }); }
           fi++;
-          oi++;
         }
+        oi++;
       }
       slots.forEach((s, k) => { newGrid[s.r][s.c] = out[k]; });
-      }
-    }
-
-    if (!moved) {
-      for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
-          if (grid[r][c] !== newGrid[r][c]) { moved = true; break; }
-        }
-        if (moved) break;
-      }
-    }
-    return { moved, grid: newGrid, gain, anims };
-  }
-
-  function canMove(g) {
-    for (let r = 0; r < SIZE; r++) {
-      for (let c = 0; c < SIZE; c++) {
-        const v = g[r][c];
-        if (lead[r][c]) continue;
-        if (!v) return true;
-        if (c + 1 < SIZE && g[r][c + 1] === v) return true;
-        if (r + 1 < SIZE && g[r + 1][c] === v) return true;
-      }
-    }
-    return false;
-  }
-
-  function spawnRandom(g) {
-    const empty = [];
-    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (!g[r][c] && !lead[r][c]) empty.push([r, c]);
-    if (!empty.length) return null;
-    const [r, c] = choice(empty);
-    const v = Math.random() < 0.9 ? 2 : 4;
-    g[r][c] = v;
-    return { r, c, v };
-  }
-
-  function mergeFx(tr, tc, nv, mult) {
-    const [x, y] = cellXY(tr, tc);
-    const cx = x + L.cell / 2, cy = y + L.cell / 2;
-    const col = tileStyle(nv).glow;
-    fx.burst(cx, cy, { n: 14 + Math.min(20, Math.log2(nv)) + (mult || 0) * 8, color: col, speed: 140 + (mult || 0) * 40, life: 0.45, size: 3.2, shape: "square" });
-    texts.add(cx, cy - 8, "+" + nv * (mult || 1), { color: col, size: Math.min(22, 14 + Math.log2(nv)), life: 0.75, vy: -48 });
-    if (mult) {
-      texts.add(cx, cy - L.cell * 0.45 - (mult - 2) * L.cell * 0.2, "CHAIN ×" + mult, { color: "#fff", size: 15 + mult * 2, life: 1, vy: -30 });
-      PA.sfx("combo", { pitch: 0.9 + mult * 0.12 });
-      PA.shake(3 + mult * 2, 0.15);
-    }
-    const pitch = 0.85 + Math.min(1.1, Math.log2(nv) * 0.06);
-    PA.sfx("coin", { pitch });
-    if (nv >= 128) PA.shake(Math.min(10, 2 + Math.log2(nv) * 0.5), 0.12);
-    if (nv >= 2048 && !reached2048) {
-      reached2048 = true;
-      PA.sfx("levelup");
-      PA.flash("rgba(255,210,122,.22)", 320);
     }
   }
-
-  function findReactions(merged) {
-    const g = grid.map(row => row.slice()), used = new Set(), anims = [], pops = [];
-    let gain = 0;
-    chainDepth++;
-    for (const m of merged) {
-      const v = g[m.tr][m.tc];
-      if (!v || used.has(m.tr + "," + m.tc)) continue;
-      for (const [dr, dc] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
-        const r = m.tr + dr, c = m.tc + dc;
-        if (r < 0 || c < 0 || r >= SIZE || c >= SIZE || used.has(r + "," + c) || lead[r][c] || g[r][c] !== v) continue;
-        const nv = v * 2;
-        g[m.tr][m.tc] = nv; g[r][c] = 0;
-        used.add(m.tr + "," + m.tc); used.add(r + "," + c);
-        anims.push({ r, c, tr: m.tr, tc: m.tc, v, nv, merge: true, vanish: true });
-        anims.push({ r: m.tr, c: m.tc, tr: m.tr, tc: m.tc, v, nv, merge: true });
-        pops.push({ tr: m.tr, tc: m.tc, nv, mult: chainDepth + 1 });
-        gain += nv * (chainDepth + 1);
-        break;
-      }
-    }
-    return anims.length ? { grid: g, anims, pops, gain } : null;
+  return { moved, grid: newGrid, gain, anims };
+}
+function canMove(g) {
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const v = g[r][c];
+    if (lead[r][c]) continue;
+    if (!v) return true;
+    if (c + 1 < SIZE && !lead[r][c + 1] && g[r][c + 1] === v) return true;
+    if (r + 1 < SIZE && !lead[r + 1][c] && g[r + 1][c] === v) return true;
   }
-
-  function finishAnim() {
-    grid = pendingGrid;
-    pendingGrid = null;
-    animating = false;
-    const merged = mergePop.slice();
-    slideAnims = [];
-    bestTile = Math.max(bestTile, ...grid.flat());
-    // Chain reaction: fused tiles that now touch their twin fuse again, as a second animated step.
-    const react = merged.length ? findReactions(merged) : null;
-    if (react) {
-      chains++;
-      if (chainDepth + 1 > bestChain) bestChain = chainDepth + 1;
-      score += react.gain;
-      pendingGrid = react.grid;
-      slideAnims = react.anims;
-      mergePop = react.pops;
-      animating = true; animT = 0; animLen = REACT_ANIM;
-      PA.tone({ freq: 300 + chainDepth * 120, to: 900 + chainDepth * 200, type: "sine", dur: 0.14, vol: 0.08 });
-      return;
-    }
-    chainDepth = 0;
-    afterMove();
-  }
-
-  function afterMove() {
-    moves++;
-    PA.music.intensity(clamp(Math.log2(Math.max(2, bestTile)) / 12, 0, 1));
-    // Lead decays one step per move and crumbles at zero.
-    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-      if (!lead[r][c]) continue;
-      lead[r][c]--;
-      if (!lead[r][c]) {
-        leadsCleared++;
-        const [x, y] = cellXY(r, c);
-        fx.burst(x + L.cell / 2, y + L.cell / 2, { n: 22, colors: ["#9aa0b8", "#c8cede", "#5a6078"], speed: 130, life: 0.55, size: 3, shape: "square" });
-        PA.sfx("thud", { pitch: 1.2 });
-      }
-    }
-    const sp = spawnRandom(grid);
-    if (sp) spawnPop = { ...sp, t: 0 };
-    if (moves % LEAD_EVERY === 0) dropLead();
-    if (!canMove(grid)) {
-      if (overSent) return;
-      overSent = true;
-      PA.sfx("gameover");
-      const title = bestTile >= 2048 ? "Fusion peak reached" : "No moves left";
-      PA.gameOver(score, {
-        title,
-        stats: [["Best tile", bestTile], ["Best chain", bestChain ? "×" + bestChain : "—"], ["Chain reactions", chains], ["Moves", moves]]
-      });
+  return false;
+}
+function spawnRandom() {
+  const empty = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (!grid[r][c] && !lead[r][c]) empty.push([r, c]);
+  if (!empty.length) return null;
+  const [r, c] = choice(empty);
+  const v = Math.random() < 0.9 ? 2 : 4;
+  grid[r][c] = v;
+  cells[r][c] = newTile(v, r, c, true);
+  return { r, c, v };
+}
+function findReactions(merged) {
+  const g = grid.map((row) => row.slice()), used = new Set(), anims = [], pops = [];
+  let gain = 0;
+  chainDepth++;
+  for (const m of merged) {
+    const v = g[m.tr][m.tc];
+    if (!v || used.has(m.tr + "," + m.tc)) continue;
+    for (const [dr, dc] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+      const r = m.tr + dr, c = m.tc + dc;
+      if (r < 0 || c < 0 || r >= SIZE || c >= SIZE || used.has(r + "," + c) || lead[r][c] || g[r][c] !== v) continue;
+      const nv = v * 2;
+      g[m.tr][m.tc] = nv; g[r][c] = 0;
+      used.add(m.tr + "," + m.tc); used.add(r + "," + c);
+      anims.push({ r, c, tr: m.tr, tc: m.tc, v, nv, merge: true, vanish: true });
+      anims.push({ r: m.tr, c: m.tc, tr: m.tr, tc: m.tc, v, nv, merge: true });
+      pops.push({ tr: m.tr, tc: m.tc, nv, mult: chainDepth + 1, fr: r, fc: c });
+      gain += nv * (chainDepth + 1);
+      break;
     }
   }
-
-  function dropLead() {
-    let count = 0;
-    const empty = [];
-    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-      if (lead[r][c]) count++;
-      else if (!grid[r][c] && !(spawnPop && spawnPop.r === r && spawnPop.c === c)) empty.push([r, c]);
-    }
-    if (count >= LEAD_MAX || empty.length < 3) return;
-    const [r, c] = choice(empty);
-    lead[r][c] = LEAD_LIFE + Math.min(4, Math.floor(moves / 60));
-    leadDrop = { r, c, t: 0 };
-    PA.sfx("thud", { pitch: 0.7 });
-    PA.shake(4, 0.12);
+  return anims.length ? { grid: g, anims, pops, gain } : null;
+}
+function startAnims(anims) {
+  for (const a of anims) {
+    const t = cells[a.r][a.c];
+    if (!t) continue;
+    t.fr = a.r; t.fc = a.c; t.r = a.tr; t.c = a.tc;
+    if (a.vanish) t.vanish = true;
+    if (a.merge && !a.vanish) t.toV = a.nv;
   }
-  let leadDrop = null;
-
-  function tryMove(dr, dc) {
-    if (animating || PA.state !== "play" || overSent || !grid) return;
-    const res = simulate(dr, dc);
-    if (!res.moved) { PA.sfx("click", { pitch: 0.7, vol: 0.35 }); return; }
-    score += res.gain;
-    pendingGrid = res.grid;
-    slideAnims = res.anims;
-    mergePop = res.anims.filter(a => a.merge && !a.vanish).map(a => ({ tr: a.tr, tc: a.tc, nv: a.nv }));
-    animating = true;
-    animT = 0; animLen = ANIM; chainDepth = 0;
-    PA.sfx("whoosh", { pitch: 0.95, vol: 0.45 });
+}
+function settleCells() {
+  // after an animation: drop vanished tiles, apply merged values, rebuild the cell index
+  for (const t of tiles) if (t.vanish) disposeTile(t);
+  tiles = tiles.filter((t) => !t.vanish);
+  cells = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+  for (const t of tiles) {
+    t.fr = t.r; t.fc = t.c;
+    if (t.toV) { setTileValue(t, t.toV); t.toV = 0; t.pop = 1; t.body.material.uniforms.flash.value = 1; }
+    cells[t.r][t.c] = t;
   }
-
-  function reset() {
-    grid = emptyGrid();
-    lead = emptyGrid();
-    moves = 0; chainDepth = 0; bestChain = 0; chains = 0; leadsCleared = 0; leadDrop = null;
-    score = 0;
-    bestTile = 2;
-    overSent = false;
-    animating = false;
-    animT = 0;
-    pendingGrid = null;
-    slideAnims = [];
-    mergePop = [];
-    spawnPop = null;
-    reached2048 = false;
-    fx.clear();
-    texts.clear();
-    PA.music.intensity(0);
-    spawnRandom(grid);
-    spawnRandom(grid);
-    bestTile = Math.max(...grid.flat());
+}
+function mergeFx(m) {
+  const p = cellPos(m.tr, m.tc), col = tierCol(m.nv), lg = Math.log2(m.nv);
+  burst(p.x, TILE_H + 0.1, p.z, { n: 14 + Math.min(26, lg * 2) + (m.mult || 0) * 8, colors: [col, 0xffffff], speed: 2.2 + (m.mult || 0) * 0.6, life: 0.6, size: 0.07, up: 3.5 });
+  shock(p.x, p.z, col, 0.55 + lg * 0.03 + (m.mult || 0) * 0.25);
+  const s = toScreen(p.x, TILE_H + 0.4, p.z);
+  texts.add(s.x, s.y - 10, "+" + m.nv * (m.mult || 1), { color: "#" + new THREE.Color(col).getHexString(), size: Math.min(24, 14 + lg), life: 0.75, vy: -48 });
+  if (m.mult) {
+    texts.add(s.x, s.y - 40 - (m.mult - 2) * 14, "CHAIN ×" + m.mult, { color: "#fff", size: 16 + m.mult * 2, life: 1, vy: -30 });
+    PA.sfx("combo", { pitch: 0.9 + m.mult * 0.12 });
+    PA.shake(3 + m.mult * 2, 0.15);
+    const q = cellPos(m.fr, m.fc);
+    arcs.push({ x0: q.x, z0: q.z, x1: p.x, z1: p.z, t: 0, col: C3(col, 3) });
   }
-
-  function drawTile(value, px, py, scale, alpha) {
-    if (!value) return;
-    const { cell } = L;
-    const st = tileStyle(value);
-    const s = cell * (scale || 1);
-    const x = px + (cell - s) / 2;
-    const y = py + (cell - s) / 2;
-    const r = Math.max(4, s * 0.16);
-    ctx.save();
-    if (alpha != null) ctx.globalAlpha = alpha;
-    ctx.shadowColor = st.glow;
-    ctx.shadowBlur = s * 0.35;
-    roundRect(ctx, x, y, s, s, r);
-    const grd = ctx.createLinearGradient(x, y, x + s, y + s);
-    grd.addColorStop(0, st.fill);
-    grd.addColorStop(1, "#080c18");
-    ctx.fillStyle = grd;
-    ctx.fill();
-    ctx.shadowBlur = s * 0.18;
-    ctx.strokeStyle = st.edge;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    roundRect(ctx, x + s * 0.12, y + s * 0.1, s * 0.76, s * 0.22, r * 0.5);
-    ctx.fillStyle = "rgba(255,255,255,.22)";
-    ctx.fill();
-    const label = String(value);
-    let fs = s * (label.length > 3 ? 0.28 : label.length > 2 ? 0.36 : 0.44);
-    ctx.font = "700 " + fs + "px 'JetBrains Mono', ui-monospace, monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = st.text;
-    ctx.shadowColor = st.glow;
-    ctx.shadowBlur = 10;
-    ctx.fillText(label, x + s / 2, y + s / 2 + s * 0.02);
-    ctx.restore();
+  PA.sfx("coin", { pitch: 0.85 + Math.min(1.1, lg * 0.06) });
+  if (m.nv >= 128) PA.shake(Math.min(10, 2 + lg * 0.5), 0.12);
+  if (m.nv >= 256 && m.nv > bestTile) { undo = Math.min(3, undo + 1); toast("+1 Rewind for a " + m.nv); }
+  if (m.nv >= 2048 && m.nv > bestTile) { PA.sfx("levelup"); PA.flash("rgba(255,228,168,.25)", 360); }
+}
+function toast(msg) { texts.add(W / 2, H * 0.2, msg, { color: "#8ee9ff", size: 15, life: 1.4, vy: -10 }); }
+function finishAnim() {
+  grid = pendingGrid; pendingGrid = null;
+  animating = false;
+  const merged = mergePop.slice();
+  for (const m of merged) mergeFx(m);
+  settleCells();
+  bestTile = Math.max(bestTile, ...grid.flat());
+  // chain reaction: fused cells that now touch their twin fuse again, as a second animated step
+  const react = merged.length ? findReactions(merged) : null;
+  if (react) {
+    chains++;
+    if (chainDepth + 1 > bestChain) bestChain = chainDepth + 1;
+    vent = Math.min(3, vent + 1);
+    score += react.gain;
+    pendingGrid = react.grid;
+    slideAnims = react.anims;
+    mergePop = react.pops;
+    startAnims(react.anims);
+    animating = true; animT = 0; animLen = REACT_ANIM;
+    PA.tone({ freq: 300 + chainDepth * 120, to: 900 + chainDepth * 200, type: "sine", dur: 0.14, vol: 0.08 });
+    return;
   }
-
-  function drawLead(r, c, t) {
-    const [x0, y0] = cellXY(r, c);
-    const { cell } = L;
-    let k = 1;
-    if (leadDrop && leadDrop.r === r && leadDrop.c === c) k = 1.4 - 0.4 * ease.outCubic(clamp(leadDrop.t / 0.3, 0, 1));
-    const s = cell * k, x = x0 + (cell - s) / 2, y = y0 + (cell - s) / 2, n = lead[r][c];
-    ctx.save();
-    roundRect(ctx, x, y, s, s, Math.max(4, s * 0.12));
-    const g = ctx.createLinearGradient(x, y, x + s, y + s);
-    g.addColorStop(0, "#5c6178"); g.addColorStop(0.5, "#3a3e52"); g.addColorStop(1, "#22253a");
-    ctx.fillStyle = g; ctx.fill();
-    ctx.strokeStyle = n <= 2 ? "rgba(255,126,182," + (0.5 + 0.4 * Math.sin(t * 8)) + ")" : "rgba(200,206,222,.55)";
-    ctx.lineWidth = 2; ctx.stroke();
-    // Rivets and cracks that spread as it decays.
-    ctx.fillStyle = "rgba(200,206,222,.5)";
-    [[0.16, 0.16], [0.84, 0.16], [0.16, 0.84], [0.84, 0.84]].forEach(([a, b]) => { ctx.beginPath(); ctx.arc(x + s * a, y + s * b, s * 0.035, 0, Math.PI * 2); ctx.fill(); });
-    const cracks = Math.max(0, 4 - n);
-    ctx.strokeStyle = "rgba(10,12,24,.8)"; ctx.lineWidth = 1.5;
-    for (let i = 0; i < cracks; i++) {
-      ctx.beginPath(); ctx.moveTo(x + s * (0.2 + i * 0.2), y);
-      ctx.lineTo(x + s * (0.3 + i * 0.15), y + s * 0.4); ctx.lineTo(x + s * (0.2 + i * 0.18), y + s * 0.7); ctx.stroke();
-    }
-    ctx.fillStyle = "#c8cede";
-    ctx.font = "700 " + (s * 0.2) + "px 'JetBrains Mono', ui-monospace, monospace";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("LEAD", x + s / 2, y + s * 0.38);
-    ctx.font = "600 " + (s * 0.17) + "px 'JetBrains Mono', ui-monospace, monospace";
-    ctx.fillStyle = n <= 2 ? "#ff9ec4" : "#9aa0b8";
-    ctx.fillText(n + (n === 1 ? " move" : " moves"), x + s / 2, y + s * 0.64);
-    ctx.restore();
+  chainDepth = 0;
+  afterMove();
+}
+function afterMove() {
+  moves++;
+  PA.music.intensity(clamp(Math.log2(Math.max(2, bestTile)) / 12, 0, 1));
+  // lead decays one step per move and crumbles at zero
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (!lead[r][c]) continue;
+    lead[r][c]--;
+    const L = leads.find((l) => l.r === r && l.c === c);
+    if (!lead[r][c]) {
+      leadsCleared++;
+      const p = cellPos(r, c);
+      burst(p.x, 0.3, p.z, { n: 26, colors: [0x9aa0b8, 0xc8cede, 0x5a6078], speed: 2.4, life: 0.7, size: 0.08, bright: 1.2 });
+      shock(p.x, p.z, 0x9aa0b8, 1.2);
+      PA.sfx("thud", { pitch: 1.2 });
+      if (L) { disposeTile(L); leads = leads.filter((x) => x !== L); }
+    } else if (L) { L.label.material.map = leadTex(lead[r][c]); L.label.material.needsUpdate = true; }
   }
-
-  function panel(x, y, w, h, title) {
-    roundRect(ctx, x, y, w, h, 14);
-    ctx.fillStyle = "rgba(10,14,32,.78)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(142,233,255,.24)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    if (title) {
-      ctx.fillStyle = "#8ee9ff";
-      ctx.font = "500 " + Math.max(9, L.cell * 0.34) + "px 'JetBrains Mono', monospace";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.fillText(title.toUpperCase().split("").join(" "), x + 12, y + 10);
-    }
+  spawnRandom();
+  if (moves % LEAD_EVERY === 0) dropLead();
+  updateStage();
+  if (!canMove(grid)) {
+    if (vent > 0 || undo > 0) { toast(vent > 0 ? "Jammed · vent a cell or rewind" : "Jammed · rewind a move"); return; }
+    endGame();
   }
-
-  function statBlock(x, y, w, label, value, accent) {
-    const labelH = 12;
-    const gap = 4;
-    ctx.save();
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = "#8ee9ff";
-    ctx.font = "500 10px 'JetBrains Mono', ui-monospace, monospace";
-    ctx.fillText(label, x, y);
-    ctx.fillStyle = "#fff";
-    ctx.shadowColor = accent || "#ffd27a";
-    ctx.shadowBlur = 10;
-    let fs = Math.max(16, Math.min(L.cell * 0.62, 22));
-    ctx.font = "600 " + fs + "px 'JetBrains Mono', ui-monospace, monospace";
-    const str = typeof value === "number" ? value.toLocaleString() : String(value);
-    while (ctx.measureText(str).width > w && fs > 12) {
-      fs -= 1;
-      ctx.font = "600 " + fs + "px 'JetBrains Mono', ui-monospace, monospace";
-    }
-    ctx.fillText(str, x, y + labelH + gap);
-    ctx.restore();
-    return labelH + gap + fs + 6;
-  }
-
-  function renderBackdrop(t, W, H) {
-    const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, "#0b0f22");
-    bg.addColorStop(0.55, "#070a18");
-    bg.addColorStop(1, "#05070f");
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, W, H);
-    const pulse = 0.14 + 0.04 * Math.sin(t * 1.4);
-    const orb = ctx.createRadialGradient(W * 0.5, H * 0.42, 20, W * 0.5, H * 0.42, Math.max(W, H) * 0.65);
-    orb.addColorStop(0, "rgba(255,210,122," + pulse + ")");
-    orb.addColorStop(0.45, "rgba(196,166,255," + (pulse * 0.45) + ")");
-    orb.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = orb;
-    ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = "rgba(142,233,255,.05)";
-    ctx.lineWidth = 1;
-    for (let i = -8; i <= 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo(W / 2 + i * 36, H * 0.08);
-      ctx.lineTo(W / 2 + i * 120, H);
-      ctx.stroke();
-    }
-  }
-
-  function renderBoard(t) {
-    if (!grid || !L.cell) return;
-    const { bx, by, bw, cell, gap } = L;
-    const prog = animating ? ease.outCubic(clamp(animT / animLen, 0, 1)) : 1;
-
-    roundRect(ctx, bx - 10, by - 10, bw + 20, bw + 20, 18);
-    ctx.fillStyle = "rgba(6,8,20,.92)";
-    ctx.fill();
-    ctx.shadowColor = "#ffd27a";
-    ctx.shadowBlur = 22;
-    ctx.strokeStyle = "rgba(255,210,122," + (0.28 + 0.08 * Math.sin(t * 2)) + ")";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
-    for (let r = 0; r < SIZE; r++) {
-      for (let c = 0; c < SIZE; c++) {
-        const [x, y] = cellXY(r, c);
-        roundRect(ctx, x, y, cell, cell, Math.max(4, cell * 0.14));
-        ctx.fillStyle = "rgba(255,255,255,.035)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(142,233,255,.06)";
-        ctx.stroke();
-      }
-    }
-
-    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (lead[r][c]) drawLead(r, c, t);
-
-    const movingFrom = new Set();
-    if (animating) slideAnims.forEach(a => movingFrom.add(a.r + "," + a.c));
-
-    if (!animating) {
-      for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
-          const v = grid[r][c];
-          if (!v) continue;
-          let scale = 1;
-          if (spawnPop && spawnPop.r === r && spawnPop.c === c) {
-            scale = 0.82 + 0.18 * ease.outBack(clamp(spawnPop.t / 0.16, 0, 1));
-          }
-          const [x, y] = cellXY(r, c);
-          drawTile(v, x, y, scale, 1);
-        }
-      }
-    } else {
-      for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
-          const v = grid[r][c];
-          if (!v || movingFrom.has(r + "," + c)) continue;
-          const [x, y] = cellXY(r, c);
-          drawTile(v, x, y, 1, 1);
-        }
-      }
-      slideAnims.forEach(a => {
-        if (a.vanish && prog > 0.55) return;
-        const fx0 = a.c, fy0 = a.r, fx1 = a.tc, fy1 = a.tr;
-        const cx = fx0 + (fx1 - fx0) * prog;
-        const cy = fy0 + (fy1 - fy0) * prog;
-        const [px, py] = cellXY(cy, cx);
-        let scale = 1;
-        let val = a.v;
-        if (a.merge && !a.vanish && prog > 0.92) {
-          val = a.nv;
-          scale = 1 + 0.12 * (1 - (prog - 0.92) / 0.08);
-        }
-        drawTile(val, px, py, scale, a.vanish ? 1 - prog * 0.85 : 1);
-      });
-    }
-  }
-
-  function renderHud(t) {
-    const W = view.w, H = view.h;
-    ctx.save();
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#f4f1ff";
-    ctx.font = "600 " + Math.min(L.portrait ? 24 : 36, Math.max(18, L.cell * 0.3)) + "px Manrope, system-ui, sans-serif";
-    ctx.shadowColor = "#ffd27a";
-    ctx.shadowBlur = 16;
-    ctx.fillText("Fusion 2048", W / 2, L.portrait ? 34 : 48);
-    ctx.shadowBlur = 0;
-    ctx.restore();
-
-    const pw = L.portrait ? Math.min(W - 32, 420) : L.side;
-    const px = L.portrait ? (W - pw) / 2 : L.bx + L.bw + 24;
-    const py = L.portrait ? L.by + L.bw + 18 : L.by;
-    const pad = 16;
-    const rowH = L.portrait ? 56 : 54;
-    if (L.portrait) {
-      panel(px, py, pw, rowH + pad, "");
-      statBlock(px + pad, py + 12, pw / 2 - pad - 8, "Score", score || 0, "#8ee9ff");
-      statBlock(px + pw / 2 + 4, py + 12, pw / 2 - pad - 8, "Best tile", bestTile || 2, "#ffd27a");
-    } else {
-      const rows = [
-        ["Score", score || 0, "#8ee9ff"],
-        ["Best tile", bestTile || 2, "#ffd27a"],
-        ["Best chain", bestChain ? "×" + bestChain : "—", "#ff7eb6"],
-        ["Session best", Math.max(PA.best || 0, score || 0), "#c4a6ff"]
-      ];
-      const ph = pad + rows.length * rowH + 8;
-      panel(px, py, pw, ph, "");
-      let iy = py + 12;
-      rows.forEach((r) => {
-        statBlock(px + pad, iy, pw - pad * 2, r[0], r[1], r[2]);
-        iy += rowH;
-      });
-      ctx.save();
-      ctx.fillStyle = "#9a96b4";
-      ctx.font = "500 11px Manrope, system-ui, sans-serif";
-      ctx.textAlign = "left"; ctx.textBaseline = "top";
-      ["Fused tiles that land next to", "their twin fuse again: chains", "multiply. Lead walls off lines", "until it crumbles."].forEach((ln, i) => ctx.fillText(ln, px + 4, py + ph + 14 + i * 16));
-      ctx.restore();
-    }
-    if (L.portrait) {
-      ctx.fillStyle = "#7a7694";
-      ctx.font = "500 11px 'JetBrains Mono', monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("TWINS THAT TOUCH CHAIN-FUSE · LEAD WALLS OFF LINES", W / 2, H - 16);
-    }
-  }
-
-  function update(dt) {
-    fx.update(dt);
-    texts.update(dt);
-    if (spawnPop) {
-      spawnPop.t += dt;
-      if (spawnPop.t > 0.2) spawnPop = null;
-    }
-    if (leadDrop) { leadDrop.t += dt; if (leadDrop.t > 0.3) leadDrop = null; }
-    if (PA.state !== "play" || !grid) return;
-    if (animating) {
-      animT += dt;
-      if (animT >= animLen) {
-        mergePop.forEach(m => mergeFx(m.tr, m.tc, m.nv, m.mult));
-        finishAnim();
-      }
-      return;
-    }
-  }
-
-  function render(t) {
-    const W = view.w, H = view.h;
-    renderBackdrop(t, W, H);
-    renderHud(t);
-    renderBoard(t);
-    fx.draw(ctx);
-    texts.draw(ctx);
-  }
-
-  PA.onKey((e) => {
-    if (e.repeat) return;
-    const k = e.key, c = e.code;
-    if (k === "ArrowLeft" || c === "KeyA") tryMove(0, -1);
-    else if (k === "ArrowRight" || c === "KeyD") tryMove(0, 1);
-    else if (k === "ArrowUp" || c === "KeyW") tryMove(-1, 0);
-    else if (k === "ArrowDown" || c === "KeyS") tryMove(1, 0);
+}
+function endGame() {
+  if (overSent) return;
+  overSent = true;
+  PA.sfx("gameover");
+  tools.classList.remove("on");
+  PA.gameOver(score, {
+    title: bestTile >= 2048 ? "Fusion peak reached" : "Reactor jammed",
+    stats: [["Best cell", bestTile], ["Best chain", bestChain ? "×" + bestChain : "—"], ["Chain reactions", chains], ["Moves", moves]]
   });
+}
+function dropLead() {
+  let count = 0;
+  const empty = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (lead[r][c]) count++;
+    else if (!grid[r][c]) empty.push([r, c]);
+  }
+  if (count >= LEAD_MAX || empty.length < 3) return;
+  const [r, c] = choice(empty);
+  lead[r][c] = LEAD_LIFE + Math.min(4, Math.floor(moves / 60));
+  const L = newLead(r, c, lead[r][c]);
+  L.drop = 1;
+  leads.push(L);
+  PA.sfx("thud", { pitch: 0.7 });
+  setTimeout(() => { const p = cellPos(r, c); shock(p.x, p.z, 0x9aa0b8, 1.6); burst(p.x, 0.1, p.z, { n: 18, colors: [0x6a7088, 0x9aa0b8], speed: 2, life: 0.5, size: 0.08, bright: 1, up: 1.5 }); PA.shake(5, 0.14); }, 260);
+}
+function updateStage() {
+  let s = 0;
+  for (let i = 0; i < STAGES.length; i++) if (bestTile >= STAGES[i][0]) s = i;
+  if (s > stage) {
+    stage = s;
+    if (s > 0) { texts.add(W / 2, H * 0.28, "REACTOR " + STAGES[s][1].toUpperCase(), { color: "#ffd27a", size: 24, life: 1.6, vy: -14 }); PA.sfx("power", { pitch: 0.8 + s * 0.08 }); }
+  }
+  PA.stat("s-stage", STAGES[stage][1]);
+}
+function snapshot() {
+  return { grid: grid.map((r) => r.slice()), lead: lead.map((r) => r.slice()), score, bestTile, moves };
+}
+function rebuildMeshes() {
+  for (const t of tiles) disposeTile(t);
+  for (const L of leads) disposeTile(L);
+  tiles = []; leads = [];
+  cells = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (grid[r][c]) cells[r][c] = newTile(grid[r][c], r, c, false);
+    if (lead[r][c]) leads.push(newLead(r, c, lead[r][c]));
+  }
+}
+function tryMove(dr, dc) {
+  if (animating || PA.state !== "play" || overSent || !grid || venting) return;
+  const res = simulate(dr, dc);
+  if (!res.moved) { PA.sfx("click", { pitch: 0.7 }); nudge(dr, dc); return; }
+  history.push(snapshot()); if (history.length > 6) history.shift();
+  score += res.gain;
+  pendingGrid = res.grid;
+  slideAnims = res.anims;
+  mergePop = res.anims.filter((a) => a.merge && !a.vanish).map((a) => ({ tr: a.tr, tc: a.tc, nv: a.nv }));
+  startAnims(res.anims);
+  animating = true; animT = 0; animLen = ANIM; chainDepth = 0;
+  PA.sfx("whoosh", { pitch: 0.95, vol: 0.45 });
+  tilt.x += dc * 0.05; tilt.z += dr * 0.05;
+}
+const tilt = { x: 0, z: 0 };
+function nudge(dr, dc) { tilt.x += dc * 0.03; tilt.z += dr * 0.03; }
+function rewind() {
+  if (animating || PA.state !== "play" || overSent || undo <= 0 || !history.length) { if (!history.length && undo > 0) PA.sfx("click", { pitch: 0.6 }); return; }
+  const s = history.pop();
+  undo--;
+  grid = s.grid; lead = s.lead; score = s.score; bestTile = s.bestTile; moves = s.moves;
+  rebuildMeshes();
+  venting = false;
+  PA.sfx("whoosh", { pitch: 0.6 });
+  burst(0, 0.4, 0, { n: 40, colors: [0x8ee9ff, 0xc4a6ff], speed: 3, life: 0.6, size: 0.07 });
+  toast("Rewound one move");
+}
+function toggleVent() {
+  if (animating || PA.state !== "play" || overSent || vent <= 0) return;
+  venting = !venting;
+  PA.sfx(venting ? "select" : "click");
+}
+function ventAt(r, c) {
+  const t = cells[r] && cells[r][c];
+  if (!t || !venting) return false;
+  vent--; venting = false;
+  history.push(snapshot()); if (history.length > 6) history.shift();
+  grid[r][c] = 0; cells[r][c] = null;
+  const p = cellPos(r, c), col = tierCol(t.v);
+  burst(p.x, 0.3, p.z, { n: 50, colors: [col, 0xffffff, 0xff9ec4], speed: 3.5, life: 0.8, size: 0.09, up: 5 });
+  shock(p.x, p.z, 0xff9ec4, 1.8);
+  t.vanish = true; disposeTile(t);
+  tiles = tiles.filter((x) => x !== t);
+  PA.sfx("explode", { pitch: 1.4 }); PA.shake(6, 0.2);
+  if (!canMove(grid) && vent <= 0 && undo <= 0) endGame();
+  return true;
+}
+function reset() {
+  for (const t of tiles) disposeTile(t);
+  for (const L of leads) disposeTile(L);
+  tiles = []; leads = [];
+  grid = emptyGrid(); lead = emptyGrid();
+  cells = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+  moves = 0; chainDepth = 0; bestChain = 0; chains = 0; leadsCleared = 0;
+  score = 0; shownScore = 0; bestTile = 2; overSent = false; animating = false; animT = 0; pendingGrid = null; slideAnims = []; mergePop = [];
+  undo = 2; vent = 0; venting = false; history = []; stage = 0;
+  parts.length = 0; texts.clear();
+  PA.music.intensity(0);
+  spawnRandom(); spawnRandom();
+  bestTile = Math.max(...grid.flat());
+  hud.classList.add("on"); tools.classList.add("on");
+  updateStage();
+}
 
-  PA.swipe(view.canvas, (dir) => {
-    if (dir === "left") tryMove(0, -1);
-    else if (dir === "right") tryMove(0, 1);
-    else if (dir === "up") tryMove(-1, 0);
-    else if (dir === "down") tryMove(1, 0);
-  });
+/* ---------------- input ---------------- */
+const hud = document.getElementById("fu-hud"), tools = document.getElementById("fu-tools");
+const bUndo = document.getElementById("t-undo"), bVent = document.getElementById("t-vent");
+bUndo.addEventListener("click", (e) => { e.stopPropagation(); rewind(); });
+bVent.addEventListener("click", (e) => { e.stopPropagation(); toggleVent(); });
+PA.onKey((e) => {
+  if (e.repeat) return;
+  const k = e.key, c = e.code;
+  if (k === "ArrowLeft" || c === "KeyA") tryMove(0, -1);
+  else if (k === "ArrowRight" || c === "KeyD") tryMove(0, 1);
+  else if (k === "ArrowUp" || c === "KeyW") tryMove(-1, 0);
+  else if (k === "ArrowDown" || c === "KeyS") tryMove(1, 0);
+  else if (c === "KeyZ" || c === "Backspace") rewind();
+  else if (c === "KeyX") toggleVent();
+});
+// swipe anywhere; a short tap on a cell vents it when venting is armed
+const ray = new THREE.Raycaster(), planeY = new THREE.Plane(new THREE.Vector3(0, 1, 0), -TILE_H), hitP = new THREE.Vector3();
+let sx = 0, sy = 0, sid = null, st = 0;
+addEventListener("pointerdown", (e) => {
+  if (PA.state !== "play" || PA.isPaused()) return;
+  if (e.target.closest && e.target.closest("button,input,a,#pa-gate,.pa-layer,.pa-tb")) return;
+  sx = e.clientX; sy = e.clientY; sid = e.pointerId; st = performance.now();
+});
+addEventListener("pointerup", (e) => {
+  if (sid !== e.pointerId) return;
+  sid = null;
+  const dx = e.clientX - sx, dy = e.clientY - sy, d = Math.hypot(dx, dy);
+  if (d < 14 && performance.now() - st < 500) {
+    if (!venting) return;
+    ray.setFromCamera({ x: e.clientX / innerWidth * 2 - 1, y: -(e.clientY / innerHeight) * 2 + 1 }, camera);
+    if (!ray.ray.intersectPlane(planeY, hitP)) return;
+    const c = Math.round(hitP.x / PITCH + (SIZE - 1) / 2), r = Math.round(hitP.z / PITCH + (SIZE - 1) / 2);
+    if (r >= 0 && c >= 0 && r < SIZE && c < SIZE) ventAt(r, c);
+    return;
+  }
+  if (d < 28) return;
+  if (Math.abs(dx) > Math.abs(dy)) tryMove(0, dx > 0 ? 1 : -1);
+  else tryMove(dy > 0 ? 1 : -1, 0);
+});
 
-  window.__f2048 = () => ({
-    score,
-    best: bestTile, moves, bestChain, chains,
-    lead: lead ? lead.map(row => row.slice()) : [],
-    grid: grid ? grid.map(row => row.slice()) : []
-  });
+/* ---------------- update + render ---------------- */
+function update(dt) {
+  updateParts(dt);
+  texts.update(dt);
+  for (const w of waves) w.t += dt;
+  for (let i = waves.length - 1; i >= 0; i--) if (waves[i].t > 0.6) { scene.remove(waves[i].m); waves[i].m.material.dispose(); waves.splice(i, 1); }
+  for (let i = arcs.length - 1; i >= 0; i--) if ((arcs[i].t += dt) > 0.35) arcs.splice(i, 1);
+  for (const t of tiles) { t.spawn = Math.min(1, t.spawn + dt / 0.22); t.pop = Math.max(0, t.pop - dt / 0.25); }
+  for (const L of leads) if (L.drop) L.drop = Math.max(0, L.drop - dt / 0.28);
+  heat += ((stage / (STAGES.length - 1)) - heat) * Math.min(1, dt * 1.5);
+  tilt.x *= Math.exp(-dt * 6); tilt.z *= Math.exp(-dt * 6);
+  if (PA.state !== "play" || !grid) return;
+  if (animating) {
+    animT += dt;
+    if (animT >= animLen) finishAnim();
+  }
+}
+let lastHud = "";
+function render(t) {
+  const sh = PA.shakeOffset();
+  placeCamera(camDist, sh.x * 0.01, sh.y * 0.01);
+  camera.updateMatrixWorld();
+  const prog = animating ? ease.outCubic(clamp(animT / animLen, 0, 1)) : 1;
+  for (const tl of tiles) {
+    const a = cellPos(tl.fr, tl.fc), b = cellPos(tl.r, tl.c);
+    const x = a.x + (b.x - a.x) * prog, z = a.z + (b.z - a.z) * prog;
+    const drop = 1 - ease.outBack(tl.spawn);
+    tl.g.position.set(x, drop * 1.2, z);
+    const sc = (tl.spawn < 1 ? 0.6 + 0.4 * ease.outBack(tl.spawn) : 1) * (1 + tl.pop * 0.16);
+    tl.g.scale.set(sc, 1 + tl.pop * 0.5, sc);
+    if (tl.vanish) { const k = Math.max(0, 1 - prog * 1.4); tl.g.scale.setScalar(Math.max(0.01, 0.4 + k * 0.6)); }
+    const u = tl.body.material.uniforms;
+    u.time.value = t; u.flash.value = Math.max(0, u.flash.value - 0.06); u.vent.value = venting ? 1 : 0;
+    if (tl.halo) tl.halo.material.opacity = 0.6 + Math.sin(t * 3 + tl.c) * 0.25;
+  }
+  for (const L of leads) {
+    const p = cellPos(L.r, L.c);
+    L.g.position.set(p.x, L.drop * 3, p.z);
+  }
+  // tray tilt answers each slide
+  tray.rotation.set(tilt.z * 0.5, 0, -tilt.x * 0.5);
+  // reactor
+  coreMat.uniforms.time.value = t; coreMat.uniforms.heat.value = heat;
+  coreMat.uniforms.col.value.setHSL(0.09 - heat * 0.06, 1, 0.55 + heat * 0.1);
+  coreLight.intensity = 14 + heat * 40 + Math.sin(t * 3) * 3;
+  rings.forEach((g, i) => { g.rotation.y = t * (0.12 + i * 0.07) * (i % 2 ? -1 : 1) * (1 + heat * 2); });
+  trayRim.material.color.copy(hdr(0xffd27a, 0.9 + heat * 1.6 + Math.sin(t * 2) * 0.2));
+  // embers
+  for (const e of embers) {
+    e.y += e.v * (1 + heat * 2) * 0.016;
+    if (e.y > 6) { e.y = -2; e.x = rand(-6, 6); e.z = rand(-6, 3); }
+    if (parts.length < PMAX && Math.random() < 0.02) parts.push({ x: e.x, y: e.y, z: e.z, vx: 0, vy: e.v, vz: 0, g: -0.2, life: 2.5, max: 2.5, size: e.s, c: C3(heat > 0.6 ? 0xff9ec4 : 0xffb35a, 1.6) });
+  }
+  for (const w of waves) { const k = w.t / 0.6; w.m.scale.setScalar(0.3 + ease.outCubic(k) * w.size); w.m.material.opacity = 1 - k; }
+  tv = 0;
+  for (const a of arcs) {
+    const k = 1 - a.t / 0.35, n = 7, tr = [];
+    for (let i = 0; i <= n; i++) { const f = i / n; tr.push(a.x0 + (a.x1 - a.x0) * f + (i && i < n ? rand(-0.12, 0.12) : 0), TILE_H + 0.15 + Math.sin(f * Math.PI) * 0.35, a.z0 + (a.z1 - a.z0) * f + (i && i < n ? rand(-0.12, 0.12) : 0)); }
+    ribbon(tr, [a.col[0] * k, a.col[1] * k, a.col[2] * k], 0.035);
+  }
+  tGeo.setDrawRange(0, tv);
+  tGeo.attributes.position.needsUpdate = true; tGeo.attributes.color.needsUpdate = true;
+  for (const s of sockets) s.material.emissiveIntensity = venting ? 0.9 + Math.sin(t * 8) * 0.3 : 0.35 + heat * 0.4;
 
-  PA.best = window.paScores ? window.paScores.best("fusion-2048", window.paScores.cleanName(window.paScores.getName())) : 0;
-  PA.onStart(() => {
-    PA.best = window.paScores ? window.paScores.best("fusion-2048", window.paScores.cleanName(window.paScores.getName())) : 0;
-    reset();
-  });
+  post.render(scene, camera, t);
+  ctx.setTransform(overlay.dpr, 0, 0, overlay.dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  texts.draw(ctx);
+  if (PA.state === "play" && venting) {
+    ctx.textAlign = "center"; ctx.font = "700 14px Manrope, system-ui, sans-serif";
+    ctx.fillStyle = `rgba(255,158,196,${0.7 + Math.sin(t * 6) * 0.25})`;
+    const p = toScreen(0, 0, (SIZE * PITCH) / 2 + 0.3);
+    ctx.fillText((PA.isTouch ? "Tap" : "Click") + " a cell to vent it · X to cancel", W / 2, p.y + 22);
+  }
+  if (PA.state === "play" && moves === 0 && !animating) {
+    ctx.textAlign = "center"; ctx.font = `600 ${W < 520 ? 13 : 15}px Manrope, system-ui, sans-serif`;
+    ctx.fillStyle = "rgba(220,235,255,.75)";
+    const p = toScreen(0, 0, (SIZE * PITCH) / 2 + 0.3);
+    ctx.fillText((PA.isTouch ? "Swipe" : "Arrow keys or swipe") + " · twins fuse · fused twins that touch chain", W / 2, p.y + 22);
+  }
+  if (PA.state === "play") {
+    shownScore += (score - shownScore) * 0.25;
+    if (Math.abs(score - shownScore) < 1) shownScore = score;
+    const key = Math.round(shownScore) + "|" + bestTile + "|" + bestChain + "|" + undo + "|" + vent + "|" + venting + "|" + history.length;
+    if (key !== lastHud) {
+      lastHud = key;
+      PA.stat("s-score", Math.round(shownScore).toLocaleString());
+      PA.stat("s-tile", bestTile);
+      PA.stat("s-chain", bestChain ? "×" + bestChain : "—");
+      document.getElementById("n-undo").textContent = undo;
+      document.getElementById("n-vent").textContent = vent;
+      bUndo.disabled = undo <= 0 || !history.length;
+      bVent.disabled = vent <= 0;
+      bVent.classList.toggle("armed", venting);
+    }
+  }
+}
 
-  grid = emptyGrid();
-  lead = emptyGrid();
-  score = 0;
-  bestTile = 2;
-  mergePop = [];
-  PA.loop(update, render);
+addEventListener("resize", resize);
+resize();
+grid = emptyGrid(); lead = emptyGrid(); cells = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+// an idle board for the title screen
+[[0, 1, 2], [1, 2, 8], [2, 0, 64], [3, 3, 512], [1, 0, 4], [2, 3, 2048]].forEach(([r, c, v]) => { grid[r][c] = v; cells[r][c] = newTile(v, r, c, false); });
+PA.onStart(reset);
+PA.loop(update, render);
+window.__f2048 = () => ({ score, best: bestTile, moves, bestChain, chains, undo, vent, lead: lead.map((r) => r.slice()), grid: grid.map((r) => r.slice()) });
+window.__fu = { tryMove, rewind, toggleVent, ventAt, sim: (sec) => { for (let i = 0; i < sec * 60; i++) update(1 / 60); }, set: (g) => { grid = g.map((r) => r.slice()); rebuildMeshes(); }, setTools: (u, v) => { undo = u; vent = v; } };
 })();
 </script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"a350f886e6974df098681db56e5946d2","r":1,"spa":2}' crossorigin="anonymous"></script>
 </body></html>
