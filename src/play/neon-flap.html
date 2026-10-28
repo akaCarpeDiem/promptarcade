@@ -901,10 +901,10 @@ scene.add(hemi, rimA, rimB, keyL, rimA.target, rimB.target, keyL.target);
 // megastructures sunk in the smog. Built in CHUNK-wide strips ahead of the camera, dropped behind it.
 const CHUNK = 150;
 const BANDS = [
-  { z0: -44, z1: -58, w0: 8, w1: 18, d0: 8, d1: 14, g0: 8, g1: 26, h0: 12, h1: 70, fac: [0, 2, 2], sign: 0.45, neon: 0.35, bridge: 0.2 },
-  { z0: -85, z1: -125, w0: 14, w1: 28, d0: 12, d1: 22, g0: 6, g1: 24, h0: 30, h1: 160, fac: [1, 2, 0], ads: 0.45, neon: 0.35, bridge: 0.4 },
-  { z0: -160, z1: -230, w0: 20, w1: 44, d0: 18, d1: 30, g0: 6, g1: 24, h0: 70, h1: 280, fac: [3, 4, 1], ads: 0.45, neon: 0.35, bridge: 0.3 },
-  { z0: -290, z1: -420, w0: 30, w1: 66, d0: 25, d1: 40, g0: 8, g1: 34, h0: 110, h1: 460, fac: [3, 4], ads: 0.35, neon: 0.3 }
+  { z0: -44, z1: -58, w0: 8, w1: 18, d0: 8, d1: 14, g0: 8, g1: 26, h0: 10, h1: 58, fac: [0, 2, 2], sign: 0.45, neon: 0.35, bridge: 0.2 },
+  { z0: -85, z1: -125, w0: 14, w1: 28, d0: 12, d1: 22, g0: 6, g1: 24, h0: 24, h1: 110, fac: [1, 2, 0], ads: 0.45, neon: 0.35, bridge: 0.4 },
+  { z0: -160, z1: -230, w0: 20, w1: 44, d0: 18, d1: 30, g0: 6, g1: 24, h0: 40, h1: 175, fac: [3, 4, 1], ads: 0.45, neon: 0.35, bridge: 0.3 },
+  { z0: -290, z1: -420, w0: 30, w1: 66, d0: 25, d1: 40, g0: 8, g1: 34, h0: 60, h1: 270, fac: [3, 4], ads: 0.35, neon: 0.3 }
 ];
 const beaconMat = new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -1350,7 +1350,7 @@ for (const [y, c] of [[0, 0x29f0ff], [CEIL, 0xff2fa8]]) {
   rails.push(m);
 }
 // A veil of smog between the skyway and the city behind it, so the flight line always reads first.
-const veil = new THREE.Mesh(new THREE.PlaneGeometry(900, 500), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.38, depthWrite: false, fog: false }));
+const veil = new THREE.Mesh(new THREE.PlaneGeometry(900, 500), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false, fog: false }));
 veil.position.set(0, 60, -24);
 veil.frustumCulled = false;
 scene.add(veil);
@@ -1546,7 +1546,7 @@ function adRect(w, h) {
   return new THREE.Vector4(u0, v0, du, dv);
 }
 function mkBillboard(x) {
-  const w = rand(4.2, 5.6), split = rand(6.5, 11.5), per = lerp(3.0, 2.3, diff), ph = rand(TAU);
+  const w = rand(4.2, 5.6), split = rand(6.5, 11.5), per = lerp(3.4, 2.6, diff), ph = rand(TAU);
   const G = obGeo(), grp = new THREE.Group();
   for (const z of [-ZD - 0.2, ZD + 0.2]) for (const px of [x - 0.25, x + w + 0.25]) G.metal.box(px - 0.22, px + 0.22, BOTTOM, 80, z - 0.22, z + 0.22);
   for (const z of [-ZD - 0.2, ZD + 0.2]) for (const y of [-0.5, split, CEIL + 0.5]) G.steel.box(x - 0.25, x + w + 0.25, y - 0.14, y + 0.14, z - 0.16, z + 0.16);
@@ -1567,9 +1567,16 @@ function mkBillboard(x) {
   // which panel is solid at time t: the lower one in the first half of each period
   const lowerSolid = (t) => ((t + ph) % per) / per < 0.5;
   const warnAt = (t) => { const f = ((t + ph) % per) / per; return (f > 0.5 - 0.14 && f < 0.5) || f > 1 - 0.14; };
-  o.upd = (dt, T) => {
+  o.upd = (dt, T, px, V, py) => {
     const low = lowerSolid(T), w8 = warnAt(T);
-    sb.on = low; st.on = !low;
+    // a panel that hardens while you're already inside it lets you finish the pass
+    const over = px + HALF_L > x && px - HALF_L < x + w;
+    if (!over) sb.grace = st.grace = false;
+    else {
+      if (low && !sb.on && py < split + 0.6) sb.grace = true;
+      if (!low && !st.on && py > split - 0.6) st.grace = true;
+    }
+    sb.on = low && !sb.grace; st.on = !low && !st.grace;
     panels[0].mat.uniforms.solid.value = lerp(panels[0].mat.uniforms.solid.value, low ? 1 : 0, 1 - Math.exp(-dt * 18));
     panels[1].mat.uniforms.solid.value = lerp(panels[1].mat.uniforms.solid.value, low ? 0 : 1, 1 - Math.exp(-dt * 18));
     for (let i = 0; i < 2; i++) { const u = panels[i].mat.uniforms; u.time.value = T; u.warn.value = w8 && (i === 0) !== low ? 1 : 0; }
@@ -1788,6 +1795,7 @@ function trafficLanes(n) {
 }
 function mkTraffic(x) {
   const head = Math.random() < (zoneS === 0 ? 0.35 : 0.55);
+  if (head) x += 12;            // head-on cars sweep back past the start of their stretch: keep it clear
   const { ys, c } = trafficLanes(diff > 0.4 ? 3 : 2);
   const grp = new THREE.Group(), list = [];
   ys.forEach((y, i) => {
@@ -2257,7 +2265,7 @@ function resize3d() {
   pointsMat.uniforms.scale.value = bufSize.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   // landscape: the whole skyway with room above and below; portrait: at least 24 units of it across
   const tv = Math.tan(THREE.MathUtils.degToRad(42) / 2);
-  camD = Math.max(11.8 / tv, 12 / (tv * camera.aspect));
+  camD = Math.max(11.2 / tv, 12 / (tv * camera.aspect));
 }
 const view = PA.canvas($("fx"), { onResize: () => resize3d() });
 const fx = view.ctx;
@@ -2418,7 +2426,7 @@ PA.loop(update, render);
 
 // test hooks
 window.__sky = {
-  state: () => ({ px, py, vy, V, score, cleared, cellsN, shield, alive, zone, demo, started, obs: obs.map((o) => o.kind + "@" + Math.round(o.x0)) }),
+  state: () => ({ why: car.userData.why, px, py, vy, V, score, cleared, cellsN, shield, alive, zone, demo, started, obs: obs.map((o) => o.kind + "@" + Math.round(o.x0)) }),
   god: (on) => { god = on !== false; },
   warp: (z) => {
     clearObs();
