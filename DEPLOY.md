@@ -43,7 +43,7 @@ Deploys are done by hand with wrangler, from an up-to-date `main`:
    `npx wrangler pages deploy dist --project-name=promptarcade --branch=main`
    Note the previous production deployment id first (`npx wrangler pages deployment list
    --project-name=promptarcade --environment=production`) so you can roll back to it.
-4. Check production: `/api/scores` returns JSON, the changed pages load, `/games/neon-tetris/` redirects.
+4. Check production: `/api/scores` returns JSON, the changed pages load, `/games/block-bloom/` loads.
    Don't save test scores to the production boards.
 
 A new game needs its slug added to `functions/_shared/games.js`, or `/api/scores` rejects its scores.

@@ -74,9 +74,16 @@ test("retired games redirect and are gone from the site", () => {
     assert.match(red, new RegExp(`^/games/play/${slug} /games/`, "m"), slug);
     assert.ok(!fs.existsSync(out(`games/play/${slug}.html`)), slug + " play file still shipped");
   }
-  for (const f of html) {
+  // Trademark block-game names must not ship as user-facing text or as a redirect path.
+  const trademark = /Neon Tetris|neon-tetris|Tetris/;
+  assert.ok(!trademark.test(red), "trademark slug in _redirects");
+  for (const rel of ["src/catalog.mjs", "functions/_shared/games.js", "DEPLOY.md"]) {
+    assert.ok(!trademark.test(fs.readFileSync(path.join(ROOT, rel), "utf8")), "trademark name in " + rel);
+  }
+  for (const f of files.filter((x) => /\.(html|js|txt|xml|json|webmanifest)$/.test(x))) {
     const s = fs.readFileSync(f, "utf8");
-    assert.ok(!/Neon Tetris|Pellet Panic|Tetris/.test(s), "retired name in " + path.relative(OUT, f));
+    assert.ok(!trademark.test(s), "trademark name in " + path.relative(OUT, f));
+    if (f.endsWith(".html")) assert.ok(!/Pellet Panic/.test(s), "retired name in " + path.relative(OUT, f));
   }
 });
 

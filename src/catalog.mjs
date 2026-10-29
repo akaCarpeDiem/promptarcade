@@ -352,7 +352,6 @@ export const GAMES = [
 
 /* Games that used to be on the site. Their old URLs redirect (301) so links and bookmarks keep working. */
 export const RETIRED = {
-  "neon-tetris": "block-bloom",
   "pellet-panic": null,
   "vault-dash": null, "spark-climb": null,
   "paper-moths": null, "gate-comet": null, "lantern-stack": null, "moss-steps": null, "wick-line": null,
