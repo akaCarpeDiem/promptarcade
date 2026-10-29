@@ -1149,7 +1149,7 @@
       "grid-100k": ["Storm Chaser", "Score 100,000 in Gridstorm", "⚡"],
       "delve-5": ["Dragonslayer", "Reach depth 6 in Deepdelve", "🐉"],
       "delve-10": ["Into the Abyss", "Reach depth 10 in Deepdelve", "🕳️"],
-      "stack-30": ["Skyline", "Stack 30 floors in Skystack 3D", "🏙️"]
+      "stack-30": ["Skyline", "Stack 30 floors in Skystack", "🏙️"]
     };
     var data = null, queue = [];
     (function loadData() {

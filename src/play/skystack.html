@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-<title>Skystack 3D — PromptArcade</title>
+<title>Skystack — PromptArcade</title>
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#5aa9e6;font-family:Manrope,system-ui,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
 #game{position:fixed;inset:0}
@@ -14,12 +14,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:#5aa9e6;font-family:Ma
 #sk-combo{position:fixed;top:168px;left:0;right:0;text-align:center;z-index:30;pointer-events:none;font:800 15px 'JetBrains Mono',monospace;letter-spacing:.16em;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.45);opacity:0;transition:opacity .3s}
 #sk-hint{position:fixed;bottom:40px;left:0;right:0;text-align:center;z-index:30;pointer-events:none;font:700 14px Manrope,sans-serif;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.5);transition:opacity .5s}
 </style></head><body>
-<div id="game" aria-label="Skystack 3D: a skyscraper rising over a city"></div>
+<div id="game" aria-label="Skystack: a skyscraper rising over a city"></div>
 <div id="sk-panel"><small id="sk-dist">Brick row</small><b id="sk-score">0</b><span>FLOOR</span></div>
 <div id="sk-combo"></div><div id="sk-hint">Tap, click or press Space to lower the floor</div>
 <script>
 window.paConfig = {
-  slug: "skystack", title: "Skystack 3D", native: true, music: "lofi", unit: "floors",
+  slug: "skystack", title: "Skystack", native: true, music: "lofi", unit: "floors",
   controls: [["Space / click / tap", "Lower the floor off the crane"], ["Flush drops", "Three in a row brace the tower: no sway for four floors"], ["Hot streak", "From the third flush in a row, each flush floor grows back a little"], ["Sky lobby", "Every tenth floor the next one comes wider"], ["Wind", "From floor 5 the tower sways: drop where the top is, not where it was"]]
 };
 </script>
@@ -300,6 +300,21 @@ const wallTex = canvasTex(128, 256, (g, w, h) => {
 const cityWall = new THREE.MeshStandardMaterial({ color: 0xffffff, map: wallTex, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0, roughness: .8, metalness: .1 });
 const cityRoof = new THREE.MeshStandardMaterial({ color: 0x5b6168, roughness: .9 });
 const blocks = [];
+// keep the view onto the podium clear: anything between the camera and the tower stays below the
+// sight line from the camera to the upper podium, so no neighbour's roof hides where the first floors land
+const CAM_AZ = Math.PI / 4, EL_LOW = .42, EL_START = .62;
+function clearH(x, z, w, d) {
+  const hd = Math.hypot(w, d) / 2;
+  let cap = Infinity;
+  for (const az of [CAM_AZ - .2, CAM_AZ, CAM_AZ + .2]) {
+    const ux = Math.sin(az), uz = Math.cos(az);
+    const t = x * ux + z * uz, lat = Math.abs(x * uz - z * ux);
+    if (t <= 0 || lat > START / 2 + hd + 2) continue;
+    // the sight line rises from the podium (aimed a few floors below its top) at the shallowest camera angle
+    cap = Math.min(cap, (-3 + Math.max(0, t - hd) * Math.tan(EL_LOW) - .6) - GY);
+  }
+  return Math.max(1.2, cap);
+}
 for (let gx = -6; gx <= 6; gx++) for (let gz = -6; gz <= 6; gz++) {
   if (Math.abs(gx) <= 0 && Math.abs(gz) <= 0) continue;
   const cx = gx * 20, cz = gz * 20, r = Math.hypot(cx, cz);
@@ -307,8 +322,10 @@ for (let gx = -6; gx <= 6; gx++) for (let gz = -6; gz <= 6; gz++) {
   // two to four buildings to a block, taller further out so the tower always reads as the star
   const n = 2 + ((Math.random() * 3) | 0), slots = [[-4, -4], [4, -4], [-4, 4], [4, 4]].sort(() => Math.random() - .5);
   for (let k = 0; k < n; k++) {
-    const w = 5 + Math.random() * 2.5, d = 5 + Math.random() * 2.5, h = 2 + Math.random() * (r < 30 ? 5 : r < 60 ? 10 : 18) + (Math.random() < .08 ? 14 : 0);
-    blocks.push([cx + slots[k][0], cz + slots[k][1], w, d, h]);
+    const w = 5 + Math.random() * 2.5, d = 5 + Math.random() * 2.5, bx = cx + slots[k][0], bz = cz + slots[k][1];
+    let h = 2 + Math.random() * (r < 30 ? 5 : r < 60 ? 10 : 18) + (Math.random() < .08 ? 14 : 0);
+    h = Math.min(h, clearH(bx, bz, w, d));
+    blocks.push([bx, bz, w, d, h]);
   }
 }
 const city = new THREE.InstancedMesh(geo, [cityWall, cityWall, cityRoof, cityRoof, cityWall, cityWall], blocks.length);
@@ -783,7 +800,12 @@ function frame(now) {
   for (const c of clouds) {
     c.position.x += c.userData.v * dt; if (c.position.x > 40) c.position.x = -40;
     const dc = c.position.distanceTo(cam.position);
-    c.material.opacity = .55 * Math.min(1, Math.max(0, (dc - 10) / 14));
+    // a cloud sitting right across the line of sight to the top of the tower thins out, so it never hides where the floor lands
+    const ax = -cam.position.x, ay = camY + .5 - cam.position.y, az2 = -cam.position.z, aa = ax * ax + ay * ay + az2 * az2;
+    const px = c.position.x - cam.position.x, py = c.position.y - cam.position.y, pz = c.position.z - cam.position.z;
+    const u = Math.min(1, Math.max(0, (px * ax + py * ay + pz * az2) / aa));
+    const off = Math.hypot(px - ax * u, py - ay * u, pz - az2 * u), clr = Math.min(1, Math.max(.08, (off - 3) / (c.scale.x * .45)));
+    c.material.opacity = .55 * Math.min(1, Math.max(0, (dc - 10) / 14)) * (u < 1 ? clr : 1);
     c.material.color.setRGB(ck, ck * 1.02, ck * 1.1 + night * .1);
   }
   // camera rises with the tower and drifts gently round it; pulls back at the end to show the whole thing
@@ -791,11 +813,17 @@ function frame(now) {
   camY += (targetY - camY) * Math.min(1, dt * 3);
   const D = over ? Math.max(camD, stack.length * H * 1.9 + 14) : camD;
   cam.userData.d = (cam.userData.d || D) + (D - (cam.userData.d || D)) * Math.min(1, dt * 2);
-  const az = Math.PI / 4 + Math.sin(clock * .07) * .12, el = .42, dd = cam.userData.d;
+  // the first floors are seen from higher up, looking down onto the podium so the landing spot is
+  // easy to read; the view eases down to the usual angle as the tower climbs past ten floors
+  const elT = over ? EL_LOW : EL_LOW + (EL_START - EL_LOW) * Math.max(0, 1 - score / 10);
+  cam.userData.el = cam.userData.el == null ? elT : cam.userData.el + (elT - cam.userData.el) * Math.min(1, dt * 2);
+  const az = CAM_AZ + Math.sin(clock * .07) * .12, el = cam.userData.el, dd = cam.userData.d;
   cam.position.set(Math.sin(az) * dd * Math.cos(el), camY + dd * Math.sin(el), Math.cos(az) * dd * Math.cos(el));
   kick *= Math.exp(-dt * 9);
   cam.position.y -= kick * Math.sin(clock * 40) * .5;
-  cam.lookAt(0, camY, 0);
+  // early on, aim a touch above the podium so it and the hanging floor sit clear of the score panel
+  const lift = over ? 0 : 1.2 * Math.max(0, 1 - score / 10);
+  cam.lookAt(0, camY + lift, 0);
   sky.position.copy(cam.position);
   sun.position.set(10, 30 + camY, 6); sun.target.position.set(0, camY, 0);
   post.render(scene, cam, clock);
