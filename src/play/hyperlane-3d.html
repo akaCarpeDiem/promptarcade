@@ -78,21 +78,22 @@ import * as THREE from "/vendor/three/three.module.min.js";
   const GEN_Z = -340;                          // the city is built this far ahead
   const ceilOf = (z) => z === "lobby" ? LOBBY_CEIL : z === "build" ? BUILD_CEIL : z === "office" ? CEIL : 40;
 
-  // Each sector is a new time of day over the city.
+  // Each sector is a new night over the megacity, each with its own sky, haze and neon.
   const TIMES = [
-    { name: "Golden Hour", el: 7, az: 112, sun: 0xffb46e, sunI: 3.4, top: 0x4a7ab4, hor: 0xf0c08e, low: 0x8c6d5c, glow: 0xffa860, glowI: 0.9,
-      cloud: 0.42, cLit: 0xffe0b8, cDark: 0x8a7c8a, hemiS: 0xc8dcff, hemiG: 0x7a5844, hemiI: 1.25, fog: 0.0034, lit: 0.35, exp: 0.94, stars: 0, rain: 0 },
-    { name: "Sunset", el: 1.2, az: 98, sun: 0xff7c40, sunI: 2.7, top: 0x2f4583, hor: 0xff9a5e, low: 0x5f3e48, glow: 0xff6a34, glowI: 1.5,
-      cloud: 0.5, cLit: 0xffa070, cDark: 0x553e5e, hemiS: 0xa8b4e8, hemiG: 0x6a4038, hemiI: 1.0, fog: 0.0042, lit: 0.6, exp: 1.05, stars: 0, rain: 0 },
-    { name: "Dusk", el: -3, az: 86, sun: 0xd27a8e, sunI: 0.9, top: 0x1b2656, hor: 0xd97a62, low: 0x30283c, glow: 0xe2664c, glowI: 1.0,
-      cloud: 0.36, cLit: 0xd8806e, cDark: 0x2e2a44, hemiS: 0x7a88c8, hemiG: 0x3e2c34, hemiI: 0.85, fog: 0.0042, lit: 0.85, exp: 1.15, stars: 0.15, rain: 0 },
-    { name: "Blue Hour", el: -8, az: 80, sun: 0x7a96dc, sunI: 0.5, top: 0x0f1c48, hor: 0x46679f, low: 0x23283e, glow: 0x3e5c9e, glowI: 0.45,
-      cloud: 0.25, cLit: 0x5a72a8, cDark: 0x1a2038, hemiS: 0x6276b8, hemiG: 0x2c2a38, hemiI: 0.8, fog: 0.0040, lit: 1.0, exp: 1.25, stars: 0.4, rain: 0 },
-    { name: "Midnight", el: 38, az: -60, sun: 0x9fb4ff, sunI: 0.32, top: 0x03060f, hor: 0x241d2e, low: 0x30221e, glow: 0x1c2440, glowI: 0.2,
-      cloud: 0.18, cLit: 0x3a3a4c, cDark: 0x0e0f18, hemiS: 0x3a4466, hemiG: 0x3a2a22, hemiI: 0.7, fog: 0.0038, lit: 0.9, exp: 1.35, stars: 1, rain: 0 },
-    { name: "Thunderstorm", el: 25, az: 60, sun: 0x8e9aae, sunI: 0.4, top: 0x1c2229, hor: 0x434b56, low: 0x262b32, glow: 0x30363e, glowI: 0.2,
-      cloud: 1.0, cLit: 0x5b636e, cDark: 0x1c2026, hemiS: 0x6c7684, hemiG: 0x2a2c30, hemiI: 0.85, fog: 0.0062, lit: 0.95, exp: 1.25, stars: 0, rain: 1 }
+    { name: "Neon Dusk", el: -4, az: 100, sun: 0xff4fa8, sunI: 1.1, top: 0x110a2c, hor: 0xb52c7c, low: 0x1c0c28, glow: 0xff2f8a, glowI: 1.2,
+      cloud: 0.35, cLit: 0xff6ab0, cDark: 0x1c0f30, hemiS: 0x7a5ad8, hemiG: 0x301030, hemiI: 0.95, fog: 0.0042, lit: 1, exp: 1.22, stars: 0.25, rain: 0 },
+    { name: "Magenta Smog", el: -8, az: 70, sun: 0xff3c9a, sunI: 0.8, top: 0x1a0620, hor: 0x8a1c5a, low: 0x220a1e, glow: 0xff3a8a, glowI: 0.8,
+      cloud: 0.7, cLit: 0xc0407a, cDark: 0x200a20, hemiS: 0x9a4a9a, hemiG: 0x2a0a1e, hemiI: 0.9, fog: 0.0056, lit: 1, exp: 1.28, stars: 0, rain: 0 },
+    { name: "Acid Rain", el: -10, az: 60, sun: 0x3affd0, sunI: 0.7, top: 0x031417, hor: 0x0f5a5a, low: 0x061a1c, glow: 0x22e0c0, glowI: 0.6,
+      cloud: 0.85, cLit: 0x2aa8a0, cDark: 0x041214, hemiS: 0x3aa8b0, hemiG: 0x0a1a1a, hemiI: 0.9, fog: 0.0058, lit: 1, exp: 1.3, stars: 0, rain: 0.45 },
+    { name: "Midnight Grid", el: 30, az: -60, sun: 0x8a9aff, sunI: 0.45, top: 0x02030c, hor: 0x1e1a4c, low: 0x0a0a1c, glow: 0x3a3aa0, glowI: 0.3,
+      cloud: 0.15, cLit: 0x34306a, cDark: 0x05060f, hemiS: 0x4a4aa8, hemiG: 0x1a0f24, hemiI: 0.8, fog: 0.0038, lit: 1, exp: 1.4, stars: 1, rain: 0 },
+    { name: "Ion Storm", el: 25, az: 60, sun: 0x9a7aff, sunI: 0.45, top: 0x0c0a1c, hor: 0x3a2a6a, low: 0x120c22, glow: 0x6040c0, glowI: 0.3,
+      cloud: 1.0, cLit: 0x5a4a9a, cDark: 0x0c0a18, hemiS: 0x6a5ab8, hemiG: 0x1a1428, hemiI: 0.9, fog: 0.0062, lit: 1, exp: 1.3, stars: 0, rain: 1 },
+    { name: "Synth Sunrise", el: 2, az: 98, sun: 0xff8a3a, sunI: 2.0, top: 0x1a1050, hor: 0xff6a4a, low: 0x3a1838, glow: 0xff4a6a, glowI: 1.5,
+      cloud: 0.4, cLit: 0xff8a7a, cDark: 0x3a1a4a, hemiS: 0x9a7ae0, hemiG: 0x4a2038, hemiI: 1.0, fog: 0.0044, lit: 0.85, exp: 1.12, stars: 0, rain: 0 }
   ];
+
 
   let W = innerWidth, H = innerHeight;
   let running = false, overSent = false, simT = 0;
@@ -100,7 +101,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
   let boost = 100, boosting = false, speed = 0, sector = 0, spawnGap = 0, nextSpawn = 0, pattern = 0;
   let shipX = 0, shipY = 0, velX = 0, velY = 0, bank = 0, pitch = 0;
   let ptrActive = false, ptrNX = 0, ptrNY = 0;
-  let bannerT = 0;
+  let bannerT = 0, god = false;
 
   const mount = document.getElementById("game");
   const hud = document.getElementById("hl-hud");
@@ -370,17 +371,17 @@ import * as THREE from "/vendor/three/three.module.min.js";
   // Suspended ceiling: half-metre acoustic tiles in a white grid, an LED panel in each 2 m square.
   function ceilingTex() {
     const S = 512, [c, g] = cnv(S, S), [e, ge] = cnv(S, S), T = S / 4;
-    g.fillStyle = "#d4d3cf"; g.fillRect(0, 0, S, S);
+    g.fillStyle = "#2a2b33"; g.fillRect(0, 0, S, S);
     layer(g, S, S, NZ.fine, 0.35, "multiply", 64);
-    for (let k = 0; k < 400; k++) { g.fillStyle = "rgba(90,88,84,.35)"; g.fillRect(rnd() * S, rnd() * S, 1.5, 1.5); }
+    for (let k = 0; k < 400; k++) { g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(rnd() * S, rnd() * S, 1.5, 1.5); }
     ge.fillStyle = "#000"; ge.fillRect(0, 0, S, S);
-    // the LED panel, centred in the square
-    g.fillStyle = "#f2f4f6"; g.fillRect(T, T * 1.5, T * 2, T);
-    const grd = ge.createLinearGradient(0, T * 1.5, 0, T * 2.5);
-    grd.addColorStop(0, "#c8c8c8"); grd.addColorStop(0.15, "#fff"); grd.addColorStop(0.85, "#fff"); grd.addColorStop(1, "#c8c8c8");
-    ge.fillStyle = grd; ge.fillRect(T + 6, T * 1.5 + 6, T * 2 - 12, T - 12);
+    // a long LED strip across the square
+    g.fillStyle = "#f2f4f6"; g.fillRect(T * 0.15, T * 1.88, T * 3.7, T * 0.24);
+    const grd = ge.createLinearGradient(0, T * 1.88, 0, T * 2.12);
+    grd.addColorStop(0, "#9a9a9a"); grd.addColorStop(0.3, "#fff"); grd.addColorStop(0.7, "#fff"); grd.addColorStop(1, "#9a9a9a");
+    ge.fillStyle = grd; ge.fillRect(T * 0.15 + 3, T * 1.88 + 2, T * 3.7 - 6, T * 0.24 - 4);
     // T-bar grid
-    g.fillStyle = "#ecebe6";
+    g.fillStyle = "#3a3b44";
     for (let k = 0; k <= 4; k++) { g.fillRect(k * T - 3, 0, 6, S); g.fillRect(0, k * T - 3, S, 6); }
     g.fillStyle = "rgba(0,0,0,.18)";
     for (let k = 0; k <= 4; k++) { g.fillRect(k * T + 3, 0, 1, S); g.fillRect(0, k * T + 3, S, 1); }
@@ -567,30 +568,78 @@ import * as THREE from "/vendor/three/three.module.min.js";
     g.fillText(text, w / 2, h / 2 + 2);
     return c;
   }
-  // Made-up brands only.
+  // Made-up brands only, lit like neon and hard light.
+  function glowText(g, txt, x, y, size, col, wgt) {
+    g.font = (wgt || 900) + " " + size + "px Manrope, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.shadowColor = col; g.shadowBlur = size * 0.45; g.fillStyle = col; g.fillText(txt, x, y);
+    g.shadowBlur = 0; g.fillStyle = "rgba(255,255,255,.9)"; g.fillText(txt, x, y);
+  }
+  function scan(g, x, y, w, h, col) {
+    g.save(); g.shadowBlur = 0; g.fillStyle = "rgba(0,0,0,.22)";
+    for (let k = y; k < y + h; k += 4) g.fillRect(x, k, w, 1.5);
+    g.strokeStyle = col; g.lineWidth = 5; g.shadowColor = col; g.shadowBlur = 12; g.strokeRect(x + 4, y + 4, w - 8, h - 8);
+    g.restore();
+  }
   function billboardTex() {
     const [c, g] = cnv(1024, 512), [e, ge] = cnv(1024, 512);
     const ads = [
-      ["NOVA COLA", "ice cold since 1931", "#c3122f", "#fff"], ["HALCYON", "the hotel on 52nd", "#0f1c2e", "#e8c27a"],
-      ["BRIGHTWATER", "live at the Lyric · tonight", "#f2e6c9", "#1a1a1a"], ["CITYLINE AIR", "fly direct · fly daily", "#1468c9", "#fff"]
+      ["HYPERCOLA", "taste the voltage", "#ff2fa8", "#2a0420"], ["KOI SYNTH", "dreams on tap · 24h", "#29f0ff", "#021a24"],
+      ["ORBIT 77", "lofts above the smog", "#ffb21e", "#1e1004"], ["DREAMNET", "sleep is optional", "#9a6bff", "#0e0624"]
     ];
-    ads.forEach(([t, s, bg, fg], i) => {
+    ads.forEach(([t, sub, col, bg], i) => {
       const ox = (i % 2) * 512, oy = Math.floor(i / 2) * 256;
-      g.fillStyle = bg; g.fillRect(ox, oy, 512, 256);
-      const grd = g.createLinearGradient(ox, oy, ox + 512, oy + 256); grd.addColorStop(0, "rgba(255,255,255,.12)"); grd.addColorStop(1, "rgba(0,0,0,.25)");
+      const grd = g.createLinearGradient(ox, oy, ox, oy + 256); grd.addColorStop(0, bg); grd.addColorStop(1, "#050308");
       g.fillStyle = grd; g.fillRect(ox, oy, 512, 256);
-      g.fillStyle = fg; g.textAlign = "center"; g.font = "800 64px Manrope, Arial, sans-serif"; g.fillText(t, ox + 256, oy + 130);
-      g.font = "500 26px Manrope, Arial, sans-serif"; g.fillText(s, ox + 256, oy + 180);
-      g.fillStyle = "#222"; g.fillRect(ox, oy, 512, 6); g.fillRect(ox, oy + 250, 512, 6);
+      g.save(); g.globalAlpha = 0.35; g.strokeStyle = col; g.lineWidth = 2;
+      for (let k = 0; k < 9; k++) { g.beginPath(); g.moveTo(ox, oy + 236 - k * 4); g.lineTo(ox + 512, oy + 236 - k * 4); g.stroke(); }
+      g.restore();
+      glowText(g, t, ox + 256, oy + 112, 70, col);
+      g.font = "600 26px Manrope, Arial, sans-serif"; g.fillStyle = "rgba(255,255,255,.8)"; g.textAlign = "center"; g.fillText(sub, ox + 256, oy + 176);
+      scan(g, ox, oy, 512, 256, col);
     });
     ge.drawImage(c, 0, 0);
     return [c, e];
   }
-  function plankTex() {
-    const S = 256, [c, g] = cnv(S, S);
-    for (let x = 0; x < S; x += 16) { g.fillStyle = jitter("#6e5a46", 0.25); g.fillRect(x, 0, 16, S); g.fillStyle = "rgba(0,0,0,.4)"; g.fillRect(x, 0, 1.5, S); }
-    layer(g, S, S, NZ.blot, 0.35, "multiply", 256);
-    layer(g, S, S, NZ.fine, 0.3, "overlay", 128);
+  // Vertical blade signs that stick out from the towers over the canyon: half words, half invented script.
+  const BLADE_N = 8;
+  function bladeTex() {
+    const w = 128, h = 384, [c, g] = cnv(w * BLADE_N, h);
+    const words = ["HOTEL", "RAMEN", "BAR", "SYNTH", "ARCADE", "24H", "MODS", "VOLT"];
+    for (let i = 0; i < BLADE_N; i++) {
+      const col = NEON_HEX[i % NEON_HEX.length];
+      g.save(); g.translate(i * w, 0);
+      g.fillStyle = "#06060c"; g.fillRect(0, 0, w, h);
+      g.strokeStyle = col; g.lineWidth = 5; g.shadowColor = col; g.shadowBlur = 16;
+      g.strokeRect(10, 10, w - 20, h - 20);
+      if (i % 2 === 0) {
+        const word = words[i], n = word.length, size = Math.min(62, (h - 50) / n);
+        for (let k = 0; k < n; k++) glowText(g, word[k], w / 2, h / 2 + (k - (n - 1) / 2) * size, size, col, 800);
+      } else {
+        g.strokeStyle = "#fff"; g.shadowBlur = 14;
+        for (let k = 0; k < 4; k++) glyph(g, w / 2, 62 + k * 86, 56);
+      }
+      g.restore();
+    }
+    return c;
+  }
+  // Tall hard-light adverts high on the towers, 1 by 3.
+  function holoTex() {
+    const w = 256, h = 768, [c, g] = cnv(w * 4, h);
+    const ads = [["NEO", "#29f0ff", "#03141e"], ["ZEN-9", "#ff2fa8", "#1e0418"], ["VOLT", "#ffb21e", "#1a0c02"], ["AURA", "#9a6bff", "#0c0420"]];
+    ads.forEach(([t, col, bg], i) => {
+      g.save(); g.translate(i * w, 0);
+      const grd = g.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, bg); grd.addColorStop(0.6, "#040308"); grd.addColorStop(1, bg);
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+      g.strokeStyle = col; g.shadowColor = col; g.shadowBlur = 18; g.lineWidth = 6;
+      if (i === 0) { g.beginPath(); g.arc(w / 2, 250, 86, 0, TAU); g.stroke(); g.beginPath(); g.arc(w / 2, 250, 30, 0, TAU); g.fillStyle = col; g.fill(); }
+      else if (i === 1) { for (let k = 0; k < 5; k++) { g.beginPath(); g.moveTo(40, 150 + k * 50); g.lineTo(w / 2, 190 + k * 50); g.lineTo(w - 40, 150 + k * 50); g.stroke(); } }
+      else if (i === 2) { g.beginPath(); g.moveTo(150, 120); g.lineTo(90, 270); g.lineTo(140, 270); g.lineTo(100, 400); g.lineTo(180, 230); g.lineTo(128, 230); g.lineTo(170, 120); g.closePath(); g.stroke(); }
+      else { g.beginPath(); for (let x = 30; x <= w - 30; x += 4) { const y = 260 + Math.sin(x * 0.05) * 60 * Math.sin(x * 0.012); x === 30 ? g.moveTo(x, y) : g.lineTo(x, y); } g.stroke(); }
+      const n = t.length, size = Math.min(96, 300 / n);
+      for (let k = 0; k < n; k++) glowText(g, t[k], w / 2, 470 + k * size * 0.95, size, col);
+      scan(g, 0, 0, w, h, col);
+      g.restore();
+    });
     return c;
   }
   function asphaltTex() {
@@ -604,7 +653,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
   }
   function roofTex() {
     const S = 256, [c, g] = cnv(S, S);
-    g.fillStyle = "#4a4743"; g.fillRect(0, 0, S, S);
+    g.fillStyle = "#26262c"; g.fillRect(0, 0, S, S);
     layer(g, S, S, NZ.fine, 0.7, "overlay", 64);
     layer(g, S, S, NZ.blot, 0.4, "multiply", 256);
     return c;
@@ -630,14 +679,39 @@ import * as THREE from "/vendor/three/three.module.min.js";
   /* facades: 24 x 32 units per texture, 8 bays of 1.5 m by 4 floors of 4 m */
   const FPX = 32, FW = 24 * FPX, FH = 32 * FPX;
   const STYLES = ["glass", "bronze", "grid", "stone", "brick", "frame"];
+  // Neon colours shared by facades, signs and the skyline; room lights lean cool with neon accents.
+  const NEON_HEX = ["#ff2fa8", "#29f0ff", "#ffb21e", "#9a6bff", "#ff4b6e", "#5affc8"];
+  const TINT = {
+    cool: [206, 224, 255], warm: [255, 200, 150], pink: [255, 120, 210], cyan: [110, 226, 255], violet: [184, 146, 255], amber: [255, 170, 90]
+  };
+  const ROOM_MIX = {
+    glass: ["cool", "cool", "cool", "cyan", "cool", "violet"], bronze: ["warm", "warm", "amber", "warm", "pink"],
+    grid: ["cool", "cool", "violet", "cool", "pink"], stone: ["cool", "warm", "cool", "warm", "violet"],
+    brick: ["warm", "warm", "cool", "pink", "cyan", "warm", "violet"], frame: ["cool"]
+  };
+  // An invented script: a few strokes on a 3 x 3 grid, so signs read as a foreign megacity without being a real language.
+  function glyph(g, cx, cy, s) {
+    const p = (i) => -s / 2 + i * s / 3, ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+    g.save(); g.translate(cx, cy);
+    g.lineWidth = Math.max(2, s * 0.12); g.lineCap = "square";
+    g.beginPath();
+    const n = ri(3, 5);
+    for (let k = 0; k < n; k++) {
+      const t = rnd();
+      if (t < 0.36) { const y = p(ri(0, 3)); g.moveTo(p(ri(0, 1)), y); g.lineTo(p(ri(2, 3)), y); }
+      else if (t < 0.72) { const x = p(ri(0, 3)); g.moveTo(x, p(ri(0, 1))); g.lineTo(x, p(ri(2, 3))); }
+      else if (t < 0.86) g.rect(p(ri(0, 2)), p(ri(0, 2)), s / 3, s / 3);
+      else { const x = p(ri(0, 2)), y = p(ri(0, 2)); g.moveTo(x, y + s / 3); g.lineTo(x + s / 3, y); }
+    }
+    g.stroke(); g.restore();
+  }
   function facadeTex(style) {
     const [c, g] = cnv(FW, FH), [r, gr] = cnv(FW, FH), [e, ge] = cnv(FW, FH);
     // paint in facade units (u right, v up)
     const R = (cx, u0, v0, u1, v1) => cx.fillRect(u0 * FPX, (32 - v1) * FPX, (u1 - u0) * FPX, (v1 - v0) * FPX);
     ge.fillStyle = "#000"; ge.fillRect(0, 0, FW, FH);
-    const room = (u0, v0, u1, v1, warm, k) => {
-      // a lit office seen from outside: bright ceiling, falling off toward the floor, desks and people as shadows
-      const col = warm ? [255, 206, 150] : [222, 234, 255];
+    const room = (u0, v0, u1, v1, col, k) => {
+      // a lit room seen from outside: bright ceiling, falling off toward the floor, furniture and people as shadows
       const y0 = (32 - v1) * FPX, y1 = (32 - v0) * FPX, x0 = u0 * FPX, x1 = u1 * FPX;
       const grd = ge.createLinearGradient(0, y0, 0, y1);
       grd.addColorStop(0, rgb(...col, 0.95 * k)); grd.addColorStop(0.2, rgb(...col, 0.6 * k)); grd.addColorStop(1, rgb(...col, 0.16 * k));
@@ -648,110 +722,143 @@ import * as THREE from "/vendor/three/three.module.min.js";
       for (let n = 0; n < 3; n++) if (rnd() < 0.6) ge.fillRect(x0 + rnd() * (x1 - x0) * 0.8, y0 + (y1 - y0) * (0.6 + rnd() * 0.1), (x1 - x0) * (0.12 + rnd() * 0.25), (y1 - y0) * 0.4);
       if (rnd() < 0.35) { ge.fillStyle = "rgba(0,0,0,.55)"; ge.fillRect(x0, y0, x1 - x0, (y1 - y0) * (0.2 + rnd() * 0.5)); }
     };
-    const litP = style === "frame" ? 0.0 : 0.58;
+    const tint = () => TINT[PA.choice(ROOM_MIX[style])];
+    // a neon tube: a pale core in the colour map, the glow in the emissive map
+    const neon = (u0, v0, u1, v1, hex, k) => {
+      g.fillStyle = hex; R(g, u0, v0, u1, v1);
+      gr.fillStyle = rmc(0.4, 0); R(gr, u0, v0, u1, v1);
+      ge.save(); ge.globalAlpha = k; ge.shadowColor = hex; ge.shadowBlur = 10; ge.fillStyle = hex; R(ge, u0, v0, u1, v1);
+      ge.shadowBlur = 0; ge.globalAlpha = k * 0.7; ge.fillStyle = "#fff"; R(ge, u0, v0 + (v1 - v0) * 0.3, u1, v1 - (v1 - v0) * 0.3); ge.restore();
+    };
+    const litP = style === "frame" ? 0.0 : style === "brick" ? 0.5 : 0.4;
     if (style === "glass" || style === "bronze") {
-      const glass = style === "glass" ? "#5b7685" : "#4a3c30", span = style === "glass" ? "#2c3640" : "#2a2119", mull = style === "glass" ? "#a9b1b8" : "#6b5434";
+      // dark curtain walls: smoked glass, graphite spandrels and LED lines along some floors
+      const glass = style === "glass" ? "#182230" : "#1c1418", span = style === "glass" ? "#0e1118" : "#120c0e", mull = style === "glass" ? "#3a4252" : "#4a3520";
+      const line = style === "glass" ? PA.choice(["#29f0ff", "#9a6bff", "#29f0ff"]) : "#ffb21e";
       g.fillStyle = glass; R(g, 0, 0, 24, 32);
       gr.fillStyle = rmc(0.05, 0.92); R(gr, 0, 0, 24, 32);
       for (let f = 0; f < 4; f++) for (let b = 0; b < 8; b++) {
         const u = b * 3, v = f * 8;
-        g.fillStyle = jitter(glass, 0.12); R(g, u, v + 1.4, u + 3, v + 8);
-        if (rnd() < litP) room(u, v + 1.4, u + 3, v + 8, rnd() < 0.55, 0.55 + rnd() * 0.45);
+        g.fillStyle = jitter(glass, 0.18); R(g, u, v + 1.4, u + 3, v + 8);
+        if (rnd() < litP) room(u, v + 1.4, u + 3, v + 8, tint(), 0.5 + rnd() * 0.5);
         g.fillStyle = span; R(g, u, v, u + 3, v + 1.4);
-        gr.fillStyle = rmc(0.35, 0.6); R(gr, u, v, u + 3, v + 1.4);
+        gr.fillStyle = rmc(0.35, 0.7); R(gr, u, v, u + 3, v + 1.4);
       }
       g.fillStyle = mull; gr.fillStyle = rmc(0.3, 1);
       for (let b = 0; b <= 8; b++) { R(g, b * 3 - 0.07, 0, b * 3 + 0.07, 32); R(gr, b * 3 - 0.07, 0, b * 3 + 0.07, 32); }
       for (let f = 0; f < 4; f++) for (const v of [f * 8, f * 8 + 1.4]) { R(g, 0, v - 0.05, 24, v + 0.05); R(gr, 0, v - 0.05, 24, v + 0.05); }
+      if (style === "glass") { for (let f = 0; f < 4; f++) if (f % 2 === 0 || rnd() < 0.3) neon(0, f * 8 + 1.12, 24, f * 8 + 1.26, line, 0.9); }
+      else for (let b = 0; b <= 8; b += 2) neon(b * 3 - 0.05, 0, b * 3 + 0.05, 32, line, 0.75);
       layer(g, FW, FH, NZ.blot, 0.12, "multiply", 512);
     } else if (style === "grid") {
-      g.fillStyle = "#d6d1c7"; R(g, 0, 0, 24, 32);
+      // dark composite panels; each window has a lit lintel strip, a floor at a time
+      g.fillStyle = "#1f2029"; R(g, 0, 0, 24, 32);
       layer(g, FW, FH, NZ.mid, 0.25, "overlay", 256);
       layer(g, FW, FH, NZ.blot, 0.25, "multiply", 512);
-      gr.fillStyle = rmc(0.85, 0); R(gr, 0, 0, 24, 32);
-      for (let f = 0; f < 4; f++) for (let b = 0; b < 8; b++) {
-        const u = b * 3 + 0.45, v = f * 8 + 1.8, u1 = u + 2.1, v1 = v + 5.2;
-        g.fillStyle = "#2b3742"; R(g, u, v, u1, v1);
-        const sh = g.createLinearGradient(0, (32 - v1) * FPX, 0, (32 - v1) * FPX + 30);
-        sh.addColorStop(0, "rgba(0,0,0,.6)"); sh.addColorStop(1, "rgba(0,0,0,0)");
-        g.fillStyle = sh; R(g, u, v, u1, v1);
-        gr.fillStyle = rmc(0.06, 0.85); R(gr, u, v, u1, v1);
-        if (rnd() < litP) room(u, v, u1, v1, rnd() < 0.5, 0.5 + rnd() * 0.5);
-        g.fillStyle = "#8a9096"; R(g, u + 1.02, v, u + 1.08, v1);
+      gr.fillStyle = rmc(0.55, 0.4); R(gr, 0, 0, 24, 32);
+      const strip = PA.choice(["#ff2fa8", "#9a6bff", "#ff2fa8"]);
+      for (let f = 0; f < 4; f++) {
+        const on = rnd() < 0.65;
+        for (let b = 0; b < 8; b++) {
+          const u = b * 3 + 0.45, v = f * 8 + 1.8, u1 = u + 2.1, v1 = v + 5.2;
+          g.fillStyle = "#0b0e16"; R(g, u, v, u1, v1);
+          gr.fillStyle = rmc(0.06, 0.85); R(gr, u, v, u1, v1);
+          if (rnd() < litP) room(u, v, u1, v1, tint(), 0.5 + rnd() * 0.5);
+          g.fillStyle = "#3a3c48"; R(g, u + 1.02, v, u + 1.08, v1);
+          if (on) neon(u, v1 + 0.12, u1, v1 + 0.24, strip, 0.85);
+        }
       }
     } else if (style === "stone" || style === "brick") {
       if (style === "stone") {
-        g.fillStyle = "#cbbd9e"; R(g, 0, 0, 24, 32);
-        layer(g, FW, FH, NZ.blot, 0.28, "multiply", 512);
+        // brutalist concrete, board-marked, with violet light bands at every fourth floor line
+        g.fillStyle = "#3b3b44"; R(g, 0, 0, 24, 32);
+        layer(g, FW, FH, NZ.blot, 0.35, "multiply", 512);
         layer(g, FW, FH, NZ.fine, 0.3, "overlay", 128);
-        g.fillStyle = "rgba(80,66,48,.25)";
+        g.fillStyle = "rgba(0,0,0,.18)";
         for (let v = 0; v < 32; v += 0.6) R(g, 0, v, 24, v + 0.03);
       } else {
-        g.fillStyle = "#857a70"; R(g, 0, 0, 24, 32);
-        const bw = 0.5, bh = 0.17;
-        for (let j = 0; j * bh < 32; j++) for (let i = -1; i * bw < 24; i++) {
-          g.fillStyle = jitter(PA.choice(["#8b3b2b", "#7a3326", "#93462f", "#6f2f23", "#9a4b36"]), 0.15);
-          R(g, i * bw + (j % 2) * bw / 2 + 0.02, j * bh + 0.025, (i + 1) * bw + (j % 2) * bw / 2 - 0.02, (j + 1) * bh - 0.02);
+        // a habitat stack: prefab modules in slightly different finishes
+        for (let f = 0; f < 4; f++) for (let b = 0; b < 8; b++) {
+          g.fillStyle = jitter(PA.choice(["#2a2430", "#302836", "#25262e", "#2e2a2a"]), 0.2);
+          R(g, b * 3, f * 8, b * 3 + 3, f * 8 + 8);
+          g.fillStyle = "rgba(0,0,0,.45)"; R(g, b * 3, f * 8, b * 3 + 0.06, f * 8 + 8); R(g, b * 3, f * 8, b * 3 + 3, f * 8 + 0.06);
         }
         layer(g, FW, FH, NZ.blot, 0.3, "multiply", 512);
+        layer(g, FW, FH, NZ.fine, 0.2, "overlay", 128);
       }
-      gr.fillStyle = rmc(0.88, 0); R(gr, 0, 0, 24, 32);
+      gr.fillStyle = rmc(0.82, 0.1); R(gr, 0, 0, 24, 32);
       for (let f = 0; f < 4; f++) {
-        if (style === "stone") { g.fillStyle = "#ddd1b6"; R(g, 0, f * 8 + 7.55, 24, f * 8 + 8); g.fillStyle = "rgba(40,30,20,.35)"; R(g, 0, f * 8 + 7.35, 24, f * 8 + 7.55); }
+        if (style === "stone") {
+          g.fillStyle = "#4a4a54"; R(g, 0, f * 8 + 7.55, 24, f * 8 + 8);
+          if (f % 2 === 0) neon(0, f * 8 + 7.4, 24, f * 8 + 7.52, PA.choice(["#9a6bff", "#ff2fa8", "#9a6bff"]), 0.8);
+        }
         for (let b = 0; b < 8; b++) {
           const u = b * 3 + 0.8, v = f * 8 + 1.6, u1 = u + 1.4, v1 = v + 4.2;
-          g.fillStyle = style === "stone" ? "#e3d9c4" : "#c9c1b2"; R(g, u - 0.2, v1, u1 + 0.2, v1 + 0.45); R(g, u - 0.15, v - 0.25, u1 + 0.15, v);
-          g.fillStyle = "#26303a"; R(g, u, v, u1, v1);
+          g.fillStyle = "#15161c"; R(g, u - 0.2, v1, u1 + 0.2, v1 + 0.45); R(g, u - 0.15, v - 0.25, u1 + 0.15, v);
+          g.fillStyle = "#0b0e16"; R(g, u, v, u1, v1);
           gr.fillStyle = rmc(0.1, 0.55); R(gr, u, v, u1, v1);
-          if (rnd() < litP) room(u, v, u1, v1, rnd() < 0.8, 0.5 + rnd() * 0.5);
-          g.fillStyle = style === "stone" ? "#e8e6df" : "#1c1c1c";
+          if (rnd() < litP) room(u, v, u1, v1, tint(), 0.55 + rnd() * 0.45);
+          g.fillStyle = "#101116";
           R(g, u, v, u1, v + 0.1); R(g, u, v1 - 0.1, u1, v1); R(g, u, v, u + 0.1, v1); R(g, u1 - 0.1, v, u1, v1);
           R(g, u, v + 2.05, u1, v + 2.17); R(g, u + 0.66, v, u + 0.74, v1);
+          // small shop and flat signs between the windows of the habitat stacks
+          if (style === "brick" && rnd() < 0.14) {
+            const hx = NEON_HEX[Math.floor(rnd() * NEON_HEX.length)], su = b * 3 + 2.35, sv = v + 0.2;
+            g.fillStyle = "#07070c"; R(g, su, sv, su + 1.15, sv + 4.0);
+            ge.save(); ge.strokeStyle = hx; ge.shadowColor = hx; ge.shadowBlur = 8; ge.globalAlpha = 0.95;
+            for (let k = 0; k < 3; k++) glyph(ge, (su + 0.575) * FPX, (32 - (sv + 0.75 + k * 1.25)) * FPX, 0.8 * FPX);
+            ge.lineWidth = 2; ge.strokeRect(su * FPX + 2, (32 - sv - 4.0) * FPX + 2, 1.15 * FPX - 4, 4.0 * FPX - 4);
+            ge.restore();
+          }
         }
       }
     } else {
-      // a tower under construction: slabs and columns, open floors, some glass already in, orange netting
-      g.fillStyle = "#15171a"; R(g, 0, 0, 24, 32);
+      // a tower under construction: slabs and columns, open floors, some glass already in, cyan safety netting
+      g.fillStyle = "#0d0e12"; R(g, 0, 0, 24, 32);
       gr.fillStyle = rmc(0.9, 0); R(gr, 0, 0, 24, 32);
       for (let f = 0; f < 4; f++) {
         for (let b = 0; b < 8; b++) {
           const u = b * 3, v = f * 8 + 1;
-          if (rnd() < 0.4) { g.fillStyle = jitter("#56707e", 0.1); R(g, u, v, u + 3, v + 7); gr.fillStyle = rmc(0.06, 0.9); R(gr, u, v, u + 3, v + 7); g.fillStyle = "#a9b1b8"; R(g, u, v, u + 0.1, v + 7); }
-          else if (rnd() < 0.5) { g.fillStyle = "rgba(255,110,30,.55)"; for (let k = 0; k < 7; k += 0.35) R(g, u, v + k, u + 3, v + k + 0.05); for (let k = 0; k < 3; k += 0.35) R(g, u + k, v, u + k + 0.05, v + 7); }
-          if (rnd() < 0.12) { ge.fillStyle = "rgba(255,226,170,.9)"; R(ge, u + 1.2, v + 5.5, u + 1.6, v + 5.9); }
+          if (rnd() < 0.4) { g.fillStyle = jitter("#1c2634", 0.1); R(g, u, v, u + 3, v + 7); gr.fillStyle = rmc(0.06, 0.9); R(gr, u, v, u + 3, v + 7); g.fillStyle = "#3a4252"; R(g, u, v, u + 0.1, v + 7); }
+          else if (rnd() < 0.5) { g.fillStyle = "rgba(40,220,255,.4)"; for (let k = 0; k < 7; k += 0.35) R(g, u, v + k, u + 3, v + k + 0.05); for (let k = 0; k < 3; k += 0.35) R(g, u + k, v, u + k + 0.05, v + 7); }
+          if (rnd() < 0.12) { ge.fillStyle = "rgba(200,240,255,.9)"; R(ge, u + 1.2, v + 5.5, u + 1.6, v + 5.9); }
         }
-        g.fillStyle = "#8d8a84"; R(g, 0, f * 8, 24, f * 8 + 1);
+        g.fillStyle = "#3e3e46"; R(g, 0, f * 8, 24, f * 8 + 1);
+        if (rnd() < 0.5) neon(0, f * 8 + 0.85, 24, f * 8 + 0.95, "#ffb21e", 0.6);
       }
-      for (let b = 0; b < 8; b += 4) { g.fillStyle = "#7f7c76"; R(g, b * 3, 0, b * 3 + 1, 32); }
+      for (let b = 0; b < 8; b += 4) { g.fillStyle = "#34343c"; R(g, b * 3, 0, b * 3 + 1, 32); }
       layer(g, FW, FH, NZ.blot, 0.3, "multiply", 512);
     }
     return { map: tex(c, [24, 32]), rm: tex(r, [24, 32], true), em: tex(e, [24, 32]) };
   }
 
-  // The jet: light grey paint with panel lines, a dark anti-glare panel, orange flashes.
+  // The jet: graphite paint with panel lines and a glowing cyan livery (its own emissive map).
   function shipPaintTex() {
-    const [c, g] = cnv(1024, 512);
-    g.fillStyle = "#b8bdc3"; g.fillRect(0, 0, 1024, 512);
-    layer(g, 1024, 512, NZ.blot, 0.12, "multiply", 512);
-    g.fillStyle = "#2a2e34"; g.fillRect(0, 380, 70, 132); g.fillRect(954, 380, 70, 132);
-    g.fillStyle = "#ff6a1a"; g.fillRect(244, 90, 24, 290); g.fillRect(756, 90, 24, 290);
-    g.fillStyle = "#1c1f24"; g.fillRect(270, 90, 5, 290); g.fillRect(749, 90, 5, 290);
-    g.strokeStyle = "rgba(40,44,50,.55)"; g.lineWidth = 1.4;
+    const [c, g] = cnv(1024, 512), [e, ge] = cnv(1024, 512);
+    g.fillStyle = "#2c2f38"; g.fillRect(0, 0, 1024, 512);
+    layer(g, 1024, 512, NZ.blot, 0.18, "multiply", 512);
+    ge.fillStyle = "#000"; ge.fillRect(0, 0, 1024, 512);
+    g.fillStyle = "#121318"; g.fillRect(0, 380, 70, 132); g.fillRect(954, 380, 70, 132);
+    for (const [x, w, col] of [[244, 14, "#29f0ff"], [262, 4, "#ff2fa8"], [766, 14, "#29f0ff"], [758, 4, "#ff2fa8"]]) {
+      g.fillStyle = col; g.fillRect(x, 90, w, 290);
+      ge.fillStyle = col; ge.fillRect(x, 90, w, 290);
+    }
+    g.strokeStyle = "rgba(0,0,0,.5)"; g.lineWidth = 1.4;
     for (const y of [60, 140, 220, 300, 380, 440]) { g.beginPath(); g.moveTo(0, y); g.lineTo(1024, y); g.stroke(); }
     for (const x of [128, 384, 640, 896]) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 512); g.stroke(); }
-    g.fillStyle = "rgba(30,34,40,.45)";
+    g.fillStyle = "rgba(0,0,0,.45)";
     for (let y = 70; y < 500; y += 14) for (const x of [124, 380, 636, 892]) g.fillRect(x, y, 2, 2);
-    g.save(); g.fillStyle = "#1c1f24"; g.font = "700 30px Manrope, Arial, sans-serif";
+    g.save(); g.fillStyle = "#8a90a0"; g.font = "700 30px Manrope, Arial, sans-serif";
     g.translate(300, 70); g.rotate(Math.PI / 2); g.fillText("PA-01", 0, 0); g.restore();
-    g.save(); g.fillStyle = "#1c1f24"; g.font = "700 30px Manrope, Arial, sans-serif";
+    g.save(); g.fillStyle = "#8a90a0"; g.font = "700 30px Manrope, Arial, sans-serif";
     g.translate(724, 150); g.rotate(-Math.PI / 2); g.fillText("PA-01", 0, 0); g.restore();
-    return c;
+    return [c, e];
   }
   function wingPaintTex() {
     const S = 256, [c, g] = cnv(S, S);
-    g.fillStyle = "#b5bac0"; g.fillRect(0, 0, S, S);
-    layer(g, S, S, NZ.blot, 0.12, "multiply", 256);
-    g.strokeStyle = "rgba(40,44,50,.5)"; g.lineWidth = 1.2;
+    g.fillStyle = "#2a2d36"; g.fillRect(0, 0, S, S);
+    layer(g, S, S, NZ.blot, 0.16, "multiply", 256);
+    g.strokeStyle = "rgba(0,0,0,.5)"; g.lineWidth = 1.2;
     for (let k = 32; k < S; k += 64) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k, S); g.stroke(); g.beginPath(); g.moveTo(0, k); g.lineTo(S, k); g.stroke(); }
     return c;
   }
@@ -791,14 +898,15 @@ import * as THREE from "/vendor/three/three.module.min.js";
   T.screen = tex(screenTex(), null);
   T.art = tex(artTex(), null);
   T.exit = tex(signTex("EXIT", "#0b2a14", "#5dff8e", 256, 96, "800 70px Manrope, Arial, sans-serif"), null);
-  T.vend = tex(signTex("NOVA COLA", "#b3112c", "#fff", 256, 512, "800 40px Manrope, Arial, sans-serif"), null);
+  T.vend = tex(signTex("HYPERCOLA", "#2a0420", "#ff6ac8", 256, 512, "800 38px Manrope, Arial, sans-serif"), null);
+  T.blade = tex(bladeTex(), null);
+  T.holo = tex(holoTex(), null);
   { const [cc, ce] = billboardTex(); T.bill = tex(cc, null); T.billE = tex(ce, null); }
-  T.plank = tex(plankTex(), [2, 2]);
   T.asphalt = tex(asphaltTex(), [24, 24]);
   T.roof = tex(roofTex(), [6, 6]);
   T.glow = tex(glowTex(), null);
   T.smoke = tex(smokeTex(), null);
-  T.ship = tex(shipPaintTex(), null);
+  { const [cc, ce] = shipPaintTex(); T.ship = tex(cc, null); T.shipE = tex(ce, null); }
   T.wing = tex(wingPaintTex(), [1, 1]);
   T.nozzle = tex(nozzleTex(), null);
   const FAC = {};
@@ -840,7 +948,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
       "    c = mix(c, cc, cov * smoothstep(0.0, 0.07, h) * 0.95);",
       "  }",
       "  if (uStars > 0.0 && h > 0.04) { vec2 sp = d.xz / (h + 0.35) * 260.0; float s = hh(floor(sp)); c += vec3(step(0.9972, s)) * uStars * smoothstep(0.04, 0.3, h) * (1.0 - uCloud * 0.8) * 1.4; }",
-      "  c += uFlash * vec3(0.55, 0.6, 0.75);",
+      "  c += uFlash * vec3(0.62, 0.52, 0.95);",
       "  gl_FragColor = vec4(hlSafe(c, 256.0), 1.0);",
       "}"].join("\n")
   });
@@ -878,17 +986,25 @@ import * as THREE from "/vendor/three/three.module.min.js";
       "  vec3 col = base;",
       // derivatives outside the branch (undefined in non-uniform control flow on some GPUs)
       "  vec2 f = vec2(abs(n.x) > 0.5 ? vW.z : vW.x, vW.y) / vec2(3.0, 8.0);",
-      "  float aa = clamp(fwidth(f.x) * 1.5, 0.0, 1.0);",
+      "  float aa = clamp(max(fwidth(f.x), fwidth(f.y)) * 1.6, 0.0, 1.0);",
       "  if (abs(n.y) < 0.5) {",
       "    vec2 cell = floor(f), fr = fract(f);",
       "    float win = step(0.14, fr.x) * step(fr.x, 0.86) * step(0.22, fr.y) * step(fr.y, 0.9);",
       "    win = mix(win, 0.5, aa);",
       "    float r = h21(cell + vC.xy * 91.0);",
       "    float lit = mix(step(r, uLit * 0.75), uLit * 0.75, aa);",
-      "    vec3 wc = mix(vec3(1.0, 0.72, 0.42), vec3(0.78, 0.86, 1.0), step(0.55, h21(cell.yx + 3.1))) * (0.5 + h21(cell * 1.7));",
+      "    float hc = h21(cell.yx + 3.1);",
+      "    vec3 wc = (hc < 0.45 ? vec3(0.78, 0.86, 1.0) : hc < 0.64 ? vec3(0.3, 0.9, 1.0) : hc < 0.82 ? vec3(1.0, 0.35, 0.8) : vec3(1.0, 0.62, 0.3)) * (0.5 + h21(cell * 1.7));",
+      "    wc = mix(wc, vec3(0.62, 0.62, 0.86), aa);",
       "    vec3 glass = mix(uLow, uHor, 0.5) * 0.35;",
       "    col = mix(base, glass + base * 0.4, win * 0.7) + wc * win * lit * 1.6;",
       "  }",
+      // neon light bands wrapped round some towers, and a lit crown
+      "  float bi = h21(vC.xy * 57.0);",
+      "  vec3 nc = bi < 0.3 ? vec3(1.0, 0.18, 0.66) : bi < 0.55 ? vec3(0.16, 0.94, 1.0) : bi < 0.75 ? vec3(0.6, 0.42, 1.0) : vec3(1.0, 0.7, 0.12);",
+      "  float by = (vW.y + vC.z * 900.0) / 64.0;",
+      "  float band = step(abs(fract(by) - 0.5), 0.016 + fwidth(by)) * step(0.45, h21(vec2(floor(by), vC.x * 13.0)));",
+      "  if (abs(n.y) < 0.5) col += nc * band * 2.4;",
       "  float d = length(vW - cameraPosition);",
       "  vec3 dir = (vW - cameraPosition) / max(d, 1e-3);",
       "  vec3 haze = (mix(uLow, uHor, smoothstep(-0.25, 0.06, dir.y)) + uGlow * pow(max(dot(dir, uSunDir), 0.0), 5.0) * 0.3) * 0.82;",
@@ -906,37 +1022,40 @@ import * as THREE from "/vendor/three/three.module.min.js";
       p.set(x, y0, z); s.set(w, h, d); q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0);
       m.compose(p, q, s); im.setMatrixAt(k, m); im.setColorAt(k, col.setHex(c).multiplyScalar(0.8 + rnd() * 0.4)); k++;
     };
-    const tones = [0x6b6f75, 0x8a8478, 0x5a5550, 0x9a9488, 0x4a5058, 0x7a6a5a, 0xb0a898];
+    const tones = [0x2c2c3a, 0x24242e, 0x32303e, 0x1e202a, 0x2e2834, 0x282c38, 0x3a3848];
     for (let i = 0; i < N; i++) {
       const a = rnd() * TAU, dist = 520 + Math.pow(rnd(), 0.8) * 1500;
       const ahead = Math.abs(Math.atan2(Math.sin(a), -Math.cos(a)));
-      let h = 40 + Math.pow(rnd(), 2.2) * 600 * (ahead < 0.25 ? 0.4 : 1);
-      if (rnd() < 0.03) h += 400;
+      let h = 60 + Math.pow(rnd(), 1.8) * 760 * (ahead < 0.25 ? 0.5 : 1);
+      if (rnd() < 0.05) h += 500;
       const w = 20 + rnd() * 50;
       put(Math.sin(a) * dist, -Math.cos(a) * dist, w, w * (0.6 + rnd() * 0.8), STREET, h - STREET + 60, PA.choice(tones));
     }
-    // two setback towers with spires on the horizon (generic, not any real building)
-    const spire = (x, z, sc) => {
-      const steps = [[60, 0, 520], [46, 520, 120], [34, 640, 90], [22, 730, 60], [10, 790, 50], [3, 840, 150]];
-      for (const [w, y, h] of steps) put(x, z, w * sc, w * sc, STREET + y * sc, h * sc, 0x9a9488);
+    // a few arcologies on the horizon: stacked megastructures with antenna masts
+    const arco = (x, z, sc) => {
+      const steps = [[150, 0, 520], [110, 520, 300], [80, 820, 260], [44, 1080, 220], [8, 1300, 260]];
+      for (const [w, y, h] of steps) put(x, z, w * sc, w * sc * 0.8, STREET + y * sc, h * sc, 0x2a2a38);
     };
-    spire(-560, -1350, 1.1);
-    spire(820, -1650, 0.9);
+    arco(-620, -1400, 1.0);
+    arco(900, -1700, 0.85);
+    arco(-1500, -900, 0.7);
     im.count = k;
     im.frustumCulled = false;
     scene.add(im);
   }
   // City grid far below the horizon: street lights in long lines through the haze.
   {
-    const pts = [];
+    const pts = [], cols = [], pc = new THREE.Color();
+    const lightCol = () => { const k = rnd(); return pc.setHex(k < 0.4 ? 0xffb468 : k < 0.6 ? 0xff3ab0 : k < 0.8 ? 0x30e8ff : k < 0.9 ? 0xa070ff : 0xe8f0ff); };
     for (let i = -40; i <= 40; i++) for (let j = 0; j < 160; j++) {
       if (rnd() < 0.15) continue;
-      pts.push(i * 36 + rr(-2, 2), STREET + 2, -j * 14 - 360);
-      pts.push(j * 14 - 1120 + rr(-2, 2), STREET + 2, -i * 36 - 400 - 1200 * 0);
+      pts.push(i * 36 + rr(-2, 2), STREET + 2, -j * 14 - 360); lightCol(); cols.push(pc.r, pc.g, pc.b);
+      pts.push(j * 14 - 1120 + rr(-2, 2), STREET + 2, -i * 36 - 400 - 1200 * 0); lightCol(); cols.push(pc.r, pc.g, pc.b);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-    const cityLights = new THREE.Points(g, patch(new THREE.PointsMaterial({ map: T.glow, color: hdr(0xffb468, 2.5), size: 6, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+    const cityLights = new THREE.Points(g, patch(new THREE.PointsMaterial({ map: T.glow, color: hdr(0xffffff, 2.6), vertexColors: true, size: 6, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
     cityLights.frustumCulled = false;
     scene.add(cityLights);
     var cityLightsMat = cityLights.material;
@@ -954,12 +1073,12 @@ import * as THREE from "/vendor/three/three.module.min.js";
     for (let i = 0; i < 40; i++) {
       const a = rnd() * TAU, d = 120 + rnd() * 200, w = 20 + rnd() * 40, h = 40 + rnd() * 200;
       // facades in the reflections take the colour of the light, so glass by day reflects a bright city
-      const bc = new THREE.Color(PA.choice([0x8a8580, 0x9a9088, 0x7a8088])).multiply(new THREE.Color(p.hor)).multiplyScalar(0.3 + p.sunI * 0.14);
+      const bc = new THREE.Color(PA.choice([0x3a3848, 0x2c2c3a, 0x403a50])).multiply(new THREE.Color(p.hor)).multiplyScalar(0.3 + p.sunI * 0.14);
       const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshBasicMaterial({ color: bc }));
       b.position.set(Math.sin(a) * d, h / 2 - 60, -Math.cos(a) * d);
       es.add(b);
       for (let j = 0; j < 6; j++) {
-        const lw = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.8, 3), bm(0xffd8a8, p.lit * 2.2));
+        const lw = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.8, 3), bm(PA.choice([0xffd8a8, 0xff3ab0, 0x30e8ff, 0xa070ff, 0xe0ecff]), p.lit * 2.4));
         lw.position.set(b.position.x * 0.98, rr(-50, h - 60), b.position.z * 0.98); lw.lookAt(0, lw.position.y, 0);
         es.add(lw);
       }
@@ -970,7 +1089,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
     const room = new THREE.Mesh(new THREE.BoxGeometry(40, 12, 80), new THREE.MeshBasicMaterial({ color: hdr(0x8a8580, 0.35), side: THREE.BackSide }));
     is.add(room);
     for (let x = -12; x <= 12; x += 6) for (let z = -36; z <= 36; z += 6) {
-      const pnl = new THREE.Mesh(new THREE.PlaneGeometry(2, 1), bm(0xfff4e4, 6));
+      const pnl = new THREE.Mesh(new THREE.PlaneGeometry(2, 1), bm(0xe6eeff, 6));
       pnl.position.set(x, 5.9, z); pnl.rotation.x = Math.PI / 2;
       is.add(pnl);
     }
@@ -1000,16 +1119,16 @@ import * as THREE from "/vendor/three/three.module.min.js";
   };
   const glowMat = (c, k, size) => patch(new THREE.PointsMaterial({ map: T.glow, color: hdr(c, k), size, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   const M = {
-    carpet: std({ map: T.carpet, lightMap: T.pool, lightMapIntensity: 2.2, roughness: 0.96 }, true),
-    ceil: std({ map: T.ceil, emissiveMap: T.ceilE, emissive: hdr(0xfff6ea, 1.6), roughness: 0.9 }, true),
-    paint: std({ map: T.paint, roughness: 0.85 }, true),
+    carpet: std({ map: T.carpet, color: 0x8a8aa8, lightMap: T.pool, lightMapIntensity: 2.2, roughness: 0.9 }, true),
+    ceil: std({ map: T.ceil, emissiveMap: T.ceilE, emissive: hdr(0xd8e8ff, 2.2), roughness: 0.6, metalness: 0.3 }, true),
+    paint: std({ map: T.paint, color: 0x4a4a5c, roughness: 0.5, metalness: 0.2 }, true),
     paintDark: std({ color: 0x3a3d42, roughness: 0.6 }, true),
     wood: std({ map: T.wood, roughness: 0.45 }, true),
     oak: std({ map: T.oak, roughness: 0.55 }, true),
-    desk: std({ color: 0xe9e7e2, roughness: 0.35 }, true),
+    desk: std({ color: 0x1e1f28, roughness: 0.18, metalness: 0.4 }, true),
     black: std({ color: 0x141518, roughness: 0.42, metalness: 0.2 }, true),
     fabric: std({ color: 0x3d4652, roughness: 0.95 }, true),
-    sofa: std({ color: 0x8a6a4c, roughness: 0.8 }, true),
+    sofa: std({ color: 0x5a2a6a, roughness: 0.7 }, true),
     rug: std({ color: 0x6a7a74, map: T.carpet, roughness: 1 }, true),
     leaf: std({ color: 0x2f5a2a, roughness: 0.8 }, true),
     pot: std({ color: 0x2a2826, roughness: 0.6 }, true),
@@ -1018,14 +1137,14 @@ import * as THREE from "/vendor/three/three.module.min.js";
     alu: std({ color: 0x3b3a38, metalness: 0.85, roughness: 0.35 }, true),
     glassIn: std({ color: 0x9fb4bf, metalness: 0.2, roughness: 0.04, transparent: true, opacity: 0.16, depthWrite: false, envMapIntensity: 1.6 }, true),
     glassExit: std({ color: 0x5f7480, metalness: 0.6, roughness: 0.04, transparent: true, opacity: 0.55, depthWrite: false, envMapIntensity: 2.0 }, true),
-    blinds: std({ color: 0xd8d5ce, roughness: 0.9, transparent: true, opacity: 0.88 }, true),
-    marble: std({ map: T.marble, roughness: 0.12, lightMap: T.pool, lightMapIntensity: 0.9, envMapIntensity: 1.3 }, true),
-    lobbyCeil: std({ color: 0x2b2420, roughness: 0.7, map: T.wood, emissiveMap: T.ceilE, emissive: hdr(0xffe2b8, 2.4) }, true),
-    stone: std({ map: T.stone, roughness: 0.75 }, true),
-    bronze: std({ map: T.bronze, metalness: 1, roughness: 0.32 }, true),
-    marbleCol: std({ map: T.marble, roughness: 0.15, color: 0xd8d0c4 }, true),
-    lamp: std({ color: 0xffd9a0, emissive: hdr(0xffcf90, 3.0), roughness: 0.5 }, true),
-    indicator: std({ color: 0x220a00, emissive: hdr(0xff9a3a, 2.5) }, true),
+    blinds: std({ color: 0x34343e, roughness: 0.7, transparent: true, opacity: 0.86 }, true),
+    marble: std({ map: T.marble, color: 0x3a3a48, roughness: 0.08, lightMap: T.pool, lightMapIntensity: 0.9, envMapIntensity: 1.6 }, true),
+    lobbyCeil: std({ color: 0x1a1a22, roughness: 0.5, metalness: 0.4, emissiveMap: T.ceilE, emissive: hdr(0xc8a8ff, 2.6) }, true),
+    stone: std({ map: T.stone, color: 0x4a4858, roughness: 0.6 }, true),
+    bronze: std({ map: T.bronze, color: 0x8a8aa0, metalness: 1, roughness: 0.26 }, true),
+    marbleCol: std({ map: T.marble, roughness: 0.1, color: 0x2a2a34 }, true),
+    lamp: std({ color: 0xa8ecff, emissive: hdr(0x7fe0ff, 3.0), roughness: 0.5 }, true),
+    indicator: std({ color: 0x220014, emissive: hdr(0xff2fa8, 2.8) }, true),
     concFloor: std({ map: T.conc, roughnessMap: T.concRM, normalMap: T.concN, normalScale: new THREE.Vector2(0.6, 0.6), lightMap: T.poolBuild, lightMapIntensity: 3, envMapIntensity: 1.2 }, true),
     conc: std({ map: T.conc, normalMap: T.concN, roughness: 0.85 }),
     cmu: std({ map: T.cmu, roughness: 0.9 }, true),
@@ -1046,12 +1165,18 @@ import * as THREE from "/vendor/three/three.module.min.js";
     drywall: std({ color: 0xe8e6e0, roughness: 0.9 }),
     crate: std({ map: T.oak, color: 0xb89a70, roughness: 0.85 }),
     roof: std({ map: T.roof, roughness: 0.95 }),
-    tank: std({ map: T.plank, roughness: 0.9 }),
-    tankRoof: std({ color: 0x2b2a28, roughness: 0.7, metalness: 0.4 }),
     asphalt: std({ map: T.asphalt, roughness: 0.92 }),
     bill: std({ map: T.bill, emissiveMap: T.billE, emissive: hdr(0xffffff, 1.0), roughness: 0.4 }),
+    blade: std({ map: T.blade, emissiveMap: T.blade, emissive: hdr(0xffffff, 1.8), roughness: 0.4 }),
+    holo: std({ map: T.holo, emissiveMap: T.holo, emissive: hdr(0xffffff, 1.5), roughness: 0.3 }),
+    neonC: std({ color: 0x050505, emissive: hdr(0x29f0ff, 3.2) }),
+    neonM: std({ color: 0x050505, emissive: hdr(0xff2fa8, 3.2) }),
+    neonA: std({ color: 0x050505, emissive: hdr(0xffb21e, 3.0) }),
+    neonV: std({ color: 0x050505, emissive: hdr(0x9a6bff, 3.4) }),
+    chrome: std({ color: 0x18181e, metalness: 1, roughness: 0.2 }),
+    ledge: std({ color: 0x22232a, roughness: 0.6, metalness: 0.4 }),
     iron: std({ color: 0x151515, roughness: 0.6, metalness: 0.6 }),
-    ac: std({ color: 0xc9c8c2, roughness: 0.5, metalness: 0.5 }),
+    ac: std({ color: 0x3a3c46, roughness: 0.5, metalness: 0.6 }),
     gold: std({ color: 0xffc860, metalness: 1, roughness: 0.22, emissive: hdr(0xff9a30, 0.35) }),
     bulb: std({ color: 0xffe0a8, emissive: hdr(0xffd08a, 6) }, true)
   };
@@ -1090,12 +1215,12 @@ import * as THREE from "/vendor/three/three.module.min.js";
     "    float lit = max(litC.r, max(litC.g, litC.b));",
     "    vec3 alb; float lk;",
     "    if (tm == tz) {",
-    "      alb = mix(vec3(0.62, 0.58, 0.52), vec3(0.42, 0.46, 0.5), h3);",
+    "      alb = mix(vec3(0.42, 0.41, 0.46), vec3(0.3, 0.33, 0.4), h3);",
     "      float desk = step(hp.y, 2.0) * step(1.5, hp.y) * step(0.3, fract(hp.x / 3.0 + h2));",
     "      alb *= 1.0 - 0.75 * desk - 0.5 * step(hp.y, 1.5) * step(0.5, h3);",
     "      lk = 0.55 + 0.35 * hp.y / Hh;",
     "    } else if (tm == tx) {",
-    "      alb = vec3(0.5, 0.48, 0.45) * (0.85 + 0.3 * step(0.5, fract(hp.z / 3.0 + h1)) * step(hp.y, 2.6));",
+    "      alb = vec3(0.34, 0.34, 0.4) * (0.85 + 0.3 * step(0.5, fract(hp.z / 3.0 + h1)) * step(hp.y, 2.6));",
     "      lk = 0.42 + 0.3 * hp.y / Hh;",
     "    } else if (rd.y > 0.0) {",
     "      float fx = fract(hp.x / 1.5), pan = step(0.2, fx) * step(fx, 0.8) * step(fract(-hp.z / 2.5), 0.4);",
@@ -1136,7 +1261,8 @@ import * as THREE from "/vendor/three/three.module.min.js";
   const G = {
     warm: glowMat(0xffc88a, 3, 1.4), cool: glowMat(0xdfeaff, 3, 1.4), bulb: glowMat(0xffc070, 4, 1.6),
     red: glowMat(0xff2a1a, 6, 3.2), amber: glowMat(0xffa020, 6, 2.2), white: glowMat(0xffffff, 6, 2.0),
-    green: glowMat(0x30ff6a, 6, 2.0), redSmall: glowMat(0xff2a1a, 4, 1.0)
+    green: glowMat(0x30ff6a, 6, 2.0), redSmall: glowMat(0xff2a1a, 4, 1.0),
+    cyan: glowMat(0x29f0ff, 5, 1.8), pink: glowMat(0xff2fa8, 5, 1.8)
   };
   buildEnvs(TIMES[0]);
   for (const m of IN_MATS) m.envMap = ENV.in;
@@ -1264,7 +1390,8 @@ import * as THREE from "/vendor/three/three.module.min.js";
     }
     c.style = STYLES[Math.floor(h(6) * 5)];  // the unfinished-tower look is kept for doorways
     c.bill = h(7) < 0.55;
-    c.fire = c.style === "brick" && h(8) < 0.7;
+    c.blade = h(8) < 0.6;
+    c.holo = h(9) < 0.4;
   }
 
   // One tower slice along one side of the flight, covering s0..s1 of the track.
@@ -1275,18 +1402,28 @@ import * as THREE from "/vendor/three/three.module.min.js";
     B.box(mat, xa, xb, STREET, c.top, z0, z1, INF(sd) | (c.low ? F.PY : 0));
     if (s0 <= c.start + 0.01) B.box(mat, xa, xb, STREET, c.top, z0, z1, F.PZ);
     if (c.low) roofSlice(B, c, xa, xb, z0, z1, s0, s1);
+    // a tall hard-light advert high on the tower, read from far down the canyon
+    const hw = c.row === 0 ? 12 : 26, hs = c.start + 3;
+    if (c.holo && !c.low && s0 <= hs && s1 >= hs + hw) {
+      const z = sBase - hs, y0 = c.row === 0 ? 22 + hash(c.id, 35) * 20 : 10 + hash(c.id, 35) * 60, i = Math.floor(hash(c.id, 36) * 4);
+      if (c.top > y0 + hw * 3 + 4) {
+        B.box(M.iron, ...X(sd, c.x - 0.7, c.x), y0 - 0.4, y0 + hw * 3 + 0.4, z - hw - 0.4, z + 0.4, INF(sd) | F.PZ);
+        B.rectX(M.holo, sd * (c.x - 0.72), z - hw, z, y0, y0 + hw * 3, -sd, [i * 0.25, 0, i * 0.25 + 0.25, 1]);
+      }
+    }
     if (!detail || c.low) return;
-    // close-up detail on the front row: fins, cornices, AC units, fire escapes, billboards
+    // close-up detail on the front row: fins, cornices, vents, blade signs, billboards
     const yMin = -34, yMax = 34;
     if (c.style === "glass" || c.style === "bronze") {
-      const finM = c.style === "glass" ? M.alu : M.bronze;
+      const finM = c.style === "glass" ? M.alu : M.chrome;
       for (let s = Math.ceil(s0 / 3) * 3; s < s1; s += 3) {
         const z = sBase - s;
         B.box(finM, ...X(sd, c.x - 0.45, c.x), yMin, Math.min(yMax, c.top), z - 0.06, z + 0.06, F.PZ | F.NZ | INF(sd));
       }
     } else if (c.style === "stone" || c.style === "grid") {
       for (let y = Math.ceil(yMin / 8) * 8; y < Math.min(yMax, c.top); y += 8) {
-        B.box(c.style === "stone" ? M.stone : M.paint, ...X(sd, c.x - 0.35, c.x), y - 0.45, y, z0, z1, F.PY | F.NY | INF(sd));
+        B.box(M.ledge, ...X(sd, c.x - 0.35, c.x), y - 0.45, y, z0, z1, F.PY | F.NY | INF(sd));
+        if (c.style === "stone" && (y / 8) % 2 === 0) B.box(M.neonV, ...X(sd, c.x - 0.37, c.x - 0.33), y - 0.5, y - 0.44, z0, z1, F.NY | INF(sd));
       }
     }
     if (c.style === "brick" || c.style === "stone") {
@@ -1296,18 +1433,16 @@ import * as THREE from "/vendor/three/three.module.min.js";
         B.box(M.ac, ...X(sd, c.x - 1.0, c.x), y + 1.65, y + 2.45, z - 0.6, z + 0.6);
       }
     }
-    if (c.fire) {
-      // black iron fire escape over three bays, a landing at every floor with a stair between
-      const fs = c.start + 6, fe = fs + 9;
-      if (fe > s0 && fs < s1) {
-        const za = sBase - Math.min(fe, s1), zb = sBase - Math.max(fs, s0);
-        for (let y = Math.ceil(yMin / 8) * 8; y < Math.min(yMax, c.top - 8); y += 8) {
-          if (Math.abs(y) < 7 && c.x < 13.5) continue;
-          B.box(M.iron, ...X(sd, c.x - 2.2, c.x), y, y + 0.12, za, zb);
-          B.box(M.iron, ...X(sd, c.x - 2.25, c.x - 2.15), y, y + 1.9, za, zb, F.PZ | INF(sd) | F.PY);
-          B.box(M.iron, ...X(sd, c.x - 2.25, c.x), y + 1.85, y + 1.95, za, zb, F.PY | INF(sd));
-          if (zb - za > 6) B.rod(M.iron, sd * (c.x - 1.4), y + 0.1, za + 0.6, sd * (c.x - 1.4), y + 8, za + 6, 0.16);
-        }
+    if (c.blade) {
+      // neon blade signs sticking out over the canyon, well outside the flight lane
+      for (let k = 0; k < 2; k++) {
+        const bs = c.start + 4 + k * 17;
+        if (bs < s0 || bs >= s1 || bs > c.end - 3) continue;
+        const z = sBase - bs, yb = -14 + hash(c.id * 3 + k, 37) * 30, bh = 7.2, i = Math.floor(hash(c.id * 3 + k, 38) * BLADE_N);
+        if (yb + bh > c.top - 2) continue;
+        B.box(M.iron, ...X(sd, c.x - 2.7, c.x), yb - 0.2, yb + bh + 0.2, z - 0.32, z - 0.04);
+        B.box(M.iron, ...X(sd, c.x - 0.5, c.x), yb - 1.2, yb + bh + 1.2, z - 0.3, z - 0.06);
+        B.rectZ(M.blade, ...X(sd, c.x - 2.65, c.x - 0.25), yb, yb + bh, z, [i / BLADE_N, 0, (i + 1) / BLADE_N, 1]);
       }
     }
     if (c.bill && s0 <= c.start + 8 && s1 >= c.start + 22) {
@@ -1317,29 +1452,26 @@ import * as THREE from "/vendor/three/three.module.min.js";
       B.rectX(M.bill, sd * (c.x - 0.62), z - w, z, y - h / 2, y + h / 2, -sd, [u0, v0, u0 + 0.5, v0 + 0.5]);
     }
   }
-  // NYC rooftops: tar roof, parapet, wooden water tanks on steel legs, AC units, a stair bulkhead.
+  // Rooftops below the flight: dark decks, a parapet with a light strip, cooling fans and antenna masts.
   function roofSlice(B, c, xa, xb, z0, z1, s0, s1) {
     const y = c.top;
     B.box(M.roof, xa, xb, y - 0.1, y + 0.02, z0, z1, F.PY);
-    const xi = c.side > 0 ? xa : xb;
     B.box(M.fac[c.style], ...(c.side > 0 ? [xa, xa + 0.5] : [xb - 0.5, xb]), y, y + 1.6, z0, z1, F.PY | INF(c.side) | F.PX | F.NX);
+    B.box(c.side > 0 ? M.neonC : M.neonM, ...(c.side > 0 ? [xa - 0.02, xa] : [xb, xb + 0.02]), y + 1.3, y + 1.45, z0, z1, INF(c.side));
     for (let s = Math.ceil(s0 / 16) * 16; s < s1; s += 16) {
-      const h = (n) => hash(s * 3 + c.id, n), z = (B.s0 - B.sb) + 0 - (s - B.s0) * 0 - 0;
-      const lz = -(s - B.s0);
+      const h = (n) => hash(s * 3 + c.id, n), lz = -(s - B.s0);
       const tx = c.side * (c.x + 6 + h(1) * 20);
-      if (h(2) < 0.55) waterTank(B, tx, y, lz - 4);
+      if (h(2) < 0.55) coolingUnit(B, tx, y, lz - 4, h(6) < 0.5 ? M.neonC : M.neonM);
       if (h(3) < 0.7) B.cbox(M.ac, tx + c.side * 9, y + 1.1, lz - 9, 4, 2.2, 3);
       if (h(4) < 0.4) B.cbox(M.fac[c.style], c.side * (c.x + 4 + h(5) * 8), y + 2.2, lz - 12, 5, 4.4, 4);
-      void xi; void z;
+      if (h(7) < 0.35) { const mx = c.side * (c.x + 14 + h(8) * 10), mh = 8 + h(9) * 10; B.rod(M.iron, mx, y, lz - 2, mx, y + mh, lz - 2, 0.25); B.glow(G.red, mx, y + mh + 0.3, lz - 2); }
     }
   }
-  function waterTank(B, x, y, z) {
-    const r = 2.6, legH = 4, tankH = 5.5;
-    for (const [dx, dz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) B.cbox(M.iron, x + dx, y + legH / 2, z + dz, 0.3, legH, 0.3);
-    B.cbox(M.iron, x, y + legH, z, 4.2, 0.3, 4.2);
-    B.geo(M.tank, GEO.cyl, mtx(x, y + legH + tankH / 2, z, 0, 0, 0, r, tankH, r));
-    for (let k = 0; k < 4; k++) B.geo(M.iron, GEO.cyl24, mtx(x, y + legH + 0.8 + k * 1.3, z, 0, 0, 0, r + 0.05, 0.12, r + 0.05));
-    B.geo(M.tankRoof, GEO.cone, mtx(x, y + legH + tankH + 0.9, z, 0, 0, 0, r + 0.2, 1.8, r + 0.2));
+  function coolingUnit(B, x, y, z, ring) {
+    B.cbox(M.ac, x, y + 1.4, z, 5.2, 2.8, 5.2);
+    B.geo(M.iron, GEO.cyl, mtx(x, y + 2.95, z, 0, 0, 0, 2.1, 0.3, 2.1));
+    B.geo(ring, GEO.cyl24, mtx(x, y + 3.05, z, 0, 0, 0, 2.15, 0.12, 2.15));
+    B.geo(M.black, GEO.disk, mtx(x, y + 3.0, z, 0, 0, 0, 1.9, 0.05, 1.9));
   }
   // A tower crane standing in the street canyon, its jib swinging over the flight path.
   function craneDecor(B, x, z, top, sd) {
@@ -1386,7 +1518,9 @@ import * as THREE from "/vendor/three/three.module.min.js";
         B.box(M.glassExit, -cur.R.x, cur.R.x, y, y + 3.2, z - 2, z + 2, F.PZ | F.NY);
         for (let xx = -cur.R.x; xx <= cur.R.x; xx += 3) B.box(M.alu, xx - 0.1, xx + 0.1, y, y + 3.2, z + 1.9, z + 2.05, F.PZ);
         B.box(M.alu, -cur.R.x, cur.R.x, y - 0.4, y, z - 2, z + 2, F.PZ | F.NY);
-        for (let xx = -cur.R.x + 2; xx < cur.R.x; xx += 5) B.glow(G.warm, xx, y + 2.8, z);
+        for (let xx = -cur.R.x + 2; xx < cur.R.x; xx += 5) B.glow(G.cyan, xx, y + 2.8, z);
+        B.box(M.neonC, -cur.R.x, cur.R.x, y - 0.46, y - 0.38, z + 1.9, z + 2.0, F.PZ | F.NY);
+        B.box(M.neonM, -cur.R.x, cur.R.x, y + 3.2, y + 3.28, z + 1.9, z + 2.0, F.PZ | F.PY);
       }
     }
     groundSlice(B, len);
@@ -1419,6 +1553,8 @@ import * as THREE from "/vendor/three/three.module.min.js";
       B.box(M.paint, ...X(sd, ROOM - 0.45, ROOM), FLOOR, FLOOR + 1.1, -len, 0, I | F.PY);
       B.box(M.glassIn, ...X(sd, ROOM, ROOM + 0.02), FLOOR + 1.1, CEIL, -len, 0, I);
       B.box(M.paint, ...X(sd, ROOM - 0.3, ROOM), CEIL - 0.35, CEIL, -len, 0, I | F.NY);
+      B.box(sd < 0 ? M.neonC : M.neonM, ...X(sd, ROOM - 0.47, ROOM - 0.45), FLOOR + 1.0, FLOOR + 1.08, -len, 0, I);
+      B.box(sd < 0 ? M.neonM : M.neonC, ...X(sd, ROOM - 0.32, ROOM - 0.3), CEIL - 0.4, CEIL - 0.35, -len, 0, I | F.NY);
       for (let s = Math.ceil(s0 / 3) * 3; s < s0 + len; s += 3) {
         const z = s0 - s;
         B.box(M.alu, ...X(sd, ROOM - 0.16, ROOM + 0.05), FLOOR + 1.1, CEIL - 0.35, z - 0.07, z + 0.07, I | F.PZ | F.NZ);
@@ -1488,8 +1624,8 @@ import * as THREE from "/vendor/three/three.module.min.js";
         B.box(M.bronze, ...X(sd, ROOM - 0.1, ROOM), FLOOR, FLOOR + 4.6, z - 1.55, z + 1.55, I);
         B.box(M.black, ...X(sd, ROOM - 0.125, ROOM - 0.1), FLOOR, FLOOR + 4.6, z - 0.02, z + 0.02, I);
         B.box(M.indicator, ...X(sd, ROOM - 0.24, ROOM - 0.2), FLOOR + 5.2, FLOOR + 5.45, z - 0.5, z + 0.5, I);
-        B.glow(G.amber, sd * (ROOM - 0.3), FLOOR + 2.6, z - 2.3);
-        B.glow(G.warm, sd * (ROOM - 0.3), FLOOR + 6.6, z - 6);
+        B.glow(G.pink, sd * (ROOM - 0.3), FLOOR + 2.6, z - 2.3);
+        B.glow(G.cyan, sd * (ROOM - 0.3), FLOOR + 6.6, z - 6);
       }
       for (let s = Math.ceil((s0 - 12) / 24) * 24 + 12; s < s0 + len; s += 24) {
         if (s < s0) continue;
@@ -1506,7 +1642,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
       B.geo(M.lamp, GEO.cyl24, mtx(0, 6.1, z, 0, 0, 0, 1.3, 1.0, 1.3));
       B.geo(M.bronze, GEO.cyl24, mtx(0, 6.62, z, 0, 0, 0, 1.36, 0.1, 1.36));
       B.geo(M.bronze, GEO.cyl24, mtx(0, 5.58, z, 0, 0, 0, 1.36, 0.1, 1.36));
-      B.glow(G.warm, 0, 6.1, z);
+      B.glow(G.cyan, 0, 6.1, z);
     }
     neighbourSlices(B, s0, len, cur);
   }
@@ -2075,12 +2211,12 @@ import * as THREE from "/vendor/three/three.module.min.js";
 
   /* ---------------- the jet ---------------- */
   const ship = new THREE.Group();
-  const shipPaint = new THREE.MeshPhysicalMaterial({ map: T.ship, color: 0xffffff, metalness: 0.55, roughness: 0.32, clearcoat: 0.7, clearcoatRoughness: 0.1, envMapIntensity: 1.3 });
-  const wingPaint = new THREE.MeshPhysicalMaterial({ map: T.wing, color: 0xffffff, metalness: 0.55, roughness: 0.34, clearcoat: 0.6, clearcoatRoughness: 0.12, envMapIntensity: 1.3 });
+  const shipPaint = new THREE.MeshPhysicalMaterial({ map: T.ship, emissiveMap: T.shipE, emissive: hdr(0xffffff, 2.2), color: 0xffffff, metalness: 0.7, roughness: 0.28, clearcoat: 0.8, clearcoatRoughness: 0.08, envMapIntensity: 1.5 });
+  const wingPaint = new THREE.MeshPhysicalMaterial({ map: T.wing, color: 0xffffff, metalness: 0.7, roughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.1, envMapIntensity: 1.5 });
   const canopyMat = new THREE.MeshPhysicalMaterial({ color: 0x11161c, metalness: 0.2, roughness: 0.03, clearcoat: 1, clearcoatRoughness: 0.02, iridescence: 0.55, iridescenceIOR: 1.5, iridescenceThicknessRange: [300, 700], envMapIntensity: 2.4 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b1e22, metalness: 0.6, roughness: 0.45 });
   const nozzleMat = new THREE.MeshStandardMaterial({ map: T.nozzle, metalness: 1, roughness: 0.38 });
-  const accentMat = new THREE.MeshPhysicalMaterial({ color: 0xff5a14, metalness: 0.3, roughness: 0.35, clearcoat: 0.8 });
+  const accentMat = new THREE.MeshPhysicalMaterial({ color: 0x220010, emissive: hdr(0xff2fa8, 3), metalness: 0.3, roughness: 0.35, clearcoat: 0.8 });
   const hotMat = new THREE.MeshBasicMaterial({ color: hdr(0xff8a3a, 3) });
   for (const m of [shipPaint, wingPaint, canopyMat, darkMat, nozzleMat, accentMat]) { patch(m); SHIP_MATS.push(m); m.envMap = ENV.out; }
   {
@@ -2211,7 +2347,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
   const sun = new THREE.DirectionalLight(0xffffff, 2);
   scene.add(sun, sun.target);
   // three ceiling lights roll along with the world so things indoors are lit from above
-  const roll = [0, 1, 2].map((i) => { const l = new THREE.PointLight(0xfff0dc, 0, 26, 2); l.userData.z = -8 - i * 16; scene.add(l); return l; });
+  const roll = [0, 1, 2].map((i) => { const l = new THREE.PointLight(0xdde6ff, 0, 26, 2); l.userData.z = -8 - i * 16; scene.add(l); return l; });
 
   // dust motes indoors, rain outdoors in the storm
   const streakN = 160;
@@ -2232,6 +2368,39 @@ import * as THREE from "/vendor/three/three.module.min.js";
   scene.add(rain);
   const rainData = [];
   for (let i = 0; i < rainN; i++) rainData.push({ x: rand(-30, 30), y: rand(-12, 30), z: rand(-90, 14) });
+
+  // Flying traffic: streams of head and tail lights in skylanes above the canyon and deep below it.
+  const SKYLANES = [[-5, 28, 1], [5, 28, -1], [-3, 34, -1], [3, 34, 1], [-7, 92, 1], [7, 92, -1], [0, 118, 1], [-1.5, -32, 1], [1.5, -32, -1], [0, -48, -1]];
+  const CARS_PER = 22, carN = SKYLANES.length * CARS_PER;
+  const carPos = new Float32Array(carN * 2 * 3), carCol = new Float32Array(carN * 2 * 3), cars = [];
+  {
+    const head = new THREE.Color(0xdfe8ff), tail = new THREE.Color(0xff2a3a), alt = [new THREE.Color(0x29f0ff), new THREE.Color(0xff2fa8), new THREE.Color(0xffb21e)];
+    SKYLANES.forEach(([x, y, dir], li) => {
+      for (let k = 0; k < CARS_PER; k++) {
+        const i = cars.length, col = rnd() < 0.18 ? PA.choice(alt) : dir > 0 ? head : tail;
+        cars.push({ x: x + rr(-0.6, 0.6), y: y + rr(-0.8, 0.8), z: rr(-460, 40), v: dir > 0 ? rr(30, 60) : -rr(20, 50) });
+        for (const j of [0, 1]) carCol.set([col.r, col.g, col.b], (i * 2 + j) * 3);
+      }
+      void li;
+    });
+  }
+  const carGeo = new THREE.BufferGeometry();
+  carGeo.setAttribute("position", new THREE.BufferAttribute(carPos, 3));
+  carGeo.setAttribute("color", new THREE.BufferAttribute(carCol, 3));
+  const carMat = patch(new THREE.PointsMaterial({ map: T.glow, color: hdr(0xffffff, 3.2), vertexColors: true, size: 2.1, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const skyCars = new THREE.Points(carGeo, carMat);
+  skyCars.frustumCulled = false;
+  skyCars.renderOrder = 3;
+  scene.add(skyCars);
+  function updateSkyCars(dt, move) {
+    for (let i = 0; i < cars.length; i++) {
+      const c = cars[i];
+      c.z += (c.v + move) * dt;
+      if (c.z > 40) c.z -= 500; else if (c.z < -460) c.z += 500;
+      carPos.set([c.x - 0.45, c.y, c.z, c.x + 0.45, c.y, c.z], i * 6);
+    }
+    carGeo.attributes.position.needsUpdate = true;
+  }
 
   // the crash: a fireball, sparks, smoke and pieces of the jet
   const boom = { on: false, t: 0, fire: [], smoke: [], debris: [], sparks: null, sv: [] };
@@ -2304,8 +2473,8 @@ import * as THREE from "/vendor/three/three.module.min.js";
   blendTod();
   let inT = 0, flashT = 0, flashV = 0, envDirty = false;
   const sunDir = new THREE.Vector3();
-  const INSIDE = { office: [0xfff1de, 1.7], lobby: [0xffdcae, 1.5], build: [0xffd49a, 1.25] };
-  let inColor = new THREE.Color(0xfff1de), inI = 1.7;
+  const INSIDE = { office: [0xd2dcff, 1.45], lobby: [0xc8b0ff, 1.35], build: [0xffcfa0, 1.2] };
+  let inColor = new THREE.Color(0xd2dcff), inI = 1.45;
   function applyLight(dt) {
     const o = tod.cur;
     const el = THREE.MathUtils.degToRad(o.el), az = THREE.MathUtils.degToRad(o.az);
@@ -2333,22 +2502,22 @@ import * as THREE from "/vendor/three/three.module.min.js";
     if (INSIDE[z]) { inColor.lerp(_c1.setHex(INSIDE[z][0]), 1 - Math.pow(0.1, dt)); inI = lerp(inI, INSIDE[z][1], 1 - Math.pow(0.1, dt)); }
     inT = lerp(inT, INSIDE[z] ? 1 : 0, 1 - Math.pow(0.02, dt));
     hemi.color.copy(o.hemiS).lerp(inColor, inT);
-    hemi.groundColor.copy(o.hemiG).lerp(_c1.setHex(0x3a332c), inT);
+    hemi.groundColor.copy(o.hemiG).lerp(_c1.setHex(0x1e1c2a), inT);
     hemi.intensity = lerp(o.hemiI, inI, inT) + fl * 2;
     sun.color.copy(o.sun);
     sun.intensity = o.sunI * (o.el > -2 ? 1 : 0.6) * (1 - inT * 0.45);
     sun.position.copy(sunDir).multiplyScalar(100);
-    scene.fog.color.copy(o.hor).lerp(o.low, 0.3).lerp(_c1.setHex(0x3a332e), inT * 0.55);
+    scene.fog.color.copy(o.hor).lerp(o.low, 0.3).lerp(_c1.setHex(0x1c1a2a), inT * 0.55);
     scene.fog.density = lerp(o.fog, 0.0032, inT);
-    FU.uFogLow.value.copy(o.low).lerp(_c1.setHex(0x2a2520), inT * 0.5);
+    FU.uFogLow.value.copy(o.low).lerp(_c1.setHex(0x16141e), inT * 0.5);
     FU.uFogSun.value.copy(o.glow).multiplyScalar(o.glowI * 0.25 * (1 - inT * 0.6));
     renderer.toneMappingExposure = lerp(o.exp, 1.05, inT);
     // lit windows: barely visible by day, bright at night
-    const litI = 0.35 + o.lit * 1.9 + night * 0.4;
+    const litI = 0.3 + o.lit * 1.45 + night * 0.25;
     for (const s of STYLES) M.fac[s].emissiveIntensity = litI;
     // daylight reaching into unlit rooms
     RU.uRoomAmb.value.copy(o.hemiS).multiplyScalar(o.hemiI * 0.16 + o.sunI * 0.02);
-    M.bill.emissiveIntensity = 0.5 + night * 1.5;
+    M.bill.emissiveIntensity = 1.3 + night * 0.5;
     cityLightsMat.opacity = clamp(night + o.lit * 0.5, 0.2, 1);
     // the jet reflects whatever it is flying through
     const wantIn = inT > 0.5;
@@ -2364,7 +2533,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
       banner.classList.add("on");
       bannerT = 2.2;
       PA.sfx("levelup", { pitch: 1 + i * 0.04 });
-      PA.flash("rgba(255,214,160,.18)", 420);
+      PA.flash("rgba(255,70,200,.16)", 420);
     } else {
       tod.from = c; tod.to = c; tod.k = 1; blendTod(); envDirty = true;
     }
@@ -2640,7 +2809,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
           const bz = gz + (b.dz || 0);
           if (Math.abs(shipX - b.x) < SHIP_HALF.x + b.hx && Math.abs(shipY - b.y) < SHIP_HALF.y + b.hy && Math.abs(SHIP_Z - bz) < SHIP_HALF.z + b.hz) { hit = true; break; }
         }
-        if (hit) { endRun(o.kind === "gate" ? (o.from === "street" ? "Missed the window" : o.to === "street" ? "Hit the glass" : "Missed the doorway") : o.kind === "lasers" ? "Hit a steel beam" : zHere === "street" ? "Hit the crane" : "Crashed into the building"); return; }
+        if (hit && !god) { endRun(o.kind === "gate" ? (o.from === "street" ? "Missed the window" : o.to === "street" ? "Hit the glass" : "Missed the doorway") : o.kind === "lasers" ? "Hit a steel beam" : zHere === "street" ? "Hit the crane" : "Crashed into the building"); return; }
       }
       // passed it: near-miss and gate bonuses
       if (!o.passed && gz > SHIP_Z + 1.5) {
@@ -2705,7 +2874,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
     if (perfN < 120) return;
     const avg = perfSum / perfN;
     perfSum = perfN = 0;
-    if (avg > 22 && resScale > 0.5) { resScale = Math.max(0.5, resScale - 0.15); resize(); }
+    if (avg > 22 && resScale > 0.75) { resScale = Math.max(0.75, resScale - 0.125); resize(); }
   }
   const _sv = new THREE.Vector3();
   function render(t) {
@@ -2721,6 +2890,7 @@ import * as THREE from "/vendor/three/three.module.min.js";
     FU.uSunV.value.copy(sunDir).transformDirection(camera.matrixWorldInverse);
     FU.uUpV.value.set(0, 1, 0).transformDirection(camera.matrixWorldInverse);
     updateBoom(dt);
+    updateSkyCars(dt, running ? speed : 30);
     // rain falls around the camera when outside in the storm
     const rainK = tod.cur.rain * (1 - inT);
     rainMat.opacity = rainK * 0.35;
@@ -2758,6 +2928,9 @@ import * as THREE from "/vendor/three/three.module.min.js";
     draw: { ...drawInfo }
   });
   window.__hyperlaneWarp = (m) => { distance = m; };
+  window.__hyperlaneSector = (i) => { distance = Math.max(distance, i * SECTOR_LEN + 1); setSector(i, false); };
+  window.__hyperlaneStep = (n, dt) => { for (let i = 0; i < n; i++) update(dt || 1 / 60, 0); };
+  window.__hyperlaneGod = (on) => { god = !!on; };
 
   // the city is there behind the start screen too
   setSector(0, false);
