@@ -49,10 +49,6 @@ export const GAMES = {
     "title": "Circuit Hop",
     "cap": 5000000
   },
-  "neon-tetris": {
-    "title": "Block Bloom (old scores)",
-    "cap": 20000000
-  },
   "prism-breaker": {
     "title": "Prism Breaker",
     "cap": 5000000
