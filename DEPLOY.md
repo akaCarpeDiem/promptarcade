@@ -18,7 +18,7 @@
 ## Build + test
 
 ```bash
-npm test          # builds into a temp dir and checks links, redirects, catalog, sims, word lists
+npm test          # builds into a temp dir and checks links, redirects, catalog and sims
 npm run build     # writes dist/
 ```
 

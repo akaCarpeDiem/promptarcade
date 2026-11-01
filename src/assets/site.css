@@ -228,7 +228,7 @@ section{padding:72px 0}
 .sec-head .more:hover{text-decoration:underline}
 
 /* ---------- today / daily cards ---------- */
-.today{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:16px}
+.today{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}
 @media (max-width:900px){.today{grid-template-columns:1fr}}
 .tcard{position:relative;border-radius:var(--r2);padding:24px;background:var(--glass);border:1px solid var(--line);overflow:hidden;text-decoration:none;display:flex;flex-direction:column;gap:10px;min-height:210px;transition:transform .35s var(--ease),border-color .3s}
 .tcard:hover{transform:translateY(-4px);border-color:var(--line2)}

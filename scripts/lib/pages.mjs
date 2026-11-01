@@ -23,7 +23,7 @@ export function home(ctx) {
     <div>
       <span class="kicker">${GAMES.length} free games · classics remade by AI</span>
       <h1 id="hero-h">Prompt&#8209;made<br/>classics with<br/><span class="glow">a twist.</span></h1>
-      <p class="lede">Snake, falling blocks, rock shooters, brick breakers, the daily word: the games everyone knows, rebuilt by AI from plain-English prompts and changed enough to play like something new. Every game shows which classic it remakes, what the twist is, and exactly how it was made.</p>
+      <p class="lede">Snake, falling blocks, brick breakers, road crossers: the games everyone knows, rebuilt by AI from plain-English prompts and changed enough to play like something new. Every game shows which classic it remakes, what the twist is, and exactly how it was made.</p>
       <div class="ctas">
         <a class="btn" href="/games/${flagship.slug}/#play">${ICON.play} Play ${esc(flagship.title)}</a>
         <a class="btn ghost" href="/games/">Browse all ${GAMES.length} games ${ICON.arrow}</a>
@@ -42,7 +42,7 @@ export function home(ctx) {
 <div class="ticker" hidden aria-label="Latest high scores"><div class="track"></div></div>
 
 <section aria-labelledby="today-h"><div class="wrap">
-  <div class="sec-head reveal"><div><span class="kicker">Today</span><h2 id="today-h">Something new every day</h2><p>A daily quest across the arcade, a word to crack and a dungeon everyone delves together. Keep your streak alive.</p></div><a class="more" href="/daily/">Daily hub ${ICON.arrow}</a></div>
+  <div class="sec-head reveal"><div><span class="kicker">Today</span><h2 id="today-h">Something new every day</h2><p>A daily quest across the arcade and a dungeon everyone delves together. Keep your streak alive.</p></div><a class="more" href="/daily/">Daily hub ${ICON.arrow}</a></div>
   <div class="today">
     <a class="tcard reveal" data-quest href="/daily/">
       <span class="kicker" style="color:var(--gold)">Daily quest · +100 XP</span>
@@ -51,12 +51,6 @@ export function home(ctx) {
       <div class="qbar"><i></i></div>
       <div class="row"><span class="status todo">Loading…</span><span class="countdown" data-countdown></span></div>
       <p class="q-best" style="font-size:13px"></p>
-    </a>
-    <a class="tcard reveal" data-wordglow href="/games/wordglow/#play" style="--a:rgba(46,230,197,.35)">
-      <span class="kicker" style="color:#2ee6c5">Wordglow daily</span>
-      <span class="big">#1</span>
-      <p>Five letters, six tries, same word for everyone.</p>
-      <div class="row"><span class="status todo">Not played yet</span><span class="streak countdown"></span></div>
     </a>
     <a class="tcard reveal" data-delve href="/games/deepdelve/#play" style="--a:rgba(255,207,112,.35)">
       <span class="kicker" style="color:#ffcf70">Daily Delve</span>
@@ -130,7 +124,7 @@ export function game(ctx, g) {
   const st = ctx.stats[g.slug];
   const related = GAMES.filter((x) => x !== g && (x.genre === g.genre || x.tags.some((t) => g.tags.includes(t)))).slice(0, 3);
   while (related.length < 3) { const x = GAMES.find((y) => y !== g && !related.includes(y)); if (!x) break; related.push(x); }
-  const tall = ["wordglow", "nebula-drop", "block-bloom"].includes(g.slug);
+  const tall = g.slug === "block-bloom";
   const c = g.credit;
   const modelLine = c.model ? `${esc(c.model)}` : `${esc(c.maker)} <span class="note" style="display:inline">(model version not recorded)</span>`;
   const desc = `${g.tagline} Play ${g.title} free in your browser — made by ${c.model || c.maker} from prompts. Global Top 10, no account needed.`;
@@ -204,7 +198,7 @@ export function source(ctx, g) {
 
 export function daily(ctx) {
   const body = `<div class="wrap" style="padding-top:34px">
-  <div class="sec-head"><div><span class="kicker">Daily</span><h2 style="font-size:clamp(32px,4.6vw,56px)">Today in the arcade</h2><p>Three things change every day at your local midnight. Play any game on consecutive days to grow your streak — it's tracked on your Arcade Pass.</p></div><span class="countdown" data-countdown style="font-size:15px"></span></div>
+  <div class="sec-head"><div><span class="kicker">Daily</span><h2 style="font-size:clamp(32px,4.6vw,56px)">Today in the arcade</h2><p>Two things change every day at your local midnight. Play any game on consecutive days to grow your streak — it's tracked on your Arcade Pass.</p></div><span class="countdown" data-countdown style="font-size:15px"></span></div>
   <div class="today">
     <a class="tcard reveal" data-quest href="/games/">
       <span class="kicker" style="color:var(--gold)">Daily quest · +100 XP</span>
@@ -212,11 +206,6 @@ export function daily(ctx) {
       <div class="qbar"><i></i></div>
       <div class="row"><span class="status todo">Loading…</span></div>
       <p class="q-best" style="font-size:13px"></p>
-    </a>
-    <a class="tcard reveal" data-wordglow href="/games/wordglow/#play" style="--a:rgba(46,230,197,.35)">
-      <span class="kicker" style="color:#2ee6c5">Wordglow daily</span><span class="big">#1</span>
-      <p>Guess today's five-letter word in six tries. Share your grid.</p>
-      <div class="row"><span class="status todo">Not played yet</span><span class="streak countdown"></span></div>
     </a>
     <a class="tcard reveal" data-delve href="/games/deepdelve/#play" style="--a:rgba(255,207,112,.35)">
       <span class="kicker" style="color:#ffcf70">Daily Delve</span><h3>Today's dungeon</h3>
@@ -230,7 +219,7 @@ export function daily(ctx) {
     <div class="days" id="daily-days"></div>
   </div></section>
 </div>`;
-  return { path: "/daily/", html: layout({ title: "Daily challenges", description: "Today's PromptArcade quest, the Wordglow daily word and the Daily Delve dungeon — new every day, with streaks.", path: "/daily/", v: ctx.v, body }) };
+  return { path: "/daily/", html: layout({ title: "Daily challenges", description: "Today's PromptArcade quest and the Daily Delve dungeon — new every day, with streaks.", path: "/daily/", v: ctx.v, body }) };
 }
 
 export function hallOfFame(ctx) {
@@ -305,7 +294,7 @@ export function lab(ctx) {
   <div class="diagram reveal">${ARCH_SVG}</div></section>
   <section><div class="sec-head"><div><h2>Credits for every game</h2><p>Which model made what, how, and how big it is. “Version not recorded” means we know the model family but not the exact release used at the time.</p></div></div>
   <div class="ctable-wrap"><table class="ctable"><thead><tr><th>Game</th><th>Model</th><th>Built in</th><th>Method</th><th style="text-align:right">Lines</th><th style="text-align:right">Size</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>
-  <section><div class="panel"><h2>The fine print</h2><p style="color:var(--muted);margin:0">Most games here remake well-known classics, from snake and falling blocks to vector rock shooters and brick breakers, and each adds a twist of its own. Game mechanics are free for anyone to use; every name, look and line of code here is original. ${SITE.name} is an independent project and isn't affiliated with Anthropic, xAI or any other AI lab, or with any game publisher.</p></div></section>
+  <section><div class="panel"><h2>The fine print</h2><p style="color:var(--muted);margin:0">Most games here remake well-known classics, from snake and falling blocks to brick breakers and road crossers, and each adds a twist of its own. Game mechanics are free for anyone to use; every name, look and line of code here is original. ${SITE.name} is an independent project and isn't affiliated with Anthropic, xAI or any other AI lab, or with any game publisher.</p></div></section>
 </div>`;
   return { path: "/lab/", html: layout({ title: "The Lab — how the games are made", description: "How PromptArcade's games are built by AI from prompts: the process, model credits, code stats and the multiplayer architecture.", path: "/lab/", v: ctx.v, body }) };
 }
@@ -338,7 +327,7 @@ function prose(ctx, path, title, description, inner) {
 }
 export function about(ctx) {
   return prose(ctx, "/about/", "About", "What PromptArcade is and how its AI-made games work.", `<span class="kicker">About</span><h1>Prompt-made classics with a twist</h1>
-<p>${SITE.name} is an arcade of prompt-made classics with a twist. Every game was made by an AI model from written prompts, and most of them remake a game you already know, then change it enough to play differently: snake that's live and multiplayer, falling blocks with no next-piece preview, a merge puzzle that ends in a black hole. Every game page says which classic it remakes and what the twist is.</p>
+<p>${SITE.name} is an arcade of prompt-made classics with a twist. Every game was made by an AI model from written prompts, and most of them remake a game you already know, then change it enough to play differently: snake that's live and multiplayer, falling blocks with no next-piece preview, sliding tiles that chain-fuse. Every game page says which classic it remakes and what the twist is.</p>
 <p>A few games aren't remakes of anything. They live on the Originals shelf.</p>
 <h2>What “made with prompts” means</h2>
 <p>Each game was generated and refined by an AI model. Some came from a single agentic session where the model wrote, play-tested and fixed the game itself; others from multi-step prompting in a coding tool. Every game page names the model, how it was built and the brief it was given — and links to the full source.</p>
@@ -355,7 +344,7 @@ export function privacy(ctx) {
   return prose(ctx, "/privacy/", "Privacy", "How PromptArcade handles your data.", `<span class="kicker">Privacy</span><h1>Privacy</h1>
 <p>${SITE.name} works without an account and collects as little as possible. Signing in is optional.</p>
 <h2>On your device</h2>
-<p>Your player name, scores, Arcade Pass (XP, badges, streaks), game progress (for example your Wordglow stats and Ember Swarm upgrades) and sound preferences are stored in your browser's localStorage so the site remembers them. Clearing site data removes them.</p>
+<p>Your player name, scores, Arcade Pass (XP, badges, streaks), game progress (for example your Ember Swarm upgrades and Deepdelve run) and sound preferences are stored in your browser's localStorage so the site remembers them. Clearing site data removes them.</p>
 <h2>Optional account</h2>
 <p>If you sign in on the My Arcade page, we store your email address so we can email you one-time sign-in codes, and we link it to your player. While you're signed in, your player name, scores, Arcade Pass and game progress are copied to our database on Cloudflare so they appear on your other devices. We use your email only for sign-in codes — no newsletters — and it is never shown publicly. Codes are sent through our email provider, Resend. To delete your account and its saved progress, email <a href="mailto:${SITE.email}">${SITE.email}</a> from that address.</p>
 <h2>Shared leaderboards</h2>
