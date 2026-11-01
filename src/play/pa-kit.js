@@ -1142,9 +1142,6 @@
       "arena-kills": ["Cutthroat", "Cut off 5 snakes in one Glowline Arena run", "✂️"],
       "ember-5": ["Night Watch", "Survive 5 minutes in Ember Swarm", "🕯️"],
       "ember-win": ["Dawnbringer", "Defeat the Ember Wyrm", "🌅"],
-      "nebula-sun": ["Stellar Forge", "Form a Sun in Nebula Drop", "☀️"],
-      "nebula-hole": ["Event Horizon", "Form a Black Hole in Nebula Drop", "🕳️"],
-      "word-2": ["Mind Reader", "Solve a Wordglow in two guesses", "🔮"],
       "bloom-2000": ["Full Bloom", "Score 2,000 in Block Bloom", "🌸"],
       "grid-100k": ["Storm Chaser", "Score 100,000 in Gridstorm", "⚡"],
       "delve-5": ["Dragonslayer", "Reach depth 6 in Deepdelve", "🐉"],
@@ -1217,8 +1214,6 @@
       var hr = new Date().getHours(); if (hr < 4) grant(st, "night-owl", out);
       if (gslug === "glowline-arena") { if (score >= 500) grant(st, "arena-500", out); if ((stats.kills || 0) >= 5) grant(st, "arena-kills", out); }
       if (gslug === "ember-swarm") { if ((stats.seconds || 0) >= 300) grant(st, "ember-5", out); if (stats.won) grant(st, "ember-win", out); }
-      if (gslug === "nebula-drop") { if ((stats.tier || 0) >= 8) grant(st, "nebula-sun", out); if ((stats.tier || 0) >= 10) grant(st, "nebula-hole", out); }
-      if (gslug === "wordglow" && stats.won && stats.guesses <= 2) grant(st, "word-2", out);
       if (gslug === "block-bloom" && score >= 2000) grant(st, "bloom-2000", out);
       if (gslug === "gridstorm" && score >= 100000) grant(st, "grid-100k", out);
       if (gslug === "deepdelve") { if ((stats.depth || 0) >= 6) grant(st, "delve-5", out); if ((stats.depth || 0) >= 10) grant(st, "delve-10", out); }

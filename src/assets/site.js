@@ -170,15 +170,6 @@
     else { $(".qbar", el).style.display = "none"; $(".q-best", el).textContent = ""; }
     if (done) $(".qbar i", el).style.setProperty("--w", "100%");
   });
-  $$("[data-wordglow]").forEach((el) => {
-    const wg = store("wg_v1", {}), epoch = new Date(2026, 9, 11), n = new Date(), today = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - epoch) / 864e5);
-    $(".big", el).textContent = "#" + (today + 1);
-    const st = $(".status", el), d = wg.daily && wg.daily.day === today ? wg.daily : null;
-    if (d && d.result != null) { st.textContent = d.result ? `Solved in ${d.result}/6 ✓` : "Missed today"; st.className = "status done"; }
-    else { st.textContent = d && d.rows && d.rows.length ? `In progress · ${d.rows.length}/6` : "Not played yet"; st.className = "status todo"; }
-    const s = wg.stats && wg.stats.lastWin != null && wg.stats.lastWin >= today - 1 ? wg.stats.streak : 0;
-    $(".streak", el).textContent = s ? `🔥 ${s}-day streak` : "Start a streak";
-  });
   $$("[data-delve]").forEach((el) => {
     const n = new Date(), seed = n.getFullYear() * 10000 + (n.getMonth() + 1) * 100 + n.getDate();
     const done = (() => { try { return localStorage.getItem("dd_daily") === String(seed); } catch (e) { return false; } })();

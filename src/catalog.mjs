@@ -20,7 +20,7 @@ export const SITE = {
   url: "https://promptarcade.games",
   email: "support@promptarcade.games",
   tagline: "An arcade of prompt-made classics with a twist",
-  description: "Classic arcade games remade by AI from plain-English prompts, each with a twist that changes how it plays: multiplayer snake, falling blocks with no preview, a daily word, a vector rock shooter and more. Free, no account needed.",
+  description: "Classic arcade games remade by AI from plain-English prompts, each with a twist that changes how it plays: multiplayer snake, falling blocks with no preview, a daily dungeon and more. Free, no account needed.",
   launched: "2026-10-11"
 };
 
@@ -65,43 +65,7 @@ export const GAMES = [
     ]
   },
   {
-    slug: "nebula-drop", title: "Nebula Drop", added: "2026-10-11", featured: 3,
-    genre: "Puzzle", tags: ["puzzle", "physics", "merge"], difficulty: "Simple", accent: "#b48cff", accent2: "#5ef2ff",
-    unit: "points",
-    classic: "Merge and drop", twist: "There's no jar: you launch from the rim of a round gravity well and everything falls toward a star in the middle, so the pile grows outward in every direction.",
-    tagline: "Launch worlds into a 3D gravity well. Two of a kind fuse into something bigger.",
-    about: "Stardust becomes pebbles, pebbles become moons, moons become worlds, all the way up to a black hole. Instead of dropping into a jar you aim from anywhere round the rim and everything falls toward the star at the centre, so the pile builds outward like a little planet, every body a real lit sphere with its night side in shadow. Swap with the next body when it suits you, charge a gravity pulse to shake the pile loose, feed things to the wormholes that come up the queue, and ride out the meteor showers. If the pile reaches the danger ring and stays there, the run is over.",
-    credit: CLAUDE_NEW,
-    brief: "A merge-and-drop physics puzzle with a space theme: two matching bodies fuse into the next tier, eleven tiers ending in a black hole. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
-    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
-    tech: [
-      "Every body is a sphere lit by the core star, with its own surface, rings or accretion disk",
-      "Radial gravity toward a central star, with a circular rim and a danger ring instead of a jar",
-      "Custom circle physics: 8 substeps, positional correction, impulses with friction and spin",
-      "Swaps, gravity pulses, wormholes and meteor showers",
-      "HDR bloom, and combo shockwaves that scale with tier"
-    ]
-  },
-  {
-    slug: "wordglow", title: "Wordglow", added: "2026-10-11", featured: 4,
-    genre: "Daily", tags: ["daily", "word", "puzzle"], difficulty: "Simple", accent: "#2ee6c5", accent2: "#b48cff",
-    unit: "streak points", daily: true,
-    classic: "Five-letter word", twist: "Each day is a chain of three words, and each word starts with the last letter of the one before. Twelve guesses cover the whole chain, so the guesses you save on one word carry over to the next.",
-    tagline: "Three linked words a day on glowing glass tiles. Twelve guesses.",
-    about: "Every day brings a chain of three five-letter words, the same chain for everyone, on glass tiles that flip and glow under an aurora. Solve the first word and its last letter becomes the locked first letter of the next. You get twelve guesses for the whole chain, and no more than six on any one word, so a quick solve buys time for a harder one later. Stuck? Spend a guess on a spark to light one letter. Share your glowing grid, keep a streak going, and play unlimited practice chains once the daily is done.",
-    credit: CLAUDE_NEW,
-    brief: "A daily five-letter word game with streaks, stats, hard mode, practice mode and a shareable result grid. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
-    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
-    tech: [
-      "The board is drawn as 3D glass tiles with flips, bursts and a win wave, over an aurora with HDR bloom",
-      "Each day's three-word chain is picked by a seeded walk through the answer list",
-      "1,800+ answers picked from open word-frequency data with names, places and slang filtered out",
-      "Sparks light one letter for one guess, once per word",
-      "Progress, streaks and stats saved locally; the daily rolls over at your local midnight"
-    ]
-  },
-  {
-    slug: "block-bloom", title: "Block Bloom", added: "2026-10-11", featured: 5,
+    slug: "block-bloom", title: "Block Bloom", added: "2026-10-11", featured: 3,
     genre: "Puzzle", tags: ["puzzle", "casual"], difficulty: "Simple", accent: "#ff7eb6", accent2: "#ffd36b",
     unit: "points",
     classic: "Falling blocks", twist: "No next-piece preview; a row finished in one colour scores ten times as much and bursts every gem of that colour, so the columns cascade into chains; dew drops recolour the falling piece.",
@@ -118,7 +82,7 @@ export const GAMES = [
     ]
   },
   {
-    slug: "gridstorm", title: "Gridstorm", added: "2026-10-11", featured: 6,
+    slug: "gridstorm", title: "Gridstorm", added: "2026-10-11", featured: 4,
     genre: "Shooter", tags: ["shooter", "twin-stick", "arcade"], difficulty: "Advanced", accent: "#5ef2ff", accent2: "#ffe68a",
     unit: "points",
     classic: "Twin-stick arena", twist: "Fight inside a thunderstorm: every kill sends out a shockwave that blows up whatever it reaches, so packed swarms go off in chain reactions, while thunderheads call lightning down on where you're heading.",
@@ -136,7 +100,7 @@ export const GAMES = [
     ]
   },
   {
-    slug: "deepdelve", title: "Deepdelve", added: "2026-10-11", featured: 7,
+    slug: "deepdelve", title: "Deepdelve", added: "2026-10-11", featured: 5,
     genre: "Roguelike", tags: ["roguelike", "daily", "strategy"], difficulty: "Mid", accent: "#ffcf70", accent2: "#ff7a2a",
     unit: "points", daily: true,
     classic: "Dungeon crawl", twist: "One seeded Daily Delve for every player, and a dragon waiting on every fifth floor.",
@@ -154,7 +118,7 @@ export const GAMES = [
     ]
   },
   {
-    slug: "skystack", title: "Skystack", added: "2026-10-11", featured: 8,
+    slug: "skystack", title: "Skystack", added: "2026-10-11", featured: 6,
     genre: "3D", tags: ["3d", "casual", "one-button"], difficulty: "Simple", accent: "#ffb347", accent2: "#6ec8ff",
     unit: "floors",
     classic: "Tower stacker", twist: "You're building a real skyscraper: a crane lowers each floor, the tower climbs from brick walk-ups to a glass spire as day turns to night, and from the fifth floor up the wind makes the whole thing sway.",
@@ -207,24 +171,6 @@ export const GAMES = [
     ]
   },
   {
-    slug: "ringfall", title: "Ringfall", added: "2026-10-21",
-    genre: "Shooter", tags: ["shooter", "arcade", "defense"], difficulty: "Mid", accent: "#8ee9ff", accent2: "#ff5c7a",
-    unit: "points",
-    classic: "City missile defence", twist: "The cities sit around a small turning planet, so warheads come from every side, and every blast can set off another for a growing multiplier.",
-    tagline: "Defend an orbital ring round a living planet, in real 3D.",
-    about: "Six habitats and three interceptor batteries ride a ring round a living planet, and the ring keeps turning while warheads come in from every side. Tap or click ahead of them to burst an interceptor in their path. Catch one in a blast and it bursts too, and every link in that chain multiplies the points. Later waves bring warheads that split in three, warheads that weave, orbiting bombers and armoured dreadnoughts. Between waves you pick a refit for the ring, from wider blasts and hot rockets to a dome shield or a rebuilt habitat, and kills charge an ion pulse that sweeps the space round the ring clean.",
-    credit: CLAUDE_NEW,
-    brief: "Remake the city missile-defence classic around a small rotating planet with three batteries, chain-reaction blasts, splitting and weaving warheads, and orbiting bombers. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
-    process: "In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
-    tech: [
-      "Real-time 3D with HDR bloom: a lit planet with clouds and city lights, the ring, its shuttles and tethers",
-      "Interceptors arc up off the ring's plane and burst back on it, so the rules still play on a flat orbit",
-      "Blasts that catch a warhead spawn a blast of their own, and the chain depth is the multiplier",
-      "Between-wave refits from a deck of ten cards, and an ion pulse charged by kills",
-      "Aim with the mouse, touch, or the arrow keys and Space"
-    ]
-  },
-  {
     slug: "neon-outrun", title: "Neon Nightdrive", added: "2026-09-20",
     genre: "Racing", tags: ["racing", "arcade", "3d"], difficulty: "Advanced", accent: "#ff5ca8", accent2: "#ffd36b", unit: "points",
     classic: "Sunset road racer", twist: "A real-3D cyberpunk megacity: draft behind haulers for extra top speed, thread hover cars for near-miss combos and dodge lane closures to beat the checkpoint clock.",
@@ -271,22 +217,6 @@ export const GAMES = [
     ]
   },
   {
-    slug: "void-rocks", title: "Void Rocks", added: "2026-09-20",
-    genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#c49bff", accent2: "#5ef2ff", unit: "points",
-    classic: "Rock-field shooter", twist: "A tractor tether: grab a rock, whirl it round your tug as a wrecking ball, then fling it through the field for chain multipliers. Scrapper drones fly in to cut up the big rocks.",
-    tagline: "A 3D rock-field shooter where the rocks are your best weapon.",
-    about: "Pilot a little salvage tug through a drifting field of faceted, veined rock in real 3D. Split the big rocks with your gun, then grab a small one with the tether and it whirls round your tug as a wrecking ball. Let go and it flies the way you're facing, ploughing through the field: every rock it hits raises the chain multiplier. Scrapper drones fly in to cut up the biggest rocks, so swat them with a tethered rock for a big bonus. Fly through gold salvage to refit the tug with twin guns, a heavy tether and spread guns, and when a rift tears open and starts dragging everything in, fling a rock into it to seal it.",
-    credit: CLAUDE_CURSOR,
-    brief: "A rock-field shooter with inertia, screen wrap, splitting rocks, a tractor tether, scrapper drones that cut up rocks, a short-range blink and waves. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
-    process: "Built by an AI coding agent from a multi-step brief: ship physics and wrapping first, then rocks, enemies and waves, then glow rendering, audio and touch clusters. In October 2026 Claude rebuilt the twist in an agentic session and play-tested it in a headless browser, and later gave it solid cratered rocks, a salvage tug, rock-cutting drones and a blink jump so it stands further from the original. In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
-    tech: [
-      "Real-time 3D with HDR bloom: faceted rocks with craters and glowing veins, parallax stars and a nebula",
-      "The original wrapping arena in screen pixels, drawn under a straight-down camera, so things show on both sides of an edge",
-      "Tether that winds up as it whirls; thrown rocks pierce the field and count a chain multiplier",
-      "Salvage refits in four marks, and rifts with a lensing shader that you seal with a flung rock"
-    ]
-  },
-  {
     slug: "star-siege", title: "Star Siege", added: "2026-09-20",
     genre: "Shooter", tags: ["shooter", "arcade"], difficulty: "Mid", accent: "#ff7eb6", accent2: "#7dffb0", unit: "points",
     classic: "Alien invasion", twist: "Colour lasers against a honeycomb swarm: a hit on the wrong colour paints the alien yours, and a hit on a match chain-pops every touching alien of that colour.",
@@ -325,7 +255,7 @@ export const GAMES = [
     genre: "Puzzle", tags: ["puzzle"], difficulty: "Simple", accent: "#5ef2ff", accent2: "#ff7eb6", unit: "points",
     classic: "Sliding tiles", twist: "Chain reactions: a fused tile that lands next to its twin fuses again for a multiplier, while lead blocks drop in and wall off lines.",
     tagline: "Fuse glowing cells in a 3D fusion reactor and set off chain reactions.",
-    about: "Slide glowing glass cells round a steel tray at the heart of a fusion reactor, and fuse equal numbers into bigger ones. A freshly fused cell that lands touching its twin fuses again on its own, and again, each link worth more. Lead blocks drop in and wall off rows and columns until they decay. Chains charge vents that blow a cell clean out of the tray, bigger cells earn rewinds, and the reactor heats up round you from Cold through Critical and Stellar to Nova.",
+    about: "Slide glowing glass cells round a steel tray at the heart of a fusion reactor, and fuse equal numbers into bigger ones. A freshly fused cell that lands touching its twin fuses again on its own, and again, each link worth more. Lead blocks drop in and wall off rows and columns until they decay. Bigger cells earn rewinds, and the reactor heats up round you from Cold through Critical and Stellar to Nova. When no slide remains, the run ends.",
     credit: CLAUDE_CURSOR,
     brief: "A 2048 sliding-tile game (the original is open source under MIT) with tweened slides, merge particles and escalating sound. Then rebuild it in real 3D with better graphics, and make it more immersive and more interactive.",
     process: "Built by an AI coding agent from a short multi-step brief: board rules first, then animation and juice, then swipe input. In October 2026 Claude Opus 5.5 rebuilt the twist in an agentic session and play-tested it in a headless browser. In late October 2026 Claude rebuilt it in real 3D in an agentic session, keeping the rules and adding new mechanics, and play-tested it in a headless browser at desktop and phone sizes.",
@@ -333,8 +263,8 @@ export const GAMES = [
       "Real-time 3D reactor with HDR bloom: glass cubes in a steel tray over a plasma well",
       "Chain reactions resolved as their own animated steps",
       "Lead cells split each line into runs that slide separately",
-      "Vents and rewinds earned by play, and reactor stages that follow your best cell",
-      "Swipe, keys or tap to play"
+      "Rewinds earned by bigger cells, and reactor stages that follow your best cell",
+      "Swipe or keys to play"
     ]
   },
   {
@@ -357,21 +287,21 @@ export const RETIRED = {
   "paper-moths": null, "gate-comet": null, "lantern-stack": null, "moss-steps": null, "wick-line": null,
   "roofline-crane": null, "upstream-koi": null, "kiln-break": null, "orchard-serpent": "glowline-arena", "belt-drift": null,
   "pulse-lanterns": null, "loom-shuttle": null, "tide-bell": null, "pier-watch": null, "courier-of-glass": null,
-  "soot-lantern": "deepdelve", "night-press": "wordglow"
+  "soot-lantern": "deepdelve", "night-press": null
 };
 
 /* What's-new feed (newest first). */
 export const NEWS = [
   { date: "2026-10-28", title: "Neon Skyway and a neon Hyperlane", body: "Ptero Flap is now Neon Skyway: you fly a hover car through a stacked neon megacity, holding boost to shoot up and cutting the engine to drop like a stone. Thread towers, hard-light billboards, cargo lifts, cranes, security lasers, patrol drones, exhaust stacks and oncoming traffic across five districts. Hyperlane 3D has a whole new look too: the city is now a neon megacity at night, with dark glass towers, blade signs, giant holo adverts, flying traffic and glowing sky offices. The flying is exactly the same." },
-  { date: "2026-10-27", title: "Twelve games rebuilt in 3D", body: "Every game that wasn't already a big build has been rebuilt in real 3D with new mechanics. Ringfall defends an orbital ring with refits and an ion pulse. Prism Breaker is a crystal hall with prism beams, charge bricks and guardians. Fusion 2048 runs in a fusion reactor with vents and rewinds. Nebula Drop has lit worlds, swaps, gravity pulses and wormholes. Circuit Hop is a circuit-board diorama with an air dash, boost pads, drones, ranks and eight sectors. Deepdelve is a torch-lit dungeon with chests, mimics, traps and shrines. Wordglow is glass tiles in an aurora with sparks. Star Siege adds divers, an overload beam, capsules and a hive queen. Void Rocks adds refits and rifts. Crosstime adds stasis, parcels and streaks. Gridstorm adds a dash, overcharge and supercells. And Skystack gets a tower crane and a living city." },
+  { date: "2026-10-27", title: "Eight games rebuilt in 3D", body: "Games that weren't already a big build have been rebuilt in real 3D with new mechanics. Prism Breaker is a crystal hall with prism beams, charge bricks and guardians. Fusion 2048 runs in a fusion reactor with rewinds. Circuit Hop is a circuit-board diorama with an air dash, boost pads, drones, ranks and eight sectors. Deepdelve is a torch-lit dungeon with chests, mimics, traps and shrines. Star Siege adds divers, an overload beam, capsules and a hive queen. Crosstime adds stasis, parcels and streaks. Gridstorm adds a dash, overcharge and supercells. And Skystack gets a tower crane and a living city." },
   { date: "2026-10-23", title: "Echo Maze is now a bat in the dark", body: "Echo Maze has been rebuilt from scratch. You're a young bat lost in a pitch-black cave who sees by sonar: every ping lights the tunnels, but the spiders, stone lurkers and owls hunt by sound. Find every crystal, then fly out into the moonlight." },
-  { date: "2026-10-23", title: "Five classics get a look of their own", body: "Gridstorm now takes place inside a thunderstorm, with a new cast of storm creatures and thunderheads that call down lightning. Skystack is a real skyscraper lowered floor by floor off a crane, climbing from brick walk-ups to a glass spire as day turns to night. Void Rocks has solid cratered rocks and drones that cut them up, Star Siege faces a gliding honeycomb swarm, and Crosstime's rivers carry cargo barges and float pads. Block Bloom now fits on any screen and adds Full Bloom cascades and dew drops." },
+  { date: "2026-10-23", title: "Classics get a look of their own", body: "Gridstorm now takes place inside a thunderstorm, with a new cast of storm creatures and thunderheads that call down lightning. Skystack is a real skyscraper lowered floor by floor off a crane, climbing from brick walk-ups to a glass spire as day turns to night. Star Siege faces a gliding honeycomb swarm, and Crosstime's rivers carry cargo barges and float pads. Block Bloom now fits on any screen and adds Full Bloom cascades and dew drops." },
   { date: "2026-10-22", title: "Ptero Flap goes moonlit", body: "Ptero Flap has a new look: a brand-new wide-eyed clay pterodactyl flying over a moonlit island, with a glowing moon, a lagoon, palm trees, a dome hut with a warm window and fireflies. The brontosauruses are gone; now you thread a night forest of trees, rock spires, hanging moss, vines and spider webs, some strung between bamboo stalks. The split-sky twin-flyer mode is gone too, so it is one pterodactyl and one flap button again. Moving gaps, amber and close-call combos stay." },
   { date: "2026-10-22", title: "Neon Flap is now Ptero Flap", body: "The one-tap flyer has been repainted from the ground up. You now fly a cartoon pterodactyl through a prehistoric jungle at sunset, past a smoking volcano, dodging trees, hanging branches, spiderwebs, rock spires and brontosauruses that raise their necks into your path." },
-  { date: "2026-10-21", title: "Nine classics get a real twist", body: "Void Rocks now has a tractor tether: whirl a rock round your ship and fling it for chain kills. Star Siege lasers carry a colour, so you paint aliens and pop matching clusters. Prism Breaker balls take spin off the paddle and curve round steel. Fusion 2048 sets off chain reactions while lead blocks wall off the board. Neon Flap splits into twin flyers, one in each half of the sky. Wordglow is now a daily chain of three linked words that share twelve guesses. Nebula Drop swaps the jar for a round gravity well. Gridstorm kills send out shockwaves that chain through the swarm. And the Skystack tower sways in the wind as it climbs." },
-  { date: "2026-10-21", title: "Three new classics with a twist", body: "Crosstime is a road-and-river crosser where getting hit rewinds time. Echo Maze is a pellet maze where your own path comes back to hunt you. Ringfall is city missile defence wrapped round a small turning planet, with blasts that chain into blasts." },
+  { date: "2026-10-21", title: "Six classics get a real twist", body: "Star Siege lasers carry a colour, so you paint aliens and pop matching clusters. Prism Breaker balls take spin off the paddle and curve round steel. Fusion 2048 sets off chain reactions while lead blocks wall off the board. Neon Flap splits into twin flyers, one in each half of the sky. Gridstorm kills send out shockwaves that chain through the swarm. And the Skystack tower sways in the wind as it climbs." },
+  { date: "2026-10-21", title: "Two new classics with a twist", body: "Crosstime is a road-and-river crosser where getting hit rewinds time. Echo Maze is a pellet maze where your own path comes back to hunt you." },
   { date: "2026-10-21", title: "Classics with a twist", body: "PromptArcade is now an arcade of prompt-made classics with a twist: well-known games remade by AI, each changed enough to play differently. Every game page now says which classic it remakes and what the twist is, and games that aren't remakes have their own Originals shelf. The home page has a new arcade cabinet that plays through the shelf." },
-  { date: "2026-10-11", title: "PromptArcade 3.0", body: "A full redesign and eight new games made with Claude Opus 5.5 — including a live multiplayer snake arena, a survivors-style roguelite, a daily word game and a daily dungeon. Plus the Arcade Pass: XP, badges, streaks and daily quests that follow you across every game." },
+  { date: "2026-10-11", title: "PromptArcade 3.0", body: "A full redesign and new games made with Claude Opus 5.5 — including a live multiplayer snake arena, a survivors-style roguelite and a daily dungeon. Plus the Arcade Pass: XP, badges, streaks and daily quests that follow you across every game." },
   { date: "2026-10-11", title: "Retired the one-prompt plates", body: "The early single-prompt experiments and two remakes have been retired so the shelf is all full builds. Old links now land on the games that replaced them." },
   { date: "2026-09-20", title: "Shared kit and global leaderboards", body: "Every game got the shared kit: pause menu, procedural music, a name gate and a global Top 10." }
 ];
@@ -380,19 +310,15 @@ export const NEWS = [
 export const QUESTS = [
   { game: "glowline-arena", stat: "score", min: 250, text: "Reach length 250 in Glowline Arena" },
   { game: "ember-swarm", stat: "seconds", min: 240, text: "Survive 4 minutes in Ember Swarm" },
-  { game: "nebula-drop", stat: "tier", min: 6, text: "Form a Ringed Giant in Nebula Drop" },
   { game: "block-bloom", stat: "score", min: 600, text: "Score 600 in Block Bloom" },
   { game: "gridstorm", stat: "score", min: 25000, text: "Score 25,000 in Gridstorm" },
   { game: "deepdelve", stat: "depth", min: 4, text: "Reach depth 4 in Deepdelve" },
   { game: "skystack", stat: "score", min: 20, text: "Stack 20 floors in Skystack" },
-  { game: "wordglow", stat: "won", min: 1, text: "Solve today's Wordglow" },
   { game: "neon-outrun", stat: "score", min: 5000, text: "Score 5,000 in Neon Nightdrive" },
   { game: "fusion-2048", stat: "score", min: 3000, text: "Score 3,000 in Fusion 2048" },
   { game: "circuit-hop", stat: "score", min: 1500, text: "Score 1,500 in Circuit Hop" },
-  { game: "void-rocks", stat: "score", min: 5000, text: "Score 5,000 in Void Rocks" },
   { game: "neon-flap", stat: "score", min: 500, text: "Score 500 in Neon Skyway" },
   { game: "prism-breaker", stat: "score", min: 3000, text: "Score 3,000 in Prism Breaker" },
   { game: "crosstime", stat: "score", min: 600, text: "Score 600 in Crosstime" },
-  { game: "echo-maze", stat: "score", min: 3000, text: "Score 3,000 in Echo Maze" },
-  { game: "ringfall", stat: "score", min: 3000, text: "Score 3,000 in Ringfall" }
+  { game: "echo-maze", stat: "score", min: 3000, text: "Score 3,000 in Echo Maze" }
 ];

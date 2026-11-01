@@ -17,7 +17,6 @@ html,body{margin:0;height:100%;background:#04050c;color:#f4f1ff;overflow:hidden;
 #fu-tools button:hover:not(:disabled){border-color:#8ee9ff;box-shadow:0 0 18px rgba(142,233,255,.3)}
 #fu-tools button:active:not(:disabled){transform:scale(.95)}
 #fu-tools button:disabled{opacity:.38;cursor:default}
-#fu-tools button.armed{border-color:#ff9ec4;box-shadow:0 0 22px rgba(255,126,182,.5);color:#fff}
 #fu-tools b{font:700 .7rem 'JetBrains Mono',ui-monospace,monospace;padding:.1rem .4rem;border-radius:6px;background:rgba(142,233,255,.16)}
 #fu-tools kbd{font:600 .62rem 'JetBrains Mono',ui-monospace,monospace;opacity:.55}
 @media (max-width:520px){#fu-hud{right:136px}#fu-tools kbd{display:none}}
@@ -32,12 +31,11 @@ html,body{margin:0;height:100%;background:#04050c;color:#f4f1ff;overflow:hidden;
 </div>
 <div id="fu-tools">
   <button type="button" id="t-undo" aria-label="Rewind one move">↶ Rewind <b id="n-undo">2</b><kbd>Z</kbd></button>
-  <button type="button" id="t-vent" aria-label="Vent a tile">⚡ Vent <b id="n-vent">0</b><kbd>X</kbd></button>
 </div>
 <script>
 window.paConfig = {
   slug: "fusion-2048", title: "Fusion 2048", native: true, music: "lofi", unit: "points",
-  controls: [["← → ↑ ↓ / WASD", "Slide the cells"], ["Touch / mouse", "Swipe to slide"], ["Twins touching", "Chain-fuse on their own"], ["Z / X", "Rewind a move · vent a tile"]]
+  controls: [["← → ↑ ↓ / WASD", "Slide the cells"], ["Touch / mouse", "Swipe to slide"], ["Twins touching", "Chain-fuse on their own"], ["Z", "Rewind a move"]]
 };
 </script>
 <script src="/games/play/pa-score.js"></script>
@@ -51,8 +49,8 @@ import * as THREE from "/vendor/three/three.module.min.js";
 // The sliding-tile classic, set in a fusion reactor and rendered in real 3D. Cells are glowing glass
 // cubes in a steel tray; twins that slide together fuse, and the twist is the chain reaction: a freshly
 // fused cell that lands touching its own twin fuses again by itself, for a growing multiplier. Lead
-// blocks drop in, wall off rows and columns, then decay. Chains charge Vents (blow a cell out of the
-// tray); bigger cells earn Rewinds. The reactor around the board heats up with the best cell.
+// blocks drop in, wall off rows and columns, then decay. Bigger cells earn Rewinds. The reactor
+// around the board heats up with the best cell. A board with no legal slide ends the run.
 const PA = window.PA;
 const TAU = Math.PI * 2;
 const { clamp, ease, choice, rand } = PA;
@@ -466,7 +464,7 @@ const cellVS = `
     gl_Position = projectionMatrix * viewMatrix * wp;
   }`;
 const cellFS = `
-  uniform vec3 col; uniform float glow, flash, time, vent;
+  uniform vec3 col; uniform float glow, flash, time;
   varying vec3 vN; varying vec3 vV; varying vec3 vL;
   void main(){
     vec3 n = normalize(vN), v = normalize(vV);
@@ -479,7 +477,6 @@ const cellFS = `
     c += col * f * 1.1 + vec3(1.0) * pow(f, 8.0) * 0.3;
     c += vec3(1.0) * smoothstep(0.97, 1.0, sin((vL.x - vL.z) * 4.0 + time * 1.8)) * 0.25 * up;
     c += vec3(1.0) * flash * 2.2;
-    c += vec3(1.0, 0.45, 0.7) * vent * (0.5 + 0.5 * sin(time * 9.0)) * 0.9;
     gl_FragColor = vec4(c, 1.0);
   }`;
 const leadMat = new THREE.MeshStandardMaterial({ color: 0x5c6278, metalness: 0.75, roughness: 0.45 });
@@ -489,7 +486,7 @@ function tileMesh(v) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(TILE_GEO, new THREE.ShaderMaterial({
     vertexShader: cellVS, fragmentShader: cellFS,
-    uniforms: { col: { value: new THREE.Color(tierCol(v)) }, glow: { value: Math.min(1.6, 0.3 + Math.log2(v) * 0.11) }, flash: { value: 0 }, time: { value: 0 }, vent: { value: 0 } }
+    uniforms: { col: { value: new THREE.Color(tierCol(v)) }, glow: { value: Math.min(1.6, 0.3 + Math.log2(v) * 0.11) }, flash: { value: 0 }, time: { value: 0 } }
   }));
   g.add(body);
   const label = new THREE.Mesh(LABEL_GEO, new THREE.MeshBasicMaterial({ map: numberTex(v), transparent: true, depthWrite: false, color: hdr(0xffffff, 1.4) }));
@@ -543,7 +540,7 @@ function disposeTile(t) {
 let grid, lead, leads = [], score = 0, shownScore = 0, bestTile = 2, overSent = false;
 let animating = false, animT = 0, animLen = ANIM, pendingGrid = null, slideAnims = [], mergePop = [];
 let moves = 0, chainDepth = 0, bestChain = 0, chains = 0, leadsCleared = 0;
-let undo = 2, vent = 0, venting = false, history = [], stage = 0, heat = 0, shakeT = 0;
+let undo = 2, history = [], stage = 0, heat = 0, shakeT = 0;
 const emptyGrid = () => Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
 
 function lineSlots(dr, dc, i) {
@@ -588,14 +585,13 @@ function simulate(dr, dc) {
   return { moved, grid: newGrid, gain, anims };
 }
 function canMove(g) {
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    const v = g[r][c];
-    if (lead[r][c]) continue;
-    if (!v) return true;
-    if (c + 1 < SIZE && !lead[r][c + 1] && g[r][c + 1] === v) return true;
-    if (r + 1 < SIZE && !lead[r + 1][c] && g[r + 1][c] === v) return true;
-  }
-  return false;
+  // Lead splits each line into runs, so an empty cell is not a move unless a tile in that
+  // run can actually slide. Ask the same simulator the controls use.
+  const prev = grid;
+  if (g) grid = g;
+  const ok = [[0, -1], [0, 1], [-1, 0], [1, 0]].some(([dr, dc]) => simulate(dr, dc).moved);
+  grid = prev;
+  return ok;
 }
 function spawnRandom() {
   const empty = [];
@@ -680,7 +676,6 @@ function finishAnim() {
   if (react) {
     chains++;
     if (chainDepth + 1 > bestChain) bestChain = chainDepth + 1;
-    vent = Math.min(3, vent + 1);
     score += react.gain;
     pendingGrid = react.grid;
     slideAnims = react.anims;
@@ -713,10 +708,7 @@ function afterMove() {
   spawnRandom();
   if (moves % LEAD_EVERY === 0) dropLead();
   updateStage();
-  if (!canMove(grid)) {
-    if (vent > 0 || undo > 0) { toast(vent > 0 ? "Jammed · vent a cell or rewind" : "Jammed · rewind a move"); return; }
-    endGame();
-  }
+  if (!canMove()) endGame();
 }
 function endGame() {
   if (overSent) return;
@@ -767,7 +759,7 @@ function rebuildMeshes() {
   }
 }
 function tryMove(dr, dc) {
-  if (animating || PA.state !== "play" || overSent || !grid || venting) return;
+  if (animating || PA.state !== "play" || overSent || !grid) return;
   const res = simulate(dr, dc);
   if (!res.moved) { PA.sfx("click", { pitch: 0.7 }); nudge(dr, dc); return; }
   history.push(snapshot()); if (history.length > 6) history.shift();
@@ -788,30 +780,9 @@ function rewind() {
   undo--;
   grid = s.grid; lead = s.lead; score = s.score; bestTile = s.bestTile; moves = s.moves;
   rebuildMeshes();
-  venting = false;
   PA.sfx("whoosh", { pitch: 0.6 });
   burst(0, 0.4, 0, { n: 40, colors: [0x8ee9ff, 0xc4a6ff], speed: 3, life: 0.6, size: 0.07 });
   toast("Rewound one move");
-}
-function toggleVent() {
-  if (animating || PA.state !== "play" || overSent || vent <= 0) return;
-  venting = !venting;
-  PA.sfx(venting ? "select" : "click");
-}
-function ventAt(r, c) {
-  const t = cells[r] && cells[r][c];
-  if (!t || !venting) return false;
-  vent--; venting = false;
-  history.push(snapshot()); if (history.length > 6) history.shift();
-  grid[r][c] = 0; cells[r][c] = null;
-  const p = cellPos(r, c), col = tierCol(t.v);
-  burst(p.x, 0.3, p.z, { n: 50, colors: [col, 0xffffff, 0xff9ec4], speed: 3.5, life: 0.8, size: 0.09, up: 5 });
-  shock(p.x, p.z, 0xff9ec4, 1.8);
-  t.vanish = true; disposeTile(t);
-  tiles = tiles.filter((x) => x !== t);
-  PA.sfx("explode", { pitch: 1.4 }); PA.shake(6, 0.2);
-  if (!canMove(grid) && vent <= 0 && undo <= 0) endGame();
-  return true;
 }
 function reset() {
   for (const t of tiles) disposeTile(t);
@@ -821,7 +792,7 @@ function reset() {
   cells = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
   moves = 0; chainDepth = 0; bestChain = 0; chains = 0; leadsCleared = 0;
   score = 0; shownScore = 0; bestTile = 2; overSent = false; animating = false; animT = 0; pendingGrid = null; slideAnims = []; mergePop = [];
-  undo = 2; vent = 0; venting = false; history = []; stage = 0;
+  undo = 2; history = []; stage = 0;
   parts.length = 0; texts.clear();
   PA.music.intensity(0);
   spawnRandom(); spawnRandom();
@@ -832,9 +803,8 @@ function reset() {
 
 /* ---------------- input ---------------- */
 const hud = document.getElementById("fu-hud"), tools = document.getElementById("fu-tools");
-const bUndo = document.getElementById("t-undo"), bVent = document.getElementById("t-vent");
+const bUndo = document.getElementById("t-undo");
 bUndo.addEventListener("click", (e) => { e.stopPropagation(); rewind(); });
-bVent.addEventListener("click", (e) => { e.stopPropagation(); toggleVent(); });
 PA.onKey((e) => {
   if (e.repeat) return;
   const k = e.key, c = e.code;
@@ -843,28 +813,17 @@ PA.onKey((e) => {
   else if (k === "ArrowUp" || c === "KeyW") tryMove(-1, 0);
   else if (k === "ArrowDown" || c === "KeyS") tryMove(1, 0);
   else if (c === "KeyZ" || c === "Backspace") rewind();
-  else if (c === "KeyX") toggleVent();
 });
-// swipe anywhere; a short tap on a cell vents it when venting is armed
-const ray = new THREE.Raycaster(), planeY = new THREE.Plane(new THREE.Vector3(0, 1, 0), -TILE_H), hitP = new THREE.Vector3();
-let sx = 0, sy = 0, sid = null, st = 0;
+let sx = 0, sy = 0, sid = null;
 addEventListener("pointerdown", (e) => {
   if (PA.state !== "play" || PA.isPaused()) return;
   if (e.target.closest && e.target.closest("button,input,a,#pa-gate,.pa-layer,.pa-tb")) return;
-  sx = e.clientX; sy = e.clientY; sid = e.pointerId; st = performance.now();
+  sx = e.clientX; sy = e.clientY; sid = e.pointerId;
 });
 addEventListener("pointerup", (e) => {
   if (sid !== e.pointerId) return;
   sid = null;
   const dx = e.clientX - sx, dy = e.clientY - sy, d = Math.hypot(dx, dy);
-  if (d < 14 && performance.now() - st < 500) {
-    if (!venting) return;
-    ray.setFromCamera({ x: e.clientX / innerWidth * 2 - 1, y: -(e.clientY / innerHeight) * 2 + 1 }, camera);
-    if (!ray.ray.intersectPlane(planeY, hitP)) return;
-    const c = Math.round(hitP.x / PITCH + (SIZE - 1) / 2), r = Math.round(hitP.z / PITCH + (SIZE - 1) / 2);
-    if (r >= 0 && c >= 0 && r < SIZE && c < SIZE) ventAt(r, c);
-    return;
-  }
   if (d < 28) return;
   if (Math.abs(dx) > Math.abs(dy)) tryMove(0, dx > 0 ? 1 : -1);
   else tryMove(dy > 0 ? 1 : -1, 0);
@@ -902,7 +861,7 @@ function render(t) {
     tl.g.scale.set(sc, 1 + tl.pop * 0.5, sc);
     if (tl.vanish) { const k = Math.max(0, 1 - prog * 1.4); tl.g.scale.setScalar(Math.max(0.01, 0.4 + k * 0.6)); }
     const u = tl.body.material.uniforms;
-    u.time.value = t; u.flash.value = Math.max(0, u.flash.value - 0.06); u.vent.value = venting ? 1 : 0;
+    u.time.value = t; u.flash.value = Math.max(0, u.flash.value - 0.06);
     if (tl.halo) tl.halo.material.opacity = 0.6 + Math.sin(t * 3 + tl.c) * 0.25;
   }
   for (const L of leads) {
@@ -932,18 +891,12 @@ function render(t) {
   }
   tGeo.setDrawRange(0, tv);
   tGeo.attributes.position.needsUpdate = true; tGeo.attributes.color.needsUpdate = true;
-  for (const s of sockets) s.material.emissiveIntensity = venting ? 0.9 + Math.sin(t * 8) * 0.3 : 0.35 + heat * 0.4;
+  for (const s of sockets) s.material.emissiveIntensity = 0.35 + heat * 0.4;
 
   post.render(scene, camera, t);
   ctx.setTransform(overlay.dpr, 0, 0, overlay.dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
   texts.draw(ctx);
-  if (PA.state === "play" && venting) {
-    ctx.textAlign = "center"; ctx.font = "700 14px Manrope, system-ui, sans-serif";
-    ctx.fillStyle = `rgba(255,158,196,${0.7 + Math.sin(t * 6) * 0.25})`;
-    const p = toScreen(0, 0, (SIZE * PITCH) / 2 + 0.3);
-    ctx.fillText((PA.isTouch ? "Tap" : "Click") + " a cell to vent it · X to cancel", W / 2, p.y + 22);
-  }
   if (PA.state === "play" && moves === 0 && !animating) {
     ctx.textAlign = "center"; ctx.font = `600 ${W < 520 ? 13 : 15}px Manrope, system-ui, sans-serif`;
     ctx.fillStyle = "rgba(220,235,255,.75)";
@@ -953,17 +906,14 @@ function render(t) {
   if (PA.state === "play") {
     shownScore += (score - shownScore) * 0.25;
     if (Math.abs(score - shownScore) < 1) shownScore = score;
-    const key = Math.round(shownScore) + "|" + bestTile + "|" + bestChain + "|" + undo + "|" + vent + "|" + venting + "|" + history.length;
+    const key = Math.round(shownScore) + "|" + bestTile + "|" + bestChain + "|" + undo + "|" + history.length;
     if (key !== lastHud) {
       lastHud = key;
       PA.stat("s-score", Math.round(shownScore).toLocaleString());
       PA.stat("s-tile", bestTile);
       PA.stat("s-chain", bestChain ? "×" + bestChain : "—");
       document.getElementById("n-undo").textContent = undo;
-      document.getElementById("n-vent").textContent = vent;
       bUndo.disabled = undo <= 0 || !history.length;
-      bVent.disabled = vent <= 0;
-      bVent.classList.toggle("armed", venting);
     }
   }
 }
@@ -975,8 +925,8 @@ grid = emptyGrid(); lead = emptyGrid(); cells = Array.from({ length: SIZE }, () 
 [[0, 1, 2], [1, 2, 8], [2, 0, 64], [3, 3, 512], [1, 0, 4], [2, 3, 2048]].forEach(([r, c, v]) => { grid[r][c] = v; cells[r][c] = newTile(v, r, c, false); });
 PA.onStart(reset);
 PA.loop(update, render);
-window.__f2048 = () => ({ score, best: bestTile, moves, bestChain, chains, undo, vent, lead: lead.map((r) => r.slice()), grid: grid.map((r) => r.slice()) });
-window.__fu = { tryMove, rewind, toggleVent, ventAt, sim: (sec) => { for (let i = 0; i < sec * 60; i++) update(1 / 60); }, set: (g) => { grid = g.map((r) => r.slice()); rebuildMeshes(); }, setTools: (u, v) => { undo = u; vent = v; } };
+window.__f2048 = () => ({ score, best: bestTile, moves, bestChain, chains, undo, lead: lead.map((r) => r.slice()), grid: grid.map((r) => r.slice()) });
+window.__fu = { tryMove, rewind, canMove, sim: (sec) => { for (let i = 0; i < sec * 60; i++) update(1 / 60); }, set: (g) => { grid = g.map((r) => r.slice()); rebuildMeshes(); }, setTools: (u) => { undo = u; } };
 })();
 </script>
 </body></html>

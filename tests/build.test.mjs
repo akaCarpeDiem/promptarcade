@@ -87,6 +87,29 @@ test("retired games redirect and are gone from the site", () => {
   }
 });
 
+test("removed games 404: no pages, assets, sitemap entries or redirects", () => {
+  const gone = ["nebula-drop", "wordglow", "void-rocks", "ringfall"];
+  const red = fs.readFileSync(out("_redirects"), "utf8");
+  const sm = fs.readFileSync(out("sitemap.xml"), "utf8");
+  const allow = fs.readFileSync(path.join(ROOT, "functions/_shared/games.js"), "utf8");
+  for (const slug of gone) {
+    assert.equal(GAMES.some((g) => g.slug === slug), false, slug + " still in the catalog");
+    assert.equal(slug in RETIRED, false, slug + " must not redirect");
+    assert.ok(!red.includes("/games/" + slug), slug + " still in _redirects");
+    assert.ok(!sm.includes("/games/" + slug + "/"), slug + " still in the sitemap");
+    assert.ok(!allow.includes('"' + slug + '"'), slug + " still in the score allow-list");
+    for (const f of [`games/play/${slug}.html`, `games/${slug}/index.html`, `shots/${slug}.webp`, `og/${slug}.png`]) {
+      assert.ok(!fs.existsSync(out(f)), slug + " still shipped " + f);
+    }
+  }
+  assert.match(red, /^\/games\/night-press\/ \/games\/ 301$/m, "Night Press should land on the library");
+  assert.ok(!red.includes("wordglow"), "Night Press still points at a removed game");
+  const names = /Nebula Drop|Wordglow|Void Rocks|Ringfall/;
+  for (const f of files.filter((x) => /\.(html|js|txt|xml|json|webmanifest)$/.test(x))) {
+    assert.ok(!names.test(fs.readFileSync(f, "utf8")), "removed game named in " + path.relative(OUT, f));
+  }
+});
+
 test("sitemap lists every game and robots points at it", () => {
   const sm = fs.readFileSync(out("sitemap.xml"), "utf8");
   for (const g of GAMES) assert.ok(sm.includes(`${SITE.url}/games/${g.slug}/</loc>`), g.slug);
