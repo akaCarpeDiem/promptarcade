@@ -267,7 +267,7 @@ export function me(ctx) {
   <section style="padding:20px 0"><div class="sec-head"><div><h2>Your games</h2></div></div><div class="statgrid" id="me-stats"></div></section>
   <p class="note">Without an account your pass lives in this browser only. <button class="btn ghost small" type="button" id="me-reset" style="margin-left:8px">Reset my pass</button></p>
 </div>`;
-  return { path: "/me/", html: layout({ title: "My Arcade Pass", description: "Your PromptArcade level, XP, badges, streak and personal bests. Sign in to sync them across devices.", path: "/me/", v: ctx.v, body, noindex: true }) };
+  return { path: "/me/", html: layout({ title: "My Arcade Pass", description: "Your PromptArcade level, XP, badges, streak and personal bests. Sign in to sync them across devices.", path: "/me/", v: ctx.v, body, noindex: true, ads: false }) };
 }
 
 export function lab(ctx) {
@@ -378,5 +378,5 @@ export function contact(ctx) {
 export function notFound(ctx) {
   const body = `<div class="wrap" style="padding:90px 0 40px;text-align:center"><span class="kicker">404</span><h1 style="font:800 clamp(40px,7vw,90px)/1 var(--display);letter-spacing:-.04em;margin:.3em 0">Game over.</h1><p style="color:var(--muted);font-size:18px">That page doesn't exist — but these do.</p><div class="ctas" style="justify-content:center;display:flex;gap:12px;margin:24px 0 40px"><a class="btn" href="/games/">${ICON.play} Browse games</a><a class="btn ghost" href="/">Home</a></div>
   <div class="grid" style="text-align:left">${featured().slice(0, 3).map((g) => card(g)).join("")}</div></div>`;
-  return { path: "/404.html", html: layout({ title: "Page not found", description: "This page doesn't exist.", path: "/404.html", v: ctx.v, body, noindex: true }) };
+  return { path: "/404.html", html: layout({ title: "Page not found", description: "This page doesn't exist.", path: "/404.html", v: ctx.v, body, noindex: true, ads: false }) };
 }

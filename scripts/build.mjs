@@ -55,7 +55,7 @@ const data = {
 fs.mkdirSync(path.join(OUT, "games/play"), { recursive: true });
 fs.writeFileSync(path.join(OUT, "games/play/pa-data.js"), "/* generated from src/catalog.mjs — do not edit */\nwindow.PA_DATA=" + JSON.stringify(data) + ";\n");
 
-/* Google AdSense loader: in every page head (layout pages get it from html.mjs). */
+/* Google AdSense loader for the standalone play files. Layout pages get the same tag from html.mjs, except 404 and /me/, which pass ads: false. */
 const ADSENSE_TAG = '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4059575347806121" crossorigin="anonymous"></script>';
 
 /* Google Analytics 4 tag: right after <head> on every page (layout pages get it from html.mjs). */

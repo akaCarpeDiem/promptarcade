@@ -24,18 +24,19 @@ const NAV = [
 export function makerClass(credit) { return credit.maker.toLowerCase().replace(/[^a-z]/g, ""); }
 export function creditLabel(credit) { return credit.model || `${credit.maker} · ${credit.via}`; }
 
-export function layout({ title, description, path, body, og = "/og/home.png", head = "", scripts = "", v, bodyClass = "", noindex = false, schema }) {
+export function layout({ title, description, path, body, og = "/og/home.png", head = "", scripts = "", v, bodyClass = "", noindex = false, ads = true, schema }) {
   const canonical = SITE.url + path;
   const fullTitle = path === "/" ? `${SITE.name} — ${SITE.tagline}` : `${title} · ${SITE.name}`;
   const cur = (href) => (path === href || (href !== "/" && path.startsWith(href)) ? ' aria-current="page"' : "");
+  // Auto ads loader. 404 and the sign-in page pass ads: false.
+  const adsense = ads ? `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4059575347806121" crossorigin="anonymous"></script>\n` : "";
   return `<!DOCTYPE html>
 <html lang="en" class="js-off">
 <head>
 <!-- Google tag (gtag.js) --><script async src="https://www.googletagmanager.com/gtag/js?id=G-L394D0L4NL"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-L394D0L4NL');</script>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4059575347806121" crossorigin="anonymous"></script>
-<title>${esc(fullTitle)}</title>
+${adsense}<title>${esc(fullTitle)}</title>
 <meta name="description" content="${esc(description)}"/>
 <link rel="canonical" href="${canonical}"/>
 ${noindex ? '<meta name="robots" content="noindex"/>' : ""}
