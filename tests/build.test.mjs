@@ -140,6 +140,26 @@ test("pa-data.js is valid and lists every game", () => {
   assert.ok(w.PA_DATA.quests.length >= 7);
 });
 
+const ADS = "pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4059575347806121";
+
+test("ads.txt is the publisher line, and public pages load AdSense", () => {
+  assert.equal(fs.readFileSync(out("ads.txt"), "utf8"), "google.com, pub-4059575347806121, DIRECT, f08c47fec0942fa0\n");
+  const home = fs.readFileSync(out("index.html"), "utf8");
+  for (const href of ["/privacy/", "/terms/", "/about/", "/contact/"]) assert.ok(home.includes(`href="${href}"`), href);
+  for (const rel of ["index.html", "games/index.html", "hall-of-fame/index.html", "daily/index.html", "lab/index.html", "new/index.html", "about/index.html", "privacy/index.html", "terms/index.html", "contact/index.html", `games/${GAMES[0].slug}/index.html`, `games/${GAMES[0].slug}/source/index.html`]) {
+    assert.equal(fs.readFileSync(out(rel), "utf8").split(ADS).length, 2, rel);
+  }
+});
+
+test("404 and the sign-in page stay noindex and do not load AdSense", () => {
+  for (const rel of ["404.html", "me/index.html"]) {
+    const s = fs.readFileSync(out(rel), "utf8");
+    assert.match(s, /<meta name="robots" content="noindex"\/>/, rel);
+    assert.ok(!s.includes("adsbygoogle"), rel);
+    assert.ok(!s.includes("pagead2.googlesyndication.com"), rel);
+  }
+});
+
 test("no secrets or local paths leak into the build", () => {
   for (const f of files.filter((x) => /\.(html|js|txt|json)$/.test(x))) {
     const s = fs.readFileSync(f, "utf8");
