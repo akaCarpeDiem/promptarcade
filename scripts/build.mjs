@@ -155,6 +155,10 @@ write("_headers", `/*
   Cache-Control: public, max-age=86400
 /games/play/*
   Cache-Control: public, max-age=0, must-revalidate
+https://promptarcade.pages.dev/*
+  X-Robots-Tag: noindex
+https://:alias.promptarcade.pages.dev/*
+  X-Robots-Tag: noindex
 `);
 
 /* ---------- sitemap, robots, manifest ---------- */
